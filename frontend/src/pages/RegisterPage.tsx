@@ -1,5 +1,5 @@
 import React, { useState, ChangeEvent, FormEvent } from 'react';
-import axios, { AxiosError } from 'axios';
+import axios from 'axios';
 import styles from './Page.module.scss';
 
 const RegisterPage: React.FC = () => {
@@ -11,43 +11,34 @@ const RegisterPage: React.FC = () => {
   });
 
   const { username, email, password, password2 } = formData;
+  
 
   const onChange = (e: ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (password !== password2) {
-      console.log('Passwords do not match');
+  e.preventDefault();
+
+  if (password !== password2) {
+    console.log('Passwords do not match');
+    return;
+  }
+
+  const newUser = { username, email, password };
+  console.log('Submitting user:', newUser);
+
+  try {
+    const config = { headers: { 'Content-Type': 'application/json' } };
+    const res = await axios.post<{ token: string }>('/api/users/register', newUser, config);
+    console.log('Registration successful, token:', res.data.token);
+  } catch (err: any) {
+    if (axios.isAxiosError(err)) {
+      console.error('Axios error:', err.response?.data || err.message);
     } else {
-      const newUser = {
-        username,
-        email,
-        password
-      };
-
-      try {
-        const config = {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        };
-
-        const body = JSON.stringify(newUser);
-
-        const res = await axios.post<{ token: string }>('/api/users/register', body, config);
-        console.log(res.data.token);
-      } catch (err) {
-        if (axios.isAxiosError(err)) {
-          const serverError = err as AxiosError<{ msg: string }>;
-          if (serverError && serverError.response) {
-            console.error(serverError.response.data.msg);
-          }
-        } else {
-          console.error(err);
-        }
-      }
+      console.error('Unexpected error:', err);
     }
-  };
+  }
+};
+
 
   return (
     <main className={styles.page}>
