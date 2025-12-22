@@ -40,9 +40,9 @@ router.post('/register', async (req: Request, res: Response) => {
       }
     );
   } catch (err: any) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
+      console.error('Register error:', err); // <-- affiche tout l'objet erreur
+      res.status(500).send('Server Error');
+}
 });
 
 // Login
