@@ -1,7 +1,8 @@
 import mongoose, { Document, Schema } from 'mongoose';
-import { IUser } from './User';
+import type { IUser } from './User.ts';
 
 export interface IEvent extends Document {
+  id: number;
   name: string;
   day: Date;
   startingHour: string;
@@ -13,6 +14,11 @@ export interface IEvent extends Document {
 }
 
 const EventSchema: Schema = new Schema({
+  id: {
+    type: Number,
+    unique: true,
+    required: true
+  },
   name: {
     type: String,
     required: true,

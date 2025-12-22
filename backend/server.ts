@@ -1,10 +1,11 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import express, { Express } from 'express';
+import express from 'express';
+import type { Express } from 'express';
 import mongoose from 'mongoose';
-import userRoutes from './routes/user.routes';
-import eventRoutes from './routes/event.routes';
+import userRoutes from './routes/user.routes.ts';
+import eventRoutes from './routes/event.routes.ts';
 
 const app: Express = express();
 const port = process.env.PORT || 5000;

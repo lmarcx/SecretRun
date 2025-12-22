@@ -1,9 +1,11 @@
-import express, { Request, Response } from 'express';
-const router = express.Router();
-import Event, { IEvent } from '../models/Event';
-import User, { IUser } from '../models/User';
-import auth from '../middleware/auth';
+import express from 'express';
+import type { Request, Response } from 'express';
+import  Event from '../models/Event.ts';
+import type { IEvent } from '../models/Event.ts';
+import  User from '../models/User.ts';
+import auth from '../middleware/auth.ts';
 
+const router = express.Router();
 // @route   POST api/events
 // @desc    Create a new event
 // @access  Private
@@ -30,7 +32,7 @@ router.post('/', auth, async (req: Request, res: Response) => {
     // Add event to creator's eventsCreated array
     const user = await User.findById(req.user.id);
     if (user) {
-      user.eventsCreated.unshift(event.id);
+      user.eventsCreated.unshift(event._id);
       await user.save();
     }
 
@@ -174,7 +176,7 @@ router.put('/participate/:id', auth, async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ msg: 'User not found' });
 
     // Check if user already participated
-    if (event.participants.includes(user.id)) {
+    if (event.participants.includes(user._id)) {
       return res.status(400).json({ msg: 'Already participating in this event' });
     }
 
@@ -183,8 +185,8 @@ router.put('/participate/:id', auth, async (req: Request, res: Response) => {
       return res.status(400).json({ msg: 'Event is full' });
     }
 
-    event.participants.unshift(user.id);
-    user.eventsParticipated.unshift(event.id);
+    event.participants.unshift(user._id);
+    user.eventsParticipated.unshift(event._id);
 
     await event.save();
     await user.save();
@@ -215,13 +217,13 @@ router.put('/unparticipate/:id', auth, async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ msg: 'User not found' });
 
     // Check if user is not participating
-    if (!event.participants.includes(user.id)) {
+    if (!event.participants.includes(user._id)) {
       return res.status(400).json({ msg: 'User not participating in this event' });
     }
 
     // Remove user from participants array
     event.participants = event.participants.filter(
-      (participant) => participant.toString() !== user.id
+      (participant) => participant.toString() !== user._id.toString()
     );
     // Remove event from user's eventsParticipated array
     user.eventsParticipated = user.eventsParticipated.filter(

@@ -1,8 +1,10 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 const router = express.Router();
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import User, { IUser } from '../models/User';
+import  User from '../models/User.ts';
+import type { IUser } from '../models/User.ts';
 
 // Register
 router.post('/register', async (req: Request, res: Response) => {
