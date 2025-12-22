@@ -1,5 +1,6 @@
 import React, { useState, ChangeEvent, FormEvent } from 'react';
 import axios, { AxiosError } from 'axios';
+import styles from './Page.module.scss';
 
 const RegisterPage: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -49,33 +50,36 @@ const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div>
-      <h2>Register</h2>
-      <form onSubmit={onSubmit}>
-        <div>
+    <main className={styles.page}>
+      <form className={styles.form} onSubmit={onSubmit}>
+        <h2>Register</h2>
+        <div className={styles.formGroup}>
+          <label htmlFor="username">Username</label>
           <input
             type="text"
-            placeholder="Username"
+            id="username"
             name="username"
             value={username}
             onChange={onChange}
             required
           />
         </div>
-        <div>
+        <div className={styles.formGroup}>
+          <label htmlFor="email">Email Address</label>
           <input
             type="email"
-            placeholder="Email Address"
+            id="email"
             name="email"
             value={email}
             onChange={onChange}
             required
           />
         </div>
-        <div>
+        <div className={styles.formGroup}>
+          <label htmlFor="password">Password</label>
           <input
             type="password"
-            placeholder="Password"
+            id="password"
             name="password"
             value={password}
             onChange={onChange}
@@ -83,10 +87,11 @@ const RegisterPage: React.FC = () => {
             required
           />
         </div>
-        <div>
+        <div className={styles.formGroup}>
+          <label htmlFor="password2">Confirm Password</label>
           <input
             type="password"
-            placeholder="Confirm Password"
+            id="password2"
             name="password2"
             value={password2}
             onChange={onChange}
@@ -94,9 +99,9 @@ const RegisterPage: React.FC = () => {
             required
           />
         </div>
-        <input type="submit" value="Register" />
+        <button type="submit">Register</button>
       </form>
-    </div>
+    </main>
   );
 };
 

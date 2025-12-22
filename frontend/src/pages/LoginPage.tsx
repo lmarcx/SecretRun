@@ -1,5 +1,6 @@
 import React, { useState, ChangeEvent, FormEvent } from 'react';
 import axios, { AxiosError } from 'axios';
+import styles from './Page.module.scss';
 
 const LoginPage: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -37,23 +38,25 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div>
-      <h2>Login</h2>
-      <form onSubmit={onSubmit}>
-        <div>
+    <main className={styles.page}>
+      <form className={styles.form} onSubmit={onSubmit}>
+        <h2>Login</h2>
+        <div className={styles.formGroup}>
+          <label htmlFor="email">Email Address</label>
           <input
             type="email"
-            placeholder="Email Address"
+            id="email"
             name="email"
             value={email}
             onChange={onChange}
             required
           />
         </div>
-        <div>
+        <div className={styles.formGroup}>
+          <label htmlFor="password">Password</label>
           <input
             type="password"
-            placeholder="Password"
+            id="password"
             name="password"
             value={password}
             onChange={onChange}
@@ -61,9 +64,9 @@ const LoginPage: React.FC = () => {
             required
           />
         </div>
-        <input type="submit" value="Login" />
+        <button type="submit">Login</button>
       </form>
-    </div>
+    </main>
   );
 };
 
