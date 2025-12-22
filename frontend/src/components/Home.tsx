@@ -1,11 +1,12 @@
 import React from 'react';
+import styles from './Home.module.scss';
 
 const Home = () => {
   return (
-    <div>
-      <h2>Welcome to SecretRun</h2>
+    <main className={styles.home}>
+      <h1>Welcome to SecretRun</h1>
       <p>This is the homepage of our community event platform.</p>
-    </div>
+    </main>
   );
 };
 

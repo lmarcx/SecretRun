@@ -1,0 +1,20 @@
+@import '../styles/variables';
+@import '../styles/mixins';
+
+.home {
+  @include flex-center;
+  flex-direction: column;
+  text-align: center;
+
+  h1 {
+    font-size: 3rem;
+    color: $secondary-color;
+    margin-bottom: 1rem;
+  }
+
+  p {
+    font-size: $font-size-lg;
+    color: $text-color;
+    max-width: 600px;
+  }
+}

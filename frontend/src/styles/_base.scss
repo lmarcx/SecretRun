@@ -1,0 +1,22 @@
+@import 'variables';
+@import 'mixins';
+
+body {
+  margin: 0;
+  font-family: $font-family-sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: $background-color;
+  color: $text-color;
+}
+
+#root {
+    @include full-viewport;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+    @include flex-center;
+}

@@ -1,0 +1,32 @@
+@import '../styles/variables';
+@import '../styles/mixins';
+
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background-color: $secondary-color;
+  color: $white;
+
+  .logo {
+    font-size: $font-size-lg;
+    font-weight: bold;
+    color: $primary-color;
+  }
+
+  .navLinks {
+    display: flex;
+    gap: 1rem;
+
+    a {
+      color: $white;
+      text-decoration: none;
+      font-size: $font-size-base;
+
+      &:hover {
+        color: $accent-color;
+      }
+    }
+  }
+}

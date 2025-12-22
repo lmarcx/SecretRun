@@ -1,6 +1,18 @@
-const mongoose = require('mongoose');
+import mongoose, { Document, Schema } from 'mongoose';
+import { IUser } from './User';
 
-const EventSchema = new mongoose.Schema({
+export interface IEvent extends Document {
+  name: string;
+  day: Date;
+  startingHour: string;
+  endingHour: string;
+  place: string;
+  memberLimit: number;
+  creator: IUser['_id'];
+  participants: IUser['_id'][];
+}
+
+const EventSchema: Schema = new Schema({
   name: {
     type: String,
     required: true,
@@ -29,15 +41,15 @@ const EventSchema = new mongoose.Schema({
     min: 1
   },
   creator: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'User'
   },
   participants: [{
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'User'
   }]
 }, {
   timestamps: true
 });
 
-module.exports = mongoose.model('Event', EventSchema);
+export default mongoose.model<IEvent>('Event', EventSchema);

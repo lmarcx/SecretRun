@@ -1,0 +1,18 @@
+@import 'variables';
+
+@mixin flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+@mixin full-viewport {
+  height: $viewport-height;
+  width: $viewport-width;
+}
+
+@mixin container {
+  max-width: $container-max-width;
+  margin: 0 auto;
+  padding: $container-padding;
+}
