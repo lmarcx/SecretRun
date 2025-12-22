@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import axios from 'axios';
+import React, { useState, ChangeEvent, FormEvent } from 'react';
+import axios, { AxiosError } from 'axios';
 
-const RegisterPage = () => {
+const RegisterPage: React.FC = () => {
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -11,9 +11,9 @@ const RegisterPage = () => {
 
   const { username, email, password, password2 } = formData;
 
-  const onChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const onChange = (e: ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
-  const onSubmit = async e => {
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (password !== password2) {
       console.log('Passwords do not match');
@@ -33,10 +33,17 @@ const RegisterPage = () => {
 
         const body = JSON.stringify(newUser);
 
-        const res = await axios.post('/api/users/register', body, config);
-        console.log(res.data); // Token
+        const res = await axios.post<{ token: string }>('/api/users/register', body, config);
+        console.log(res.data.token);
       } catch (err) {
-        console.error(err.response.data);
+        if (axios.isAxiosError(err)) {
+          const serverError = err as AxiosError<{ msg: string }>;
+          if (serverError && serverError.response) {
+            console.error(serverError.response.data.msg);
+          }
+        } else {
+          console.error(err);
+        }
       }
     }
   };
@@ -44,14 +51,14 @@ const RegisterPage = () => {
   return (
     <div>
       <h2>Register</h2>
-      <form onSubmit={e => onSubmit(e)}>
+      <form onSubmit={onSubmit}>
         <div>
           <input
             type="text"
             placeholder="Username"
             name="username"
             value={username}
-            onChange={e => onChange(e)}
+            onChange={onChange}
             required
           />
         </div>
@@ -61,7 +68,7 @@ const RegisterPage = () => {
             placeholder="Email Address"
             name="email"
             value={email}
-            onChange={e => onChange(e)}
+            onChange={onChange}
             required
           />
         </div>
@@ -71,8 +78,8 @@ const RegisterPage = () => {
             placeholder="Password"
             name="password"
             value={password}
-            onChange={e => onChange(e)}
-            minLength="6"
+            onChange={onChange}
+            minLength={6}
             required
           />
         </div>
@@ -82,8 +89,8 @@ const RegisterPage = () => {
             placeholder="Confirm Password"
             name="password2"
             value={password2}
-            onChange={e => onChange(e)}
-            minLength="6"
+            onChange={onChange}
+            minLength={6}
             required
           />
         </div>

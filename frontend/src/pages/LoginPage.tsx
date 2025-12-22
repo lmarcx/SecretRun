@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import axios from 'axios';
+import React, { useState, ChangeEvent, FormEvent } from 'react';
+import axios, { AxiosError } from 'axios';
 
-const LoginPage = () => {
+const LoginPage: React.FC = () => {
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -9,9 +9,9 @@ const LoginPage = () => {
 
   const { email, password } = formData;
 
-  const onChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const onChange = (e: ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
-  const onSubmit = async e => {
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     try {
       const config = {
@@ -22,24 +22,31 @@ const LoginPage = () => {
 
       const body = JSON.stringify({ email, password });
 
-      const res = await axios.post('/api/users/login', body, config);
-      console.log(res.data); // Token
+      const res = await axios.post<{ token: string }>('/api/users/login', body, config);
+      console.log(res.data.token);
     } catch (err) {
-      console.error(err.response.data);
+      if (axios.isAxiosError(err)) {
+        const serverError = err as AxiosError<{ msg: string }>;
+        if (serverError && serverError.response) {
+          console.error(serverError.response.data.msg);
+        }
+      } else {
+        console.error(err);
+      }
     }
   };
 
   return (
     <div>
       <h2>Login</h2>
-      <form onSubmit={e => onSubmit(e)}>
+      <form onSubmit={onSubmit}>
         <div>
           <input
             type="email"
             placeholder="Email Address"
             name="email"
             value={email}
-            onChange={e => onChange(e)}
+            onChange={onChange}
             required
           />
         </div>
@@ -49,8 +56,8 @@ const LoginPage = () => {
             placeholder="Password"
             name="password"
             value={password}
-            onChange={e => onChange(e)}
-            minLength="6"
+            onChange={onChange}
+            minLength={6}
             required
           />
         </div>
