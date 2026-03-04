@@ -115,6 +115,14 @@ const getEventEstimateQuery = gql`
   }
 `;
 
+const getLedgerByReferenceQuery = gql`
+  query GetLedgerByReference($referenceKey: String!) {
+    wallet_ledger(where: { reference_key: { _eq: $referenceKey } }, limit: 1) {
+      id
+    }
+  }
+`;
+
 const ensureWalletMutation = gql`
   mutation EnsureWallet($userId: uuid!) {
     insert_wallets_one(
@@ -143,8 +151,24 @@ const updateWalletMutation = gql`
 `;
 
 const insertLedgerMutation = gql`
-  mutation InsertLedger($walletId: uuid!, $delta: Int!, $reason: String!) {
-    insert_wallet_ledger_one(object: { wallet_id: $walletId, delta: $delta, reason: $reason }) {
+  mutation InsertLedger(
+    $walletId: uuid!
+    $delta: Int!
+    $reason: String!
+    $transactionType: wallet_transaction_type!
+    $referenceKey: String!
+    $metadata: jsonb!
+  ) {
+    insert_wallet_ledger_one(
+      object: {
+        wallet_id: $walletId
+        delta: $delta
+        reason: $reason
+        transaction_type: $transactionType
+        reference_key: $referenceKey
+        metadata: $metadata
+      }
+    ) {
       id
     }
   }
@@ -255,33 +279,49 @@ export default async function handler(req: { body?: Input }) {
   const delta = Math.abs(estimatedSeconds - durationSeconds);
   const bonus = Math.max(0, 10 - delta);
   const totalPoints = Math.round(basePoints + bonus);
+  const referenceKey = `run_validation:${activity.id}`;
+  const ledgerExistsResponse = await client.request<{ wallet_ledger: Array<{ id: string }> }>(
+    getLedgerByReferenceQuery,
+    { referenceKey },
+  );
+  const alreadyRewarded = ledgerExistsResponse.wallet_ledger.length > 0;
 
-  await client.request(ensureWalletMutation, {
-    userId: activity.user_id,
-  });
+  if (!alreadyRewarded) {
+    await client.request(ensureWalletMutation, {
+      userId: activity.user_id,
+    });
 
-  const now = new Date().toISOString();
-  const walletResponse = await client.request<{
-    update_wallets: { returning: Array<{ id: string; balance: number }> };
-  }>(updateWalletMutation, {
-    userId: activity.user_id,
-    delta: totalPoints,
-    now,
-  });
+    const now = new Date().toISOString();
+    const walletResponse = await client.request<{
+      update_wallets: { returning: Array<{ id: string; balance: number }> };
+    }>(updateWalletMutation, {
+      userId: activity.user_id,
+      delta: totalPoints,
+      now,
+    });
 
-  const wallet = walletResponse.update_wallets.returning[0];
-  if (!wallet) {
-    return {
-      success: false,
-      error: 'Wallet update failed',
-    };
+    const wallet = walletResponse.update_wallets.returning[0];
+    if (!wallet) {
+      return {
+        success: false,
+        error: 'Wallet update failed',
+      };
+    }
+
+    await client.request(insertLedgerMutation, {
+      walletId: wallet.id,
+      delta: totalPoints,
+      reason: `activity:${activity.id}:validation`,
+      transactionType: 'run_validation_reward',
+      referenceKey,
+      metadata: {
+        activity_id: activity.id,
+        event_id: activity.event_id,
+        estimated_seconds: estimatedSeconds,
+        actual_seconds: durationSeconds,
+      },
+    });
   }
-
-  await client.request(insertLedgerMutation, {
-    walletId: wallet.id,
-    delta: totalPoints,
-    reason: `activity:${activity.id}:validation`,
-  });
 
   const avgSpeedKmh =
     durationSeconds > 0 ? Number(((distanceKm / durationSeconds) * 3600).toFixed(2)) : 0;
@@ -332,6 +372,7 @@ export default async function handler(req: { body?: Input }) {
       bonus,
       total_points: totalPoints,
     },
+    already_rewarded: alreadyRewarded,
     leaderboard: leaderboardResult,
   };
 }

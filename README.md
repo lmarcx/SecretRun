@@ -40,6 +40,9 @@ NHOST_ADMIN_SECRET=nhost-admin-secret
 ORS_API_KEY=replace-with-openrouteservice-key
 ROUTE_ENCRYPTION_SECRET=replace-with-32-byte-secret
 NHOST_FUNCTIONS_BASE_URL=http://127.0.0.1:1337/v1/functions
+PARTICIPATION_REWARD_AMOUNT=5
+DAILY_LOGIN_REWARD_AMOUNT=2
+RATING_REWARD_AMOUNT=1
 
 ## Start Development
 
@@ -63,4 +66,7 @@ NHOST_FUNCTIONS_BASE_URL=http://127.0.0.1:1337/v1/functions
 - `reveal-events`: scheduled function that reveals due routes by decrypting payload and publishing `route_polyline`.
 - `validate-activity`: computes distance, duration, score, wallet credit, and marks activity as validated.
 - `update-leaderboards`: triggered by `validate-activity` to update user/team seasonal points and recompute ranks by points descending.
+- `participation-reward`: rewards wallet with `participation_reward` when user joins an event.
+- `daily-login-reward`: rewards wallet with `daily_login_reward` once per user/day.
+- `rating-reward`: rewards wallet with `rating_reward` once per rating action.
 
