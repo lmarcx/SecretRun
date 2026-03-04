@@ -39,6 +39,7 @@ NHOST_GRAPHQL_URL=http://localhost:1337/v1/graphql
 NHOST_ADMIN_SECRET=nhost-admin-secret
 ORS_API_KEY=replace-with-openrouteservice-key
 ROUTE_ENCRYPTION_SECRET=replace-with-32-byte-secret
+NHOST_FUNCTIONS_BASE_URL=http://127.0.0.1:1337/v1/functions
 
 ## Start Development
 

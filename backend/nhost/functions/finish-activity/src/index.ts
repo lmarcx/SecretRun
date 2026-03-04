@@ -1,4 +1,4 @@
-﻿import { GraphQLClient, gql } from 'graphql-request';
+import { GraphQLClient, gql } from 'graphql-request';
 
 interface Input {
   activity_id: string;
@@ -15,6 +15,10 @@ const mutation = gql`
     }
   }
 `;
+
+function getFunctionsBaseUrl(): string {
+  return process.env.NHOST_FUNCTIONS_BASE_URL ?? 'http://127.0.0.1:1337/v1/functions';
+}
 
 export default async function handler(req: { body?: Input }) {
   const url = process.env.NHOST_GRAPHQL_URL;
@@ -52,9 +56,36 @@ export default async function handler(req: { body?: Input }) {
     };
   }
 
+  const detectResponse = await fetch(`${getFunctionsBaseUrl()}/detect-cheating`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-hasura-admin-secret': adminSecret,
+    },
+    body: JSON.stringify({ activity_id: payload.activity_id }),
+  });
+
+  if (!detectResponse.ok) {
+    const body = await detectResponse.text();
+    return {
+      success: false,
+      error: `detect-cheating failed: ${detectResponse.status} ${body}`,
+      activity_id: response.update_activities_by_pk.id,
+      finished_at: response.update_activities_by_pk.finished_at,
+    };
+  }
+
+  let detectResult: unknown = null;
+  try {
+    detectResult = await detectResponse.json();
+  } catch {
+    detectResult = { success: false, error: 'Invalid detect-cheating response' };
+  }
+
   return {
     success: true,
     activity_id: response.update_activities_by_pk.id,
     finished_at: response.update_activities_by_pk.finished_at,
+    cheating_check: detectResult,
   };
 }
