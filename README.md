@@ -45,6 +45,7 @@ DAILY_LOGIN_REWARD_AMOUNT=2
 RATING_REWARD_AMOUNT=1
 TEAM_EVENT_BONUS_POINTS=5
 DEFAULT_START_AREA_RADIUS_KM=1
+EXPO_PUSH_API_URL=https://exp.host/--/api/v2/push/send
 
 ## Start Development
 
@@ -74,4 +75,8 @@ DEFAULT_START_AREA_RADIUS_KM=1
 - `create-team-event`: leader-only team event creation (min 3 team members), then route generation.
 - `join-team-event`: verifies team membership, joins event through participation flow.
 - `get-activity-feed`: returns paginated activities from user, friends, and team members with profile and route details.
+- `register-device`: registers Expo push tokens per user device.
+- `send-notification`: sends push notifications to all devices of a user through Expo Push API.
+- `dispatch-notification-jobs`: scheduled worker that delivers queued notifications.
+- `event-start-reminders`: scheduled 30-minute reminder enqueue for event participants.
 

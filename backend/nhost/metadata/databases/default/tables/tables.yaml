@@ -16,3 +16,5 @@
 - "!include public_friendships.yaml"
 - "!include public_activity_likes.yaml"
 - "!include public_activity_comments.yaml"
+- "!include public_user_devices.yaml"
+- "!include public_notification_jobs.yaml"

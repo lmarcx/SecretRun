@@ -23,6 +23,20 @@ array_relationships:
         table:
           name: activities
           schema: public
+  - name: devices
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: user_devices
+          schema: public
+  - name: notification_jobs
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: notification_jobs
+          schema: public
 object_relationships:
   - name: wallet
     using:

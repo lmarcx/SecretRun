@@ -1,0 +1,7 @@
+﻿table:
+  name: user_devices
+  schema: public
+object_relationships:
+  - name: profile
+    using:
+      foreign_key_constraint_on: user_id
