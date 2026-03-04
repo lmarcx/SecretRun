@@ -1,4 +1,4 @@
-﻿# Secret Run Monorepo
+# Secret Run Monorepo
 
 ## Stack
 
@@ -29,6 +29,7 @@ Create `apps/mobile/.env`:
 EXPO_PUBLIC_NHOST_SUBDOMAIN=local
 EXPO_PUBLIC_NHOST_REGION=local
 EXPO_PUBLIC_NHOST_GRAPHQL_URL=http://localhost:1337/v1/graphql
+EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://localhost:1337/v1/functions/trackpoints
 
 Create `backend/nhost/config/.env` (or copy `.env.example`):
 
@@ -59,3 +60,4 @@ ROUTE_ENCRYPTION_SECRET=replace-with-32-byte-secret
 
 - `generate-event-route`: builds route candidates with OpenRouteService, retries up to 3 times for distance tolerance (15%), encrypts payload, and upserts `event_routes`.
 - `reveal-events`: scheduled function that reveals due routes by decrypting payload and publishing `route_polyline`.
+
