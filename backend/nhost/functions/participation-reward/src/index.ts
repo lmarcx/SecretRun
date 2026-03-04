@@ -5,6 +5,18 @@ interface Input {
   user_id: string;
 }
 
+const getEventAndMembershipQuery = gql`
+  query GetEventAndMembership($eventId: uuid!, $userId: uuid!) {
+    events_by_pk(id: $eventId) {
+      id
+      team_id
+    }
+    team_members(where: { user_id: { _eq: $userId } }) {
+      team_id
+    }
+  }
+`;
+
 const getLedgerQuery = gql`
   query GetLedger($referenceKey: String!) {
     wallet_ledger(where: { reference_key: { _eq: $referenceKey } }, limit: 1) {
@@ -96,6 +108,26 @@ export default async function handler(req: { body?: Input }) {
   const client = new GraphQLClient(url, {
     headers: { 'x-hasura-admin-secret': adminSecret },
   });
+
+  const eventResponse = await client.request<{
+    events_by_pk: { id: string; team_id: string | null } | null;
+    team_members: Array<{ team_id: string }>;
+  }>(getEventAndMembershipQuery, {
+    eventId: payload.event_id,
+    userId: payload.user_id,
+  });
+
+  const event = eventResponse.events_by_pk;
+  if (!event) {
+    return { success: false, error: 'Event not found' };
+  }
+
+  if (event.team_id) {
+    const isTeamMember = eventResponse.team_members.some((m) => m.team_id === event.team_id);
+    if (!isTeamMember) {
+      return { success: false, error: 'Only team members can join this event' };
+    }
+  }
 
   const ledger = await client.request<{ wallet_ledger: Array<{ id: string }> }>(getLedgerQuery, {
     referenceKey,

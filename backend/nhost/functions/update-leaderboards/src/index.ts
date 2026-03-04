@@ -9,6 +9,7 @@ interface ActivityInfo {
   user_id: string;
   points: number;
   status: 'pending' | 'validated' | 'rejected';
+  event: { team_id: string | null } | null;
 }
 
 interface SeasonInfo {
@@ -22,6 +23,9 @@ const getActivityQuery = gql`
       user_id
       points
       status
+      event {
+        team_id
+      }
     }
   }
 `;
@@ -244,6 +248,7 @@ export default async function handler(req: { body?: Input }) {
   }
 
   const now = new Date().toISOString();
+  const teamBonusPoints = Number(process.env.TEAM_EVENT_BONUS_POINTS ?? '5');
 
   const userEntryResponse = await client.request<{
     leaderboard_user_season: Array<{ season_id: string; user_id: string }>;
@@ -274,7 +279,8 @@ export default async function handler(req: { body?: Input }) {
     },
   );
 
-  const teamId = teamMembership.team_members[0]?.team_id;
+  const teamId = activity.event?.team_id ?? teamMembership.team_members[0]?.team_id;
+  const teamPointsToAdd = activity.points + (activity.event?.team_id ? teamBonusPoints : 0);
 
   if (teamId) {
     const teamEntryResponse = await client.request<{
@@ -288,13 +294,13 @@ export default async function handler(req: { body?: Input }) {
       await client.request(insertTeamEntryMutation, {
         seasonId,
         teamId,
-        points: activity.points,
+        points: teamPointsToAdd,
       });
     } else {
       await client.request(updateTeamEntryMutation, {
         seasonId,
         teamId,
-        points: activity.points,
+        points: teamPointsToAdd,
         now,
       });
     }
@@ -310,5 +316,6 @@ export default async function handler(req: { body?: Input }) {
     user_id: activity.user_id,
     team_id: teamId ?? null,
     added_points: activity.points,
+    team_bonus_points: activity.event?.team_id ? teamBonusPoints : 0,
   };
 }

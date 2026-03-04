@@ -2,6 +2,13 @@
   name: teams
   schema: public
 array_relationships:
+  - name: events
+    using:
+      foreign_key_constraint_on:
+        column: team_id
+        table:
+          name: events
+          schema: public
   - name: members
     using:
       foreign_key_constraint_on:

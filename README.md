@@ -43,6 +43,8 @@ NHOST_FUNCTIONS_BASE_URL=http://127.0.0.1:1337/v1/functions
 PARTICIPATION_REWARD_AMOUNT=5
 DAILY_LOGIN_REWARD_AMOUNT=2
 RATING_REWARD_AMOUNT=1
+TEAM_EVENT_BONUS_POINTS=5
+DEFAULT_START_AREA_RADIUS_KM=1
 
 ## Start Development
 
@@ -69,4 +71,6 @@ RATING_REWARD_AMOUNT=1
 - `participation-reward`: rewards wallet with `participation_reward` when user joins an event.
 - `daily-login-reward`: rewards wallet with `daily_login_reward` once per user/day.
 - `rating-reward`: rewards wallet with `rating_reward` once per rating action.
+- `create-team-event`: leader-only team event creation (min 3 team members), then route generation.
+- `join-team-event`: verifies team membership, joins event through participation flow.
 
