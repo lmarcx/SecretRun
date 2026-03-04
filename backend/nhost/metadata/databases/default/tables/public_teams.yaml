@@ -1,0 +1,18 @@
+﻿table:
+  name: teams
+  schema: public
+array_relationships:
+  - name: members
+    using:
+      foreign_key_constraint_on:
+        column: team_id
+        table:
+          name: team_members
+          schema: public
+  - name: leaderboard_entries
+    using:
+      foreign_key_constraint_on:
+        column: team_id
+        table:
+          name: leaderboard_team_season
+          schema: public

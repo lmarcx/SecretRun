@@ -1,0 +1,10 @@
+﻿{
+  "name": "@secret-run/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "tsconfig.base.json",
+    "eslint.base.cjs"
+  ]
+}

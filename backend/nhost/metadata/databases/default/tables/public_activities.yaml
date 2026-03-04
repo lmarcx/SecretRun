@@ -1,0 +1,18 @@
+﻿table:
+  name: activities
+  schema: public
+object_relationships:
+  - name: event
+    using:
+      foreign_key_constraint_on: event_id
+  - name: profile
+    using:
+      foreign_key_constraint_on: user_id
+array_relationships:
+  - name: trackpoints
+    using:
+      foreign_key_constraint_on:
+        column: activity_id
+        table:
+          name: activity_trackpoints
+          schema: public

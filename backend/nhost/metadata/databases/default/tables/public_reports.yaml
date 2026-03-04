@@ -1,0 +1,21 @@
+﻿table:
+  name: reports
+  schema: public
+object_relationships:
+  - name: reporter
+    using:
+      foreign_key_constraint_on: reporter_user_id
+  - name: target
+    using:
+      foreign_key_constraint_on: target_user_id
+  - name: event
+    using:
+      foreign_key_constraint_on: event_id
+array_relationships:
+  - name: sanctions
+    using:
+      foreign_key_constraint_on:
+        column: report_id
+        table:
+          name: sanctions
+          schema: public

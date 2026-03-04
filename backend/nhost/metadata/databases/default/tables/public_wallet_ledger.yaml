@@ -1,0 +1,7 @@
+﻿table:
+  name: wallet_ledger
+  schema: public
+object_relationships:
+  - name: wallet
+    using:
+      foreign_key_constraint_on: wallet_id

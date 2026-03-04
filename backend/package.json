@@ -1,0 +1,22 @@
+﻿{
+  "name": "@secret-run/backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "nhost:start": "cd nhost && nhost up",
+    "nhost:stop": "cd nhost && nhost down",
+    "db:migrate": "cd nhost && nhost migrate apply",
+    "db:seed": "cd nhost && nhost seed apply",
+    "lint": "eslint nhost/functions --ext .ts"
+  },
+  "dependencies": {
+    "graphql-request": "^7.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@typescript-eslint/eslint-plugin": "^8.26.0",
+    "@typescript-eslint/parser": "^8.26.0",
+    "eslint-config-prettier": "^10.1.1",
+    "typescript": "^5.8.2"
+  }
+}

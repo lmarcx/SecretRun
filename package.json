@@ -1,0 +1,20 @@
+﻿{
+  "name": "secret-run",
+  "private": true,
+  "packageManager": "pnpm@10.6.0",
+  "scripts": {
+    "dev": "concurrently -k -n NHOST,MOBILE \"pnpm --filter @secret-run/backend nhost:start\" \"pnpm --filter @secret-run/mobile dev\"",
+    "dev:mobile": "pnpm --filter @secret-run/mobile dev",
+    "dev:backend": "pnpm --filter @secret-run/backend nhost:start",
+    "db:migrate": "pnpm --filter @secret-run/backend db:migrate",
+    "db:seed": "pnpm --filter @secret-run/backend db:seed",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "eslint": "^9.22.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
+  }
+}
