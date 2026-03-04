@@ -73,4 +73,5 @@ DEFAULT_START_AREA_RADIUS_KM=1
 - `rating-reward`: rewards wallet with `rating_reward` once per rating action.
 - `create-team-event`: leader-only team event creation (min 3 team members), then route generation.
 - `join-team-event`: verifies team membership, joins event through participation flow.
+- `get-activity-feed`: returns paginated activities from user, friends, and team members with profile and route details.
 

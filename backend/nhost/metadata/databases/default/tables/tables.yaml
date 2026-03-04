@@ -13,3 +13,6 @@
 - "!include public_leaderboard_team_season.yaml"
 - "!include public_reports.yaml"
 - "!include public_sanctions.yaml"
+- "!include public_friendships.yaml"
+- "!include public_activity_likes.yaml"
+- "!include public_activity_comments.yaml"

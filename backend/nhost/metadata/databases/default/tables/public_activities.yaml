@@ -9,6 +9,20 @@ object_relationships:
     using:
       foreign_key_constraint_on: user_id
 array_relationships:
+  - name: likes
+    using:
+      foreign_key_constraint_on:
+        column: activity_id
+        table:
+          name: activity_likes
+          schema: public
+  - name: comments
+    using:
+      foreign_key_constraint_on:
+        column: activity_id
+        table:
+          name: activity_comments
+          schema: public
   - name: trackpoints
     using:
       foreign_key_constraint_on:
