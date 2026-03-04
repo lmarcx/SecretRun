@@ -8,16 +8,7 @@ object_relationships:
 select_permissions:
   - role: user
     permission:
-      columns:
-        - id
-        - event_id
-        - route_encrypted
-        - route_polyline
-        - distance_m
-        - duration_sec
-        - revealed
-        - revealed_at
-        - created_at
+      columns: [id, event_id, route_encrypted, route_polyline, distance_m, duration_sec, revealed, revealed_at, created_at]
       filter:
         _or:
           - revealed:
@@ -26,3 +17,22 @@ select_permissions:
               participants:
                 user_id:
                   _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: admin
+    permission:
+      check: {}
+      columns: "*"
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

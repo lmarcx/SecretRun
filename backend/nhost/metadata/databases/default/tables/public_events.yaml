@@ -20,6 +20,9 @@ object_relationships:
   - name: team
     using:
       foreign_key_constraint_on: team_id
+  - name: creator
+    using:
+      foreign_key_constraint_on: created_by
   - name: route
     using:
       foreign_key_constraint_on:
@@ -27,3 +30,56 @@ object_relationships:
         table:
           name: event_routes
           schema: public
+select_permissions:
+  - role: anonymous
+    permission:
+      columns: [id, title, description, reveal_at, starts_at, ends_at, start_point, end_point, start_area_center, start_area_radius_km, created_by, created_at, team_id, is_private, max_participants]
+      filter:
+        is_private:
+          _eq: false
+  - role: user
+    permission:
+      columns: [id, title, description, reveal_at, starts_at, ends_at, start_point, end_point, start_area_center, start_area_radius_km, created_by, created_at, team_id, is_private, max_participants]
+      filter:
+        _or:
+          - is_private:
+              _eq: false
+          - participants:
+              user_id:
+                _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        created_by:
+          _eq: X-Hasura-User-Id
+      set:
+        created_by: X-Hasura-User-Id
+      columns: [title, description, reveal_at, starts_at, ends_at, start_point, end_point, start_area_center, start_area_radius_km, created_by, team_id, is_private, max_participants]
+  - role: admin
+    permission:
+      check: {}
+      columns: "*"
+update_permissions:
+  - role: user
+    permission:
+      columns: [title, description, reveal_at, starts_at, ends_at, start_point, end_point, start_area_center, start_area_radius_km, team_id, is_private, max_participants]
+      filter:
+        created_by:
+          _eq: X-Hasura-User-Id
+      check:
+        created_by:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

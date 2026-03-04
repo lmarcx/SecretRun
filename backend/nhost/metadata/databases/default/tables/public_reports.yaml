@@ -19,3 +19,31 @@ array_relationships:
         table:
           name: sanctions
           schema: public
+select_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        reporter_user_id:
+          _eq: X-Hasura-User-Id
+      set:
+        reporter_user_id: X-Hasura-User-Id
+      columns: [reporter_user_id, target_user_id, event_id, reason, status]
+  - role: admin
+    permission:
+      check: {}
+      columns: "*"
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

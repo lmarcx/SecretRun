@@ -13,3 +13,29 @@ array_relationships:
         table:
           name: wallet_ledger
           schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns: [id, user_id, balance, updated_at]
+      filter:
+        user_id:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: admin
+    permission:
+      check: {}
+      columns: "*"
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

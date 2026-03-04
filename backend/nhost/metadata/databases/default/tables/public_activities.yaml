@@ -30,3 +30,44 @@ array_relationships:
         table:
           name: activity_trackpoints
           schema: public
+select_permissions:
+  - role: user
+    permission:
+      columns: [id, event_id, user_id, status, distance_km, duration_seconds, avg_speed_kmh, points, started_at, finished_at, created_at, suspected_vehicle]
+      filter:
+        _or:
+          - user_id:
+              _eq: X-Hasura-User-Id
+          - profile:
+              friendships_out:
+                friend_user_id:
+                  _eq: X-Hasura-User-Id
+          - profile:
+              friendships_in:
+                user_id:
+                  _eq: X-Hasura-User-Id
+          - profile:
+              team_memberships:
+                team:
+                  members:
+                    user_id:
+                      _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: admin
+    permission:
+      check: {}
+      columns: "*"
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

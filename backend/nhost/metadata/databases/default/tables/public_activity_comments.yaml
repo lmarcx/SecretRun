@@ -8,3 +8,70 @@ object_relationships:
   - name: profile
     using:
       foreign_key_constraint_on: user_id
+select_permissions:
+  - role: user
+    permission:
+      columns: [id, activity_id, user_id, body, created_at]
+      filter:
+        _or:
+          - activity:
+              user_id:
+                _eq: X-Hasura-User-Id
+          - activity:
+              profile:
+                friendships_out:
+                  friend_user_id:
+                    _eq: X-Hasura-User-Id
+          - activity:
+              profile:
+                friendships_in:
+                  user_id:
+                    _eq: X-Hasura-User-Id
+          - activity:
+              profile:
+                team_memberships:
+                  team:
+                    members:
+                      user_id:
+                        _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        user_id:
+          _eq: X-Hasura-User-Id
+      set:
+        user_id: X-Hasura-User-Id
+      columns: [activity_id, user_id, body]
+  - role: admin
+    permission:
+      check: {}
+      columns: "*"
+update_permissions:
+  - role: user
+    permission:
+      columns: [body]
+      filter:
+        user_id:
+          _eq: X-Hasura-User-Id
+      check:
+        user_id:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: user
+    permission:
+      filter:
+        user_id:
+          _eq: X-Hasura-User-Id
+  - role: admin
+    permission:
+      filter: {}

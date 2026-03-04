@@ -23,3 +23,62 @@ array_relationships:
         table:
           name: leaderboard_team_season
           schema: public
+select_permissions:
+  - role: anonymous
+    permission:
+      columns: [id, name, created_by, created_at]
+      filter: {}
+  - role: user
+    permission:
+      columns: [id, name, created_by, created_at]
+      filter: {}
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        created_by:
+          _eq: X-Hasura-User-Id
+      set:
+        created_by: X-Hasura-User-Id
+      columns: [name, created_by]
+  - role: admin
+    permission:
+      check: {}
+      columns: "*"
+update_permissions:
+  - role: user
+    permission:
+      columns: [name]
+      filter:
+        _or:
+          - created_by:
+              _eq: X-Hasura-User-Id
+          - members:
+              _and:
+                - user_id:
+                    _eq: X-Hasura-User-Id
+                - role:
+                    _eq: leader
+      check:
+        _or:
+          - created_by:
+              _eq: X-Hasura-User-Id
+          - members:
+              _and:
+                - user_id:
+                    _eq: X-Hasura-User-Id
+                - role:
+                    _eq: leader
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}
