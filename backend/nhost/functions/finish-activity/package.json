@@ -1,0 +1,10 @@
+﻿{
+  "name": "finish-activity",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "graphql-request": "^7.1.2"
+  }
+}
