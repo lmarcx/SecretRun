@@ -179,6 +179,10 @@ const updateActivityMutation = gql`
   }
 `;
 
+function getFunctionsBaseUrl(): string {
+  return process.env.NHOST_FUNCTIONS_BASE_URL ?? 'http://127.0.0.1:1337/v1/functions';
+}
+
 export default async function handler(req: { body?: Input }) {
   const url = process.env.NHOST_GRAPHQL_URL;
   const adminSecret = process.env.NHOST_ADMIN_SECRET;
@@ -291,6 +295,31 @@ export default async function handler(req: { body?: Input }) {
     finishedAt: new Date(finishedAtMs).toISOString(),
   });
 
+  const leaderboardResponse = await fetch(`${getFunctionsBaseUrl()}/update-leaderboards`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-hasura-admin-secret': adminSecret,
+    },
+    body: JSON.stringify({ activity_id: activity.id }),
+  });
+
+  if (!leaderboardResponse.ok) {
+    const body = await leaderboardResponse.text();
+    return {
+      success: false,
+      error: `update-leaderboards failed: ${leaderboardResponse.status} ${body}`,
+      activity_id: activity.id,
+    };
+  }
+
+  let leaderboardResult: unknown = null;
+  try {
+    leaderboardResult = await leaderboardResponse.json();
+  } catch {
+    leaderboardResult = { success: false, error: 'Invalid update-leaderboards response' };
+  }
+
   return {
     success: true,
     activity_id: activity.id,
@@ -303,5 +332,6 @@ export default async function handler(req: { body?: Input }) {
       bonus,
       total_points: totalPoints,
     },
+    leaderboard: leaderboardResult,
   };
 }

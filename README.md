@@ -61,4 +61,6 @@ NHOST_FUNCTIONS_BASE_URL=http://127.0.0.1:1337/v1/functions
 
 - `generate-event-route`: builds route candidates with OpenRouteService, retries up to 3 times for distance tolerance (15%), encrypts payload, and upserts `event_routes`.
 - `reveal-events`: scheduled function that reveals due routes by decrypting payload and publishing `route_polyline`.
+- `validate-activity`: computes distance, duration, score, wallet credit, and marks activity as validated.
+- `update-leaderboards`: triggered by `validate-activity` to update user/team seasonal points and recompute ranks by points descending.
 
