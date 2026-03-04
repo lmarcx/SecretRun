@@ -13,6 +13,8 @@ select_permissions:
         - event_id
         - route_encrypted
         - route_polyline
+        - distance_m
+        - duration_sec
         - revealed
         - revealed_at
         - created_at
