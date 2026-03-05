@@ -53,6 +53,13 @@ EXPO_PUSH_API_URL=https://exp.host/--/api/v2/push/send
 1. `pnpm install`
 2. `pnpm dev`
 
+## Local Backend with Docker (No Nhost CLI)
+
+1. Copy `backend/nhost/.env.example` to `backend/nhost/.env` and set `POSTGRES_PASSWORD` and `HASURA_GRAPHQL_ADMIN_SECRET`.
+2. From `backend/nhost`, run `docker compose up -d`.
+3. Follow startup logs with `docker compose logs -f`.
+4. GraphQL endpoint: `http://localhost:8080/v1/graphql`.
+
 ## Database Migration
 
 - `pnpm db:migrate`
