@@ -27,11 +27,7 @@ insert_permissions:
           _eq: X-Hasura-User-Id
       set:
         blocker_id: X-Hasura-User-Id
-      columns: [blocker_id, blocked_id]
-  - role: admin
-    permission:
-      check: {}
-      columns: "*"
+      columns: [blocked_id]
 update_permissions:
   - role: admin
     permission:
