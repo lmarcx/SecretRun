@@ -1,4 +1,4 @@
-﻿- "!include public_profiles.yaml"
+- "!include public_profiles.yaml"
 - "!include public_teams.yaml"
 - "!include public_team_members.yaml"
 - "!include public_events.yaml"
@@ -14,6 +14,7 @@
 - "!include public_reports.yaml"
 - "!include public_sanctions.yaml"
 - "!include public_friendships.yaml"
+- "!include public_blocks.yaml"
 - "!include public_activity_likes.yaml"
 - "!include public_activity_comments.yaml"
 - "!include public_user_devices.yaml"

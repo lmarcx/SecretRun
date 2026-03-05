@@ -1,4 +1,4 @@
-﻿table:
+table:
   name: activities
   schema: public
 object_relationships:
@@ -35,23 +35,40 @@ select_permissions:
     permission:
       columns: [id, event_id, user_id, status, distance_km, duration_seconds, avg_speed_kmh, points, started_at, finished_at, created_at, suspected_vehicle]
       filter:
-        _or:
-          - user_id:
-              _eq: X-Hasura-User-Id
-          - profile:
-              friendships_out:
-                friend_user_id:
+        _and:
+          - _not:
+              profile:
+                blocks_out:
+                  blocked_id:
+                    _eq: X-Hasura-User-Id
+          - _not:
+              profile:
+                blocks_in:
+                  blocker_id:
+                    _eq: X-Hasura-User-Id
+          - _or:
+              - user_id:
                   _eq: X-Hasura-User-Id
-          - profile:
-              friendships_in:
-                user_id:
-                  _eq: X-Hasura-User-Id
-          - profile:
-              team_memberships:
-                team:
-                  members:
-                    user_id:
-                      _eq: X-Hasura-User-Id
+              - profile:
+                  requester_friendships:
+                    _and:
+                      - addressee_id:
+                          _eq: X-Hasura-User-Id
+                      - status:
+                          _eq: accepted
+              - profile:
+                  addressee_friendships:
+                    _and:
+                      - requester_id:
+                          _eq: X-Hasura-User-Id
+                      - status:
+                          _eq: accepted
+              - profile:
+                  team_memberships:
+                    team:
+                      members:
+                        user_id:
+                          _eq: X-Hasura-User-Id
   - role: admin
     permission:
       columns: "*"

@@ -1,22 +1,22 @@
-﻿table:
+table:
   name: friendships
   schema: public
 object_relationships:
-  - name: user
+  - name: requester
     using:
-      foreign_key_constraint_on: user_id
-  - name: friend
+      foreign_key_constraint_on: requester_id
+  - name: addressee
     using:
-      foreign_key_constraint_on: friend_user_id
+      foreign_key_constraint_on: addressee_id
 select_permissions:
   - role: user
     permission:
-      columns: [user_id, friend_user_id, created_at]
+      columns: [id, requester_id, addressee_id, status, created_at, updated_at]
       filter:
         _or:
-          - user_id:
+          - requester_id:
               _eq: X-Hasura-User-Id
-          - friend_user_id:
+          - addressee_id:
               _eq: X-Hasura-User-Id
   - role: admin
     permission:
@@ -26,30 +26,49 @@ insert_permissions:
   - role: user
     permission:
       check:
-        user_id:
-          _eq: X-Hasura-User-Id
+        _and:
+          - requester_id:
+              _eq: X-Hasura-User-Id
+          - status:
+              _eq: pending
       set:
-        user_id: X-Hasura-User-Id
-      columns: [user_id, friend_user_id]
+        requester_id: X-Hasura-User-Id
+      columns: [requester_id, addressee_id, status]
   - role: admin
     permission:
       check: {}
       columns: "*"
 update_permissions:
+  - role: user
+    permission:
+      columns: [status, updated_at]
+      filter:
+        _and:
+          - addressee_id:
+              _eq: X-Hasura-User-Id
+          - status:
+              _eq: pending
+      check:
+        status:
+          _in: [accepted, rejected]
+  - role: user
+    permission:
+      columns: [status, updated_at]
+      filter:
+        _and:
+          - requester_id:
+              _eq: X-Hasura-User-Id
+          - status:
+              _eq: pending
+      check:
+        status:
+          _eq: cancelled
   - role: admin
     permission:
       columns: "*"
       filter: {}
       check: {}
 delete_permissions:
-  - role: user
-    permission:
-      filter:
-        _or:
-          - user_id:
-              _eq: X-Hasura-User-Id
-          - friend_user_id:
-              _eq: X-Hasura-User-Id
   - role: admin
     permission:
       filter: {}

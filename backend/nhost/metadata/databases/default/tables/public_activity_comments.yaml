@@ -1,4 +1,4 @@
-﻿table:
+table:
   name: activity_comments
   schema: public
 object_relationships:
@@ -13,27 +13,46 @@ select_permissions:
     permission:
       columns: [id, activity_id, user_id, body, created_at]
       filter:
-        _or:
-          - activity:
-              user_id:
-                _eq: X-Hasura-User-Id
-          - activity:
-              profile:
-                friendships_out:
-                  friend_user_id:
-                    _eq: X-Hasura-User-Id
-          - activity:
-              profile:
-                friendships_in:
+        _and:
+          - _not:
+              activity:
+                profile:
+                  blocks_out:
+                    blocked_id:
+                      _eq: X-Hasura-User-Id
+          - _not:
+              activity:
+                profile:
+                  blocks_in:
+                    blocker_id:
+                      _eq: X-Hasura-User-Id
+          - _or:
+              - activity:
                   user_id:
                     _eq: X-Hasura-User-Id
-          - activity:
-              profile:
-                team_memberships:
-                  team:
-                    members:
-                      user_id:
-                        _eq: X-Hasura-User-Id
+              - activity:
+                  profile:
+                    requester_friendships:
+                      _and:
+                        - addressee_id:
+                            _eq: X-Hasura-User-Id
+                        - status:
+                            _eq: accepted
+              - activity:
+                  profile:
+                    addressee_friendships:
+                      _and:
+                        - requester_id:
+                            _eq: X-Hasura-User-Id
+                        - status:
+                            _eq: accepted
+              - activity:
+                  profile:
+                    team_memberships:
+                      team:
+                        members:
+                          user_id:
+                            _eq: X-Hasura-User-Id
   - role: admin
     permission:
       columns: "*"
@@ -42,8 +61,21 @@ insert_permissions:
   - role: user
     permission:
       check:
-        user_id:
-          _eq: X-Hasura-User-Id
+        _and:
+          - user_id:
+              _eq: X-Hasura-User-Id
+          - _not:
+              activity:
+                profile:
+                  blocks_out:
+                    blocked_id:
+                      _eq: X-Hasura-User-Id
+          - _not:
+              activity:
+                profile:
+                  blocks_in:
+                    blocker_id:
+                      _eq: X-Hasura-User-Id
       set:
         user_id: X-Hasura-User-Id
       columns: [activity_id, user_id, body]

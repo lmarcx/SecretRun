@@ -1,4 +1,4 @@
-﻿table:
+table:
   name: profiles
   schema: public
 array_relationships:
@@ -37,19 +37,33 @@ array_relationships:
         table:
           name: notification_jobs
           schema: public
-  - name: friendships_out
+  - name: requester_friendships
     using:
       foreign_key_constraint_on:
-        column: user_id
+        column: requester_id
         table:
           name: friendships
           schema: public
-  - name: friendships_in
+  - name: addressee_friendships
     using:
       foreign_key_constraint_on:
-        column: friend_user_id
+        column: addressee_id
         table:
           name: friendships
+          schema: public
+  - name: blocks_out
+    using:
+      foreign_key_constraint_on:
+        column: blocker_id
+        table:
+          name: blocks
+          schema: public
+  - name: blocks_in
+    using:
+      foreign_key_constraint_on:
+        column: blocked_id
+        table:
+          name: blocks
           schema: public
 object_relationships:
   - name: wallet

@@ -79,4 +79,16 @@ EXPO_PUSH_API_URL=https://exp.host/--/api/v2/push/send
 - `send-notification`: sends push notifications to all devices of a user through Expo Push API.
 - `dispatch-notification-jobs`: scheduled worker that delivers queued notifications.
 - `event-start-reminders`: scheduled 30-minute reminder enqueue for event participants.
+- `send-friend-request`: send a friend request (`pending`) to another user.
+- `respond-friend-request`: accept/reject an incoming friend request.
+- `cancel-friend-request`: cancel an outgoing pending friend request.
+- `remove-friend`: remove an accepted friendship.
+- `block-user`: block a user and remove existing friendship/pending requests.
+- `unblock-user`: remove an existing block.
+- `list-friends`: list accepted friends with profile info (excluding blocked users).
+
+## Friend and Block Tables
+
+- `friendships`: friend requests and accepted friendships (`pending`, `accepted`, `rejected`, `cancelled`).
+- `blocks`: one-way blocking relation (`blocker_id`, `blocked_id`).
 

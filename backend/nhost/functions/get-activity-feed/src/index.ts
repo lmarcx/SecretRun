@@ -1,7 +1,7 @@
-﻿import { GraphQLClient, gql } from 'graphql-request';
+import { GraphQLClient, gql } from 'graphql-request';
 
 interface Input {
-  user_id: string;
+  user_id?: string;
   limit?: number;
   cursor?: string;
 }
@@ -29,14 +29,24 @@ interface FeedActivity {
 
 const getSocialGraphQuery = gql`
   query GetSocialGraph($userId: uuid!) {
-    direct: friendships(where: { user_id: { _eq: $userId } }) {
-      friend_user_id
+    outgoing: friendships(
+      where: { requester_id: { _eq: $userId }, status: { _eq: "accepted" } }
+    ) {
+      addressee_id
     }
-    reverse: friendships(where: { friend_user_id: { _eq: $userId } }) {
-      user_id
+    incoming: friendships(
+      where: { addressee_id: { _eq: $userId }, status: { _eq: "accepted" } }
+    ) {
+      requester_id
     }
     memberships: team_members(where: { user_id: { _eq: $userId } }) {
       team_id
+    }
+    blocks_out: blocks(where: { blocker_id: { _eq: $userId } }) {
+      blocked_id
+    }
+    blocks_in: blocks(where: { blocked_id: { _eq: $userId } }) {
+      blocker_id
     }
   }
 `;
@@ -107,6 +117,17 @@ const getFeedWithCursorQuery = gql`
   }
 `;
 
+function getCurrentUserId(
+  headers?: Record<string, string | string[] | undefined>,
+  bodyUserId?: string,
+): string | null {
+  const value = headers?.['x-hasura-user-id'] ?? headers?.['X-Hasura-User-Id'];
+  if (value) {
+    return Array.isArray(value) ? value[0] : value;
+  }
+  return bodyUserId ?? null;
+}
+
 function clampLimit(limit?: number): number {
   if (!limit || Number.isNaN(limit)) {
     return 20;
@@ -128,7 +149,10 @@ function normalizeCursor(cursor?: string): string | null {
   return parsed.toISOString();
 }
 
-export default async function handler(req: { body?: Input }) {
+export default async function handler(req: {
+  body?: Input;
+  headers?: Record<string, string | string[] | undefined>;
+}) {
   const url = process.env.NHOST_GRAPHQL_URL;
   const adminSecret = process.env.NHOST_ADMIN_SECRET;
 
@@ -137,23 +161,26 @@ export default async function handler(req: { body?: Input }) {
   }
 
   const payload = req.body;
-  if (!payload?.user_id) {
+  const currentUserId = getCurrentUserId(req.headers, payload?.user_id);
+  if (!currentUserId) {
     return { success: false, error: 'user_id is required' };
   }
 
-  const limit = clampLimit(payload.limit);
-  const cursor = normalizeCursor(payload.cursor);
+  const limit = clampLimit(payload?.limit);
+  const cursor = normalizeCursor(payload?.cursor);
 
   const client = new GraphQLClient(url, {
     headers: { 'x-hasura-admin-secret': adminSecret },
   });
 
   const social = await client.request<{
-    direct: Array<{ friend_user_id: string }>;
-    reverse: Array<{ user_id: string }>;
+    outgoing: Array<{ addressee_id: string }>;
+    incoming: Array<{ requester_id: string }>;
     memberships: Array<{ team_id: string }>;
+    blocks_out: Array<{ blocked_id: string }>;
+    blocks_in: Array<{ blocker_id: string }>;
   }>(getSocialGraphQuery, {
-    userId: payload.user_id,
+    userId: currentUserId,
   });
 
   const teamIds = social.memberships.map((m) => m.team_id);
@@ -166,14 +193,21 @@ export default async function handler(req: { body?: Input }) {
     teammateUserIds = teammates.team_members.map((row) => row.user_id);
   }
 
-  const sourceUserIds = Array.from(
+  const blocked = new Set<string>([
+    ...social.blocks_out.map((b) => b.blocked_id),
+    ...social.blocks_in.map((b) => b.blocker_id),
+  ]);
+
+  const candidateUserIds = Array.from(
     new Set([
-      payload.user_id,
-      ...social.direct.map((f) => f.friend_user_id),
-      ...social.reverse.map((f) => f.user_id),
+      currentUserId,
+      ...social.outgoing.map((f) => f.addressee_id),
+      ...social.incoming.map((f) => f.requester_id),
       ...teammateUserIds,
     ]),
   );
+
+  const sourceUserIds = candidateUserIds.filter((id) => id === currentUserId || !blocked.has(id));
 
   const queryLimit = limit + 1;
 
