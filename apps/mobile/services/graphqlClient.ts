@@ -1,13 +1,7 @@
 import { GraphQLClient } from 'graphql-request';
-import { nhost } from './nhostClient';
+import { getGraphqlUrl, nhost } from './nhostClient';
 
-const graphqlUrl = process.env.EXPO_PUBLIC_NHOST_GRAPHQL_URL;
-
-if (!graphqlUrl) {
-  throw new Error('Missing EXPO_PUBLIC_NHOST_GRAPHQL_URL');
-}
-
-const graphqlClient = new GraphQLClient(graphqlUrl);
+const graphqlClient = new GraphQLClient(getGraphqlUrl());
 
 export async function requestGraphql<TData, TVariables extends Record<string, unknown>>(
   query: string,

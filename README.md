@@ -28,7 +28,8 @@ Create `apps/mobile/.env`:
 
 EXPO_PUBLIC_NHOST_SUBDOMAIN=local
 EXPO_PUBLIC_NHOST_REGION=local
-EXPO_PUBLIC_NHOST_GRAPHQL_URL=http://localhost:1337/v1/graphql
+EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://localhost:1337/v1/graphql
+EXPO_PUBLIC_NHOST_BASE_URL=http://localhost:1337
 EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://localhost:1337/v1/functions/trackpoints
 
 Create `backend/nhost/config/.env` (or copy `.env.example`):
@@ -60,8 +61,10 @@ EXPO_PUSH_API_URL=https://exp.host/--/api/v2/push/send
 ## Connect Mobile to Nhost
 
 1. Ensure Nhost is running locally (`pnpm dev:backend` or `pnpm dev`).
-2. Use backend GraphQL URL in `apps/mobile/.env`.
-3. Launch Expo (`pnpm dev:mobile`) and authenticate via Nhost Auth.
+2. You can start only Nhost with `nhost dev` inside `backend/nhost`.
+3. Read the local Hasura GraphQL endpoint from the `nhost dev` logs (look for `/v1/graphql`).
+4. Set `EXPO_PUBLIC_NHOST_BASE_URL=http://localhost:1337` in `apps/mobile/.env` for local mobile development.
+5. Launch Expo (`pnpm dev:mobile`) and authenticate via Nhost Auth.
 
 ## Route Lifecycle Functions
 
