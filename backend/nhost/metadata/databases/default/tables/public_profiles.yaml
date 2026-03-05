@@ -78,8 +78,15 @@ select_permissions:
     permission:
       columns: [id, username, display_name, avatar_url, created_at, updated_at]
       filter:
-        id:
-          _eq: X-Hasura-User-Id
+        _and:
+          - _not:
+              blocks_out:
+                blocked_id:
+                  _eq: X-Hasura-User-Id
+          - _not:
+              blocks_in:
+                blocker_id:
+                  _eq: X-Hasura-User-Id
   - role: admin
     permission:
       columns: "*"

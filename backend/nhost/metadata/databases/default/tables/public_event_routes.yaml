@@ -8,7 +8,7 @@ object_relationships:
 select_permissions:
   - role: user
     permission:
-      columns: [id, event_id, route_encrypted, route_polyline, distance_m, duration_sec, revealed, revealed_at, created_at]
+      columns: [id, event_id, route_polyline, distance_m, duration_sec, revealed, revealed_at, created_at]
       filter:
         _or:
           - revealed:

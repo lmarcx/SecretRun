@@ -32,11 +32,8 @@ insert_permissions:
           _eq: X-Hasura-User-Id
       set:
         user_id: X-Hasura-User-Id
-      columns: [event_id, user_id, status]
-  - role: admin
-    permission:
-      check: {}
-      columns: "*"
+        status: registered
+      columns: [event_id]
 update_permissions:
   - role: admin
     permission:
