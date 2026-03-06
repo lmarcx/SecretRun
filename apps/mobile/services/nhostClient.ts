@@ -1,4 +1,4 @@
-import { NhostClient } from '@nhost/nhost-js';
+import { NhostClient } from '@nhost/react';
 
 const subdomain = process.env.EXPO_PUBLIC_NHOST_SUBDOMAIN;
 const region = process.env.EXPO_PUBLIC_NHOST_REGION;
