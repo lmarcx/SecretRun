@@ -11,6 +11,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/initdb:/docker-entrypoint-initdb.d
+      - ./migrations:/migrations:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-secretrun}"]
       interval: 5s
@@ -18,7 +19,9 @@ services:
       retries: 20
 
   hasura:
-    image: hasura/graphql-engine:v2.48.4.cli-migrations-v3
+    # Database schema is created by Postgres init scripts from ./migrations (plain SQL).
+    # Hasura runs without SQL migration bootstrapping.
+    image: hasura/graphql-engine:v2.48.4
     restart: unless-stopped
     depends_on:
       postgres:
@@ -33,7 +36,6 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./migrations:/hasura-migrations
       - ./metadata:/hasura-metadata
 
 volumes:

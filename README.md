@@ -56,9 +56,11 @@ EXPO_PUSH_API_URL=https://exp.host/--/api/v2/push/send
 ## Local Backend with Docker (No Nhost CLI)
 
 1. Copy `backend/nhost/.env.example` to `backend/nhost/.env` and set `POSTGRES_PASSWORD` and `HASURA_GRAPHQL_ADMIN_SECRET`.
-2. From `backend/nhost`, run `docker compose up -d`.
-3. Follow startup logs with `docker compose logs -f`.
-4. GraphQL endpoint: `http://localhost:8080/v1/graphql`.
+2. From `backend/nhost`, run `docker compose down -v`.
+3. Run `docker compose up -d`.
+4. Follow startup logs with `docker compose logs -f`.
+5. GraphQL endpoint: `http://localhost:8080/v1/graphql`.
+6. Use `docker compose down -v` whenever init SQL scripts change, because Postgres `docker-entrypoint-initdb.d` runs only when the data volume is created.
 
 ## Database Migration
 

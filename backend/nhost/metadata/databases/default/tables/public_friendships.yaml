@@ -39,30 +39,6 @@ insert_permissions:
       check: {}
       columns: "*"
 update_permissions:
-  - role: user
-    permission:
-      columns: [status, updated_at]
-      filter:
-        _and:
-          - addressee_id:
-              _eq: X-Hasura-User-Id
-          - status:
-              _eq: pending
-      check:
-        status:
-          _in: [accepted, rejected]
-  - role: user
-    permission:
-      columns: [status, updated_at]
-      filter:
-        _and:
-          - requester_id:
-              _eq: X-Hasura-User-Id
-          - status:
-              _eq: pending
-      check:
-        status:
-          _eq: cancelled
   - role: admin
     permission:
       columns: "*"
