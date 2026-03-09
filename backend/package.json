@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "nhost:start": "cd nhost && nhost up",
-    "nhost:stop": "cd nhost && nhost down",
+    "backend:start": "cd nhost && docker compose up -d",
+    "backend:stop": "cd nhost && docker compose down",
+    "backend:logs": "cd nhost && docker compose logs -f --tail=100",
     "db:migrate": "cd nhost && nhost migrate apply",
     "db:seed": "cd nhost && nhost seed apply",
     "lint": "eslint nhost/functions --ext .ts"

@@ -20,7 +20,6 @@ secret-run/
 - Node.js 20+
 - pnpm 10+
 - Docker Desktop
-- Nhost CLI
 
 ## Environment Variables
 
@@ -51,7 +50,17 @@ EXPO_PUSH_API_URL=https://exp.host/--/api/v2/push/send
 ## Start Development
 
 1. `pnpm install`
-2. `pnpm dev`
+2. Start local development in two terminals:
+   - Terminal 1: `pnpm dev:backend`
+   - Terminal 2: `pnpm dev:mobile`
+
+`pnpm dev` still starts backend and mobile together. The backend command uses `docker compose up -d` and exits once containers are started, so the root script is configured to keep Expo running after backend startup completes.
+
+Useful commands:
+- `pnpm dev:backend`
+- `pnpm dev:mobile`
+- `pnpm backend:stop`
+- `pnpm backend:logs`
 
 ## Local Backend with Docker (No Nhost CLI)
 
@@ -69,11 +78,10 @@ EXPO_PUSH_API_URL=https://exp.host/--/api/v2/push/send
 
 ## Connect Mobile to Nhost
 
-1. Ensure Nhost is running locally (`pnpm dev:backend` or `pnpm dev`).
-2. You can start only Nhost with `nhost dev` inside `backend/nhost`.
-3. Read the local Hasura GraphQL endpoint from the `nhost dev` logs (look for `/v1/graphql`).
-4. Set `EXPO_PUBLIC_NHOST_BASE_URL=http://localhost:1337` in `apps/mobile/.env` for local mobile development.
-5. Launch Expo (`pnpm dev:mobile`) and authenticate via Nhost Auth.
+1. Ensure the local backend is running with Docker Compose (`pnpm dev:backend` or `pnpm dev`).
+2. GraphQL endpoint is available at `http://localhost:8080/v1/graphql`.
+3. Set `EXPO_PUBLIC_NHOST_BASE_URL=http://localhost:1337` in `apps/mobile/.env` for local mobile development.
+4. Launch Expo (`pnpm dev:mobile`) and authenticate via Nhost Auth.
 
 ## Route Lifecycle Functions
 

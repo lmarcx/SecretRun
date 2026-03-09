@@ -1,11 +1,13 @@
-﻿{
+{
   "name": "secret-run",
   "private": true,
   "packageManager": "pnpm@10.6.0",
   "scripts": {
-    "dev": "concurrently -k -n NHOST,MOBILE \"pnpm --filter @secret-run/backend nhost:start\" \"pnpm --filter @secret-run/mobile dev\"",
+    "dev": "concurrently -n BACKEND,MOBILE \"pnpm --filter @secret-run/backend backend:start\" \"pnpm --filter @secret-run/mobile dev\"",
     "dev:mobile": "pnpm --filter @secret-run/mobile dev",
-    "dev:backend": "pnpm --filter @secret-run/backend nhost:start",
+    "dev:backend": "pnpm --filter @secret-run/backend backend:start",
+    "backend:stop": "pnpm --filter @secret-run/backend backend:stop",
+    "backend:logs": "pnpm --filter @secret-run/backend backend:logs",
     "db:migrate": "pnpm --filter @secret-run/backend db:migrate",
     "db:seed": "pnpm --filter @secret-run/backend db:seed",
     "lint": "pnpm -r lint",
