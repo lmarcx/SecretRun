@@ -3,7 +3,6 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "types": [
-      "expo-router/entry",
       "react",
       "react-native"
     ],

@@ -1,21 +1,32 @@
-﻿import { useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { signUp, loading } = useAuth();
+  const { isConfigured, signUp, loading } = useAuth();
 
   const handleRegister = async () => {
+    if (!isConfigured) {
+      return;
+    }
+
     await signUp('runner@example.com', 'Password123!');
-    router.replace('/home');
+    router.replace('/');
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Create account</Text>
       <Text style={styles.subtitle}>Registration placeholder wired to Nhost auth service.</Text>
-      <Pressable style={styles.button} onPress={handleRegister} disabled={loading}>
+      <Text style={styles.note}>
+        {isConfigured ? 'Demo registration is enabled.' : 'Auth is disabled until the Nhost env vars are set.'}
+      </Text>
+      <Pressable
+        style={[styles.button, !isConfigured && styles.buttonDisabled]}
+        onPress={handleRegister}
+        disabled={loading || !isConfigured}
+      >
         <Text style={styles.buttonText}>{loading ? 'Creating...' : 'Register (demo)'}</Text>
       </Pressable>
       <Pressable onPress={() => router.back()}>
@@ -42,11 +53,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#334155',
   },
+  note: {
+    fontSize: 14,
+    color: '#475569',
+  },
   button: {
     backgroundColor: '#0f172a',
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
+  },
+  buttonDisabled: {
+    backgroundColor: '#94a3b8',
   },
   buttonText: {
     color: '#ffffff',

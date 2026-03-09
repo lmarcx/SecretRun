@@ -1,4 +1,5 @@
-﻿import { useAuthenticationStatus, useSignInEmailPassword, useSignOut, useSignUpEmailPassword } from '@nhost/react';
+import { useAuthenticationStatus, useSignInEmailPassword, useSignOut, useSignUpEmailPassword } from '@nhost/react';
+import { nhostConfig } from '@/services/nhostClient';
 
 export function useAuth() {
   const { isAuthenticated, isLoading: authLoading } = useAuthenticationStatus();
@@ -7,6 +8,10 @@ export function useAuth() {
   const { signOut } = useSignOut();
 
   const signIn = async (email: string, password: string) => {
+    if (!nhostConfig.isConfigured) {
+      throw new Error('Auth is unavailable until the Nhost environment variables are configured.');
+    }
+
     const response = await signInEmailPassword(email, password);
     if (response.error) {
       throw response.error;
@@ -15,6 +20,10 @@ export function useAuth() {
   };
 
   const signUp = async (email: string, password: string) => {
+    if (!nhostConfig.isConfigured) {
+      throw new Error('Auth is unavailable until the Nhost environment variables are configured.');
+    }
+
     const response = await signUpEmailPassword(email, password);
     if (response.error) {
       throw response.error;
@@ -22,8 +31,18 @@ export function useAuth() {
     return response;
   };
 
+  const authState = !nhostConfig.isConfigured
+    ? 'unconfigured'
+    : authLoading
+      ? 'loading'
+      : isAuthenticated
+        ? 'signed in'
+        : 'signed out';
+
   return {
-    isAuthenticated,
+    isAuthenticated: nhostConfig.isConfigured ? isAuthenticated : false,
+    isConfigured: nhostConfig.isConfigured,
+    authState,
     loading: authLoading || signInLoading || signUpLoading,
     signIn,
     signUp,

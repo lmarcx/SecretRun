@@ -8,10 +8,12 @@ export async function requestGraphql<TData, TVariables extends Record<string, un
   variables: TVariables,
 ): Promise<TData> {
   const accessToken = nhost.auth.getAccessToken();
+  const requestHeaders: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  const request = graphqlClient.request as (
+    document: string,
+    requestVariables: TVariables,
+    headers: HeadersInit,
+  ) => Promise<TData>;
 
-  return graphqlClient.request<TData, TVariables>(
-    query,
-    variables,
-    accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-  );
+  return request(query, variables, requestHeaders);
 }

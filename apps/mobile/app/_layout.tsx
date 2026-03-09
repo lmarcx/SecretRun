@@ -10,6 +10,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <DebugAuthBanner />
       <Stack screenOptions={{ headerTitleAlign: 'center' }}>
+        <Stack.Screen name="index" options={{ title: 'Secret Run' }} />
         <Stack.Screen name="(auth)/login" options={{ title: 'Login' }} />
         <Stack.Screen name="(auth)/register" options={{ title: 'Register' }} />
         <Stack.Screen name="home" options={{ title: 'Home' }} />
