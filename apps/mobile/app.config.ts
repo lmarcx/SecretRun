@@ -1,4 +1,4 @@
-﻿import type { ExpoConfig } from 'expo/config';
+import type { ExpoConfig } from 'expo/config';
 
 const config: ExpoConfig = {
   name: 'Secret Run',
@@ -14,7 +14,7 @@ const config: ExpoConfig = {
   extra: {
     nhostSubdomain: process.env.EXPO_PUBLIC_NHOST_SUBDOMAIN,
     nhostRegion: process.env.EXPO_PUBLIC_NHOST_REGION,
-    nhostGraphqlUrl: process.env.EXPO_PUBLIC_NHOST_GRAPHQL_URL,
+    nhostGraphqlUrl: process.env.EXPO_PUBLIC_HASURA_GRAPHQL_URL,
   },
 };
 

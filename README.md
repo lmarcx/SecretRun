@@ -27,9 +27,13 @@ Create `apps/mobile/.env`:
 
 EXPO_PUBLIC_NHOST_SUBDOMAIN=local
 EXPO_PUBLIC_NHOST_REGION=local
-EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://localhost:1337/v1/graphql
-EXPO_PUBLIC_NHOST_BASE_URL=http://localhost:1337
-EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://localhost:1337/v1/functions/trackpoints
+EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://YOUR_LOCAL_IP:8080/v1/graphql
+EXPO_PUBLIC_NHOST_BASE_URL=http://YOUR_LOCAL_IP:1337
+EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://YOUR_LOCAL_IP:1337/v1/functions/trackpoints
+
+Expo Go note:
+- On a real phone, `localhost` points to the phone itself, not your PC.
+- Use your development machine LAN IP for `EXPO_PUBLIC_HASURA_GRAPHQL_URL`, `EXPO_PUBLIC_NHOST_BASE_URL`, and `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT`.
 
 Create `backend/nhost/config/.env` (or copy `.env.example`):
 
@@ -79,8 +83,11 @@ Useful commands:
 ## Connect Mobile to Nhost
 
 1. Ensure the local backend is running with Docker Compose (`pnpm dev:backend` or `pnpm dev`).
-2. GraphQL endpoint is available at `http://localhost:8080/v1/graphql`.
-3. Set `EXPO_PUBLIC_NHOST_BASE_URL=http://localhost:1337` in `apps/mobile/.env` for local mobile development.
+2. GraphQL endpoint is available at `http://localhost:8080/v1/graphql` on the development machine.
+3. In `apps/mobile/.env`, use your PC LAN IP for Expo Go on a phone, for example:
+   - `EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://192.168.1.42:8080/v1/graphql`
+   - `EXPO_PUBLIC_NHOST_BASE_URL=http://192.168.1.42:1337`
+   - `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://192.168.1.42:1337/v1/functions/trackpoints`
 4. Launch Expo (`pnpm dev:mobile`) and authenticate via Nhost Auth.
 
 ## Route Lifecycle Functions
@@ -111,4 +118,3 @@ Useful commands:
 
 - `friendships`: friend requests and accepted friendships (`pending`, `accepted`, `rejected`, `cancelled`).
 - `blocks`: one-way blocking relation (`blocker_id`, `blocked_id`).
-
