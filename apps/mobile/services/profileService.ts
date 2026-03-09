@@ -38,7 +38,7 @@ export async function fetchCurrentProfile(): Promise<CurrentProfile | null> {
     return null;
   }
 
-  const response = await requestGraphql<CurrentProfileQuery, { userId: string }>(CURRENT_PROFILE_QUERY, {
+  const response = await requestGraphql<CurrentProfileQuery>(CURRENT_PROFILE_QUERY, {
     userId,
   });
 

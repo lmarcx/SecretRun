@@ -33,10 +33,13 @@ object_relationships:
 select_permissions:
   - role: anonymous
     permission:
-      columns: [id, title, description, reveal_at, starts_at, ends_at, start_area_center, start_area_radius_km, created_by, created_at, team_id, is_private, max_participants]
+      columns: [id, title, description, reveal_at, starts_at, start_area_radius_km, max_participants]
       filter:
         is_private:
           _eq: false
+      allow_aggregations: true
+      query_root_fields: [select, select_by_pk, select_aggregate]
+      subscription_root_fields: [select, select_by_pk, select_aggregate]
   - role: user
     permission:
       columns: [id, title, description, reveal_at, starts_at, ends_at, start_area_center, start_area_radius_km, created_by, created_at, team_id, is_private, max_participants]

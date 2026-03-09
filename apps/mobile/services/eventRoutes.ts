@@ -18,7 +18,7 @@ interface EventRouteQuery {
 }
 
 export async function fetchEventRoute(eventId: string): Promise<EventRoute | null> {
-  const response = await requestGraphql<EventRouteQuery, { eventId: string }>(EVENT_ROUTE_QUERY, {
+  const response = await requestGraphql<EventRouteQuery>(EVENT_ROUTE_QUERY, {
     eventId,
   });
 

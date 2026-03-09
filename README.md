@@ -34,6 +34,7 @@ EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://YOUR_LOCAL_IP:1337/v1/functions/trackpoi
 Expo Go note:
 - On a real phone, `localhost` points to the phone itself, not your PC.
 - Use your development machine LAN IP for `EXPO_PUBLIC_HASURA_GRAPHQL_URL`, `EXPO_PUBLIC_NHOST_BASE_URL`, and `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT`.
+- Public frontend GraphQL requests use the local Hasura `anonymous` role. Do not send the Hasura admin secret from mobile or web code.
 
 Create `backend/nhost/config/.env` (or copy `.env.example`):
 
@@ -73,7 +74,8 @@ Useful commands:
 3. Run `docker compose up -d`.
 4. Follow startup logs with `docker compose logs -f`.
 5. GraphQL endpoint: `http://localhost:8080/v1/graphql`.
-6. Use `docker compose down -v` whenever init SQL scripts change, because Postgres `docker-entrypoint-initdb.d` runs only when the data volume is created.
+6. Local frontend requests without a user session run as the Hasura `anonymous` role via `HASURA_GRAPHQL_UNAUTHORIZED_ROLE=anonymous`.
+7. Use `docker compose down -v` whenever init SQL scripts change, because Postgres `docker-entrypoint-initdb.d` runs only when the data volume is created.
 
 ## Database Migration
 

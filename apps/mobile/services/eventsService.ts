@@ -147,7 +147,7 @@ function mapEventDetail(event: NonNullable<EventDetailQuery['events_by_pk']>, in
 }
 
 export async function fetchPublicEvents(): Promise<EventListItem[]> {
-  const response = await requestGraphql<PublicEventsQuery, Record<string, never>>(PUBLIC_EVENTS_QUERY, {});
+  const response = await requestGraphql<PublicEventsQuery>(PUBLIC_EVENTS_QUERY, {});
   return response.events.map(mapEventListItem);
 }
 
@@ -155,7 +155,7 @@ export async function fetchEventDetails(eventId: string): Promise<EventDetail | 
   const viewerId = nhost.auth.getUser()?.id;
 
   if (!viewerId) {
-    const response = await requestGraphql<EventDetailQuery, { eventId: string }>(EVENT_DETAIL_QUERY_PUBLIC, {
+    const response = await requestGraphql<EventDetailQuery>(EVENT_DETAIL_QUERY_PUBLIC, {
       eventId,
     });
 
@@ -166,7 +166,7 @@ export async function fetchEventDetails(eventId: string): Promise<EventDetail | 
     return mapEventDetail(response.events_by_pk, false);
   }
 
-  const response = await requestGraphql<EventDetailQuery, { eventId: string; viewerId: string }>(EVENT_DETAIL_QUERY, {
+  const response = await requestGraphql<EventDetailQuery>(EVENT_DETAIL_QUERY, {
     eventId,
     viewerId,
   });
@@ -183,7 +183,7 @@ export async function joinEvent(eventId: string): Promise<void> {
     throw new Error('Sign in to join an event.');
   }
 
-  await requestGraphql<JoinEventMutation, { eventId: string }>(JOIN_EVENT_MUTATION, { eventId });
+  await requestGraphql<JoinEventMutation>(JOIN_EVENT_MUTATION, { eventId });
 }
 
 export function getEventErrorMessage(error: unknown): string {

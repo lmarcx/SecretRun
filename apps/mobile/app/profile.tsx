@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator, Image, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@/hooks/useAuth';
+import { nhost } from '@/services/nhostClient';
 import type { CurrentProfile } from '@/services/profileService';
 import { fetchCurrentProfile, getProfileErrorMessage } from '@/services/profileService';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { isAuthenticated, loading: authLoading, signOut } = useAuth();
+  const { loading: authLoading, signOut } = useAuth();
+  const userId = nhost.auth.getUser()?.id ?? null;
   const [profile, setProfile] = useState<CurrentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +18,7 @@ export default function ProfileScreen() {
   useEffect(() => {
     let active = true;
 
-    if (!isAuthenticated) {
+    if (!userId) {
       setProfile(null);
       setError(null);
       setLoading(false);
@@ -41,6 +43,7 @@ export default function ProfileScreen() {
           return;
         }
 
+        setProfile(null);
         setError(getProfileErrorMessage(err));
       } finally {
         if (active) {
@@ -54,7 +57,7 @@ export default function ProfileScreen() {
     return () => {
       active = false;
     };
-  }, [isAuthenticated]);
+  }, [userId]);
 
   const handleLogout = async () => {
     setLogoutLoading(true);
@@ -63,6 +66,7 @@ export default function ProfileScreen() {
     try {
       await signOut();
       setProfile(null);
+      setLoading(false);
     } catch (err) {
       setError(getProfileErrorMessage(err));
     } finally {
@@ -70,7 +74,7 @@ export default function ProfileScreen() {
     }
   };
 
-  if (authLoading || loading) {
+  if (authLoading) {
     return (
       <SafeAreaView style={styles.centered}>
         <ActivityIndicator size="large" />
@@ -79,7 +83,7 @@ export default function ProfileScreen() {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!userId) {
     return (
       <SafeAreaView style={styles.centered}>
         <Text style={styles.title}>Profile</Text>
@@ -90,6 +94,15 @@ export default function ProfileScreen() {
         <Pressable style={styles.secondaryButton} onPress={() => router.push('/(auth)/register')}>
           <Text style={styles.secondaryButtonText}>Create account</Text>
         </Pressable>
+      </SafeAreaView>
+    );
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <ActivityIndicator size="large" />
+        <Text style={styles.info}>Loading profile...</Text>
       </SafeAreaView>
     );
   }

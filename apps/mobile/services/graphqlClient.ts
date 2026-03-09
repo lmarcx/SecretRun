@@ -3,17 +3,17 @@ import { getGraphqlUrl, nhost } from './nhostClient';
 
 const graphqlClient = new GraphQLClient(getGraphqlUrl());
 
-export async function requestGraphql<TData, TVariables extends Record<string, unknown>>(
+export async function requestGraphql<TData>(
   query: string,
-  variables: TVariables,
+  variables: Record<string, unknown>,
 ): Promise<TData> {
   const accessToken = nhost.auth.getAccessToken();
-  const requestHeaders: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
-  const request = graphqlClient.request as (
-    document: string,
-    requestVariables: TVariables,
-    headers: HeadersInit,
-  ) => Promise<TData>;
 
-  return request(query, variables, requestHeaders);
+  if (accessToken) {
+    return graphqlClient.request<TData, Record<string, unknown>>(query, variables, {
+      Authorization: `Bearer ${accessToken}`,
+    });
+  }
+
+  return graphqlClient.request<TData, Record<string, unknown>>(query, variables);
 }

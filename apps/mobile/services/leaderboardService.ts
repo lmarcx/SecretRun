@@ -100,7 +100,7 @@ interface LeaderboardQuery {
 
 export async function fetchLeaderboard(): Promise<LeaderboardData | null> {
   const isAuthenticated = Boolean(nhost.auth.getUser());
-  const response = await requestGraphql<LeaderboardQuery, Record<string, never>>(
+  const response = await requestGraphql<LeaderboardQuery>(
     isAuthenticated ? LEADERBOARD_QUERY : LEADERBOARD_QUERY_PUBLIC,
     {},
   );
