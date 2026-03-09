@@ -2,6 +2,8 @@
 - "!include public_teams.yaml"
 - "!include public_team_members.yaml"
 - "!include public_events.yaml"
+- "!include public_runs.yaml"
+- "!include public_leaderboard_cache.yaml"
 - "!include public_event_participants.yaml"
 - "!include public_event_routes.yaml"
 - "!include public_activities.yaml"

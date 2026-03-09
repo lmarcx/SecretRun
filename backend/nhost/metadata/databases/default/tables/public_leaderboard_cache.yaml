@@ -1,0 +1,41 @@
+table:
+  name: leaderboard_cache
+  schema: public
+object_relationships:
+  - name: event
+    using:
+      foreign_key_constraint_on: event_id
+select_permissions:
+  - role: anonymous
+    permission:
+      columns: [id, event_id, user_id, score, rank]
+      filter: {}
+      allow_aggregations: true
+      query_root_fields: [select, select_by_pk, select_aggregate]
+      subscription_root_fields: [select, select_by_pk, select_aggregate]
+  - role: user
+    permission:
+      columns: [id, event_id, user_id, score, rank]
+      filter: {}
+      allow_aggregations: true
+      query_root_fields: [select, select_by_pk, select_aggregate]
+      subscription_root_fields: [select, select_by_pk, select_aggregate]
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+insert_permissions:
+  - role: admin
+    permission:
+      check: {}
+      columns: "*"
+update_permissions:
+  - role: admin
+    permission:
+      columns: "*"
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: admin
+    permission:
+      filter: {}

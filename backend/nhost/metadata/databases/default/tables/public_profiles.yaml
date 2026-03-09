@@ -74,19 +74,14 @@ object_relationships:
           name: wallets
           schema: public
 select_permissions:
+  - role: anonymous
+    permission:
+      columns: [id, user_id, username, display_name, avatar_url, created_at, updated_at]
+      filter: {}
   - role: user
     permission:
-      columns: [id, username, display_name, avatar_url, created_at, updated_at]
-      filter:
-        _and:
-          - _not:
-              blocks_out:
-                blocked_id:
-                  _eq: X-Hasura-User-Id
-          - _not:
-              blocks_in:
-                blocker_id:
-                  _eq: X-Hasura-User-Id
+      columns: [id, user_id, username, display_name, avatar_url, created_at, updated_at]
+      filter: {}
   - role: admin
     permission:
       columns: "*"
@@ -107,12 +102,12 @@ insert_permissions:
 update_permissions:
   - role: user
     permission:
-      columns: [display_name, avatar_url]
+      columns: [username, display_name, avatar_url]
       filter:
-        id:
+        user_id:
           _eq: X-Hasura-User-Id
       check:
-        id:
+        user_id:
           _eq: X-Hasura-User-Id
   - role: admin
     permission:

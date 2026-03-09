@@ -18,3 +18,4 @@ CREATE TABLE IF NOT EXISTS auth.users (
 \i /migrations/202603050008_push_notifications.sql
 \i /migrations/202603050009_events_access_rules.sql
 \i /migrations/202603050010_friend_block_system.sql
+\i /migrations/202603090011_security_architecture.sql
