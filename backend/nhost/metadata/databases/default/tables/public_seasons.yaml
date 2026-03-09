@@ -28,6 +28,9 @@ select_permissions:
     permission:
       columns: [id, name, starts_at, ends_at, is_active, created_at]
       filter: {}
+      allow_aggregations: true
+      query_root_fields: [select, select_by_pk, select_aggregate]
+      subscription_root_fields: [select, select_by_pk, select_aggregate]
   - role: admin
     permission:
       columns: "*"

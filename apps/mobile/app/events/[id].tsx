@@ -121,11 +121,6 @@ export default function EventDetailsScreen() {
           <Text style={styles.value}>{event.startAreaRadiusKm} km</Text>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Max participants</Text>
-          <Text style={styles.value}>{event.maxParticipants ?? 'Unlimited'}</Text>
-        </View>
-
         {event.participantCount !== null ? (
           <View style={styles.section}>
             <Text style={styles.label}>Participants</Text>

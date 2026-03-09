@@ -100,10 +100,21 @@ interface LeaderboardQuery {
 
 export async function fetchLeaderboard(): Promise<LeaderboardData | null> {
   const isAuthenticated = Boolean(nhost.auth.getUser());
-  const response = await requestGraphql<LeaderboardQuery>(
-    isAuthenticated ? LEADERBOARD_QUERY : LEADERBOARD_QUERY_PUBLIC,
-    {},
-  );
+  let response: LeaderboardQuery;
+
+  try {
+    response = await requestGraphql<LeaderboardQuery>(isAuthenticated ? LEADERBOARD_QUERY : LEADERBOARD_QUERY_PUBLIC, {});
+  } catch (error) {
+    if (error instanceof ClientError) {
+      const firstMessage = error.response.errors?.[0]?.message?.toLowerCase() ?? '';
+      if (firstMessage.includes("field 'seasons' not found in type: 'query_root'")) {
+        return null;
+      }
+    }
+
+    throw error;
+  }
+
   const season = response.seasons[0];
 
   if (!season) {

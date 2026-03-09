@@ -8,7 +8,6 @@ export interface EventListItem {
   description: string | null;
   startsAt: string;
   revealAt: string;
-  maxParticipants: number | null;
 }
 
 export interface EventDetail extends EventListItem {
@@ -19,13 +18,12 @@ export interface EventDetail extends EventListItem {
 
 const PUBLIC_EVENTS_QUERY = gql`
   query PublicEvents {
-    events(where: { is_private: { _eq: false } }, order_by: { starts_at: asc }) {
+    events(order_by: { starts_at: asc }) {
       id
       title
       description
       starts_at
       reveal_at
-      max_participants
     }
   }
 `;
@@ -38,7 +36,6 @@ const EVENT_DETAIL_QUERY = gql`
       description
       starts_at
       reveal_at
-      max_participants
       start_area_radius_km
       participants(where: { user_id: { _eq: $viewerId } }, limit: 1) {
         status
@@ -60,7 +57,6 @@ const EVENT_DETAIL_QUERY_PUBLIC = gql`
       description
       starts_at
       reveal_at
-      max_participants
       start_area_radius_km
     }
   }
@@ -83,7 +79,6 @@ interface PublicEventsQuery {
     description: string | null;
     starts_at: string;
     reveal_at: string;
-    max_participants: number | null;
   }>;
 }
 
@@ -94,7 +89,6 @@ interface EventDetailQuery {
     description: string | null;
     starts_at: string;
     reveal_at: string;
-    max_participants: number | null;
     start_area_radius_km: number | string;
     participants?: Array<{
       status: string;
@@ -122,7 +116,6 @@ function mapEventListItem(event: PublicEventsQuery['events'][number]): EventList
     description: event.description,
     startsAt: event.starts_at,
     revealAt: event.reveal_at,
-    maxParticipants: event.max_participants,
   };
 }
 
@@ -139,7 +132,6 @@ function mapEventDetail(event: NonNullable<EventDetailQuery['events_by_pk']>, in
     description: event.description,
     startsAt: event.starts_at,
     revealAt: event.reveal_at,
-    maxParticipants: event.max_participants,
     startAreaRadiusKm: Number(event.start_area_radius_km),
     participantCount,
     viewerParticipationStatus,

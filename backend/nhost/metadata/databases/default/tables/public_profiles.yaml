@@ -76,11 +76,11 @@ object_relationships:
 select_permissions:
   - role: anonymous
     permission:
-      columns: [id, user_id, username, display_name, avatar_url, created_at, updated_at]
+      columns: [id, username, display_name, avatar_url, created_at, updated_at]
       filter: {}
   - role: user
     permission:
-      columns: [id, user_id, username, display_name, avatar_url, created_at, updated_at]
+      columns: [id, username, display_name, avatar_url, created_at, updated_at]
       filter: {}
   - role: admin
     permission:
@@ -104,10 +104,10 @@ update_permissions:
     permission:
       columns: [username, display_name, avatar_url]
       filter:
-        user_id:
+        id:
           _eq: X-Hasura-User-Id
       check:
-        user_id:
+        id:
           _eq: X-Hasura-User-Id
   - role: admin
     permission:

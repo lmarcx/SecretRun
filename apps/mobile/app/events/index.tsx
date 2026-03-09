@@ -89,10 +89,6 @@ export default function EventsScreen() {
               <Text style={styles.metaLabel}>Reveal</Text>
               <Text style={styles.metaValue}>{formatDateTime(item.revealAt)}</Text>
             </View>
-            <View style={styles.meta}>
-              <Text style={styles.metaLabel}>Max participants</Text>
-              <Text style={styles.metaValue}>{item.maxParticipants ?? 'Unlimited'}</Text>
-            </View>
           </Pressable>
         )}
         ListHeaderComponent={
