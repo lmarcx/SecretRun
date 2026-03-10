@@ -8,6 +8,14 @@ CREATE TABLE IF NOT EXISTS auth.users (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE OR REPLACE FUNCTION auth.uid()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+$$;
+
 \i /migrations/202603050001_init.sql
 \i /migrations/202603050002_event_routes_metrics.sql
 \i /migrations/202603050003_activity_trackpoints_seq_speed.sql

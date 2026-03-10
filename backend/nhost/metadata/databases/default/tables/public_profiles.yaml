@@ -1,91 +1,21 @@
 table:
   name: profiles
   schema: public
-array_relationships:
-  - name: team_memberships
-    using:
-      foreign_key_constraint_on:
-        column: user_id
-        table:
-          name: team_members
-          schema: public
-  - name: event_participations
-    using:
-      foreign_key_constraint_on:
-        column: user_id
-        table:
-          name: event_participants
-          schema: public
-  - name: activities
-    using:
-      foreign_key_constraint_on:
-        column: user_id
-        table:
-          name: activities
-          schema: public
-  - name: devices
-    using:
-      foreign_key_constraint_on:
-        column: user_id
-        table:
-          name: user_devices
-          schema: public
-  - name: notification_jobs
-    using:
-      foreign_key_constraint_on:
-        column: user_id
-        table:
-          name: notification_jobs
-          schema: public
-  - name: requester_friendships
-    using:
-      foreign_key_constraint_on:
-        column: requester_id
-        table:
-          name: friendships
-          schema: public
-  - name: addressee_friendships
-    using:
-      foreign_key_constraint_on:
-        column: addressee_id
-        table:
-          name: friendships
-          schema: public
-  - name: blocks_out
-    using:
-      foreign_key_constraint_on:
-        column: blocker_id
-        table:
-          name: blocks
-          schema: public
-  - name: blocks_in
-    using:
-      foreign_key_constraint_on:
-        column: blocked_id
-        table:
-          name: blocks
-          schema: public
-object_relationships:
-  - name: wallet
-    using:
-      foreign_key_constraint_on:
-        column: user_id
-        table:
-          name: wallets
-          schema: public
 select_permissions:
   - role: anonymous
     permission:
       columns: [id, username, display_name, avatar_url, created_at, updated_at]
       filter: {}
+      allow_aggregations: true
+      query_root_fields: [select, select_by_pk, select_aggregate]
+      subscription_root_fields: [select, select_by_pk, select_aggregate]
   - role: user
     permission:
       columns: [id, username, display_name, avatar_url, created_at, updated_at]
       filter: {}
-  - role: admin
-    permission:
-      columns: "*"
-      filter: {}
+      allow_aggregations: true
+      query_root_fields: [select, select_by_pk, select_aggregate]
+      subscription_root_fields: [select, select_by_pk, select_aggregate]
 insert_permissions:
   - role: user
     permission:
@@ -95,10 +25,6 @@ insert_permissions:
       set:
         id: X-Hasura-User-Id
       columns: [id, username, display_name, avatar_url]
-  - role: admin
-    permission:
-      check: {}
-      columns: "*"
 update_permissions:
   - role: user
     permission:
@@ -109,12 +35,3 @@ update_permissions:
       check:
         id:
           _eq: X-Hasura-User-Id
-  - role: admin
-    permission:
-      columns: "*"
-      filter: {}
-      check: {}
-delete_permissions:
-  - role: admin
-    permission:
-      filter: {}

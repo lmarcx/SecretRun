@@ -1,4 +1,4 @@
-﻿table:
+table:
   name: activity_trackpoints
   schema: public
 object_relationships:
@@ -8,27 +8,19 @@ object_relationships:
 select_permissions:
   - role: user
     permission:
-      columns: [id, activity_id, seq, point, recorded_at, speed_kmh, speed_mps]
+      columns: [id, activity_id, point, recorded_at, speed_kmh]
       filter:
         activity:
           user_id:
             _eq: X-Hasura-User-Id
-  - role: admin
-    permission:
-      columns: "*"
-      filter: {}
+      allow_aggregations: true
+      query_root_fields: [select, select_by_pk, select_aggregate]
+      subscription_root_fields: [select, select_by_pk, select_aggregate]
 insert_permissions:
-  - role: admin
+  - role: user
     permission:
-      check: {}
-      columns: "*"
-update_permissions:
-  - role: admin
-    permission:
-      columns: "*"
-      filter: {}
-      check: {}
-delete_permissions:
-  - role: admin
-    permission:
-      filter: {}
+      check:
+        activity:
+          user_id:
+            _eq: X-Hasura-User-Id
+      columns: [activity_id, point, recorded_at, speed_kmh]

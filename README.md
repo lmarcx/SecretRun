@@ -75,7 +75,9 @@ Useful commands:
 4. Follow startup logs with `docker compose logs -f`.
 5. GraphQL endpoint: `http://localhost:8080/v1/graphql`.
 6. Local frontend requests without a user session run as the Hasura `anonymous` role via `HASURA_GRAPHQL_UNAUTHORIZED_ROLE=anonymous`.
-7. Use `docker compose down -v` whenever init SQL scripts change, because Postgres `docker-entrypoint-initdb.d` runs only when the data volume is created.
+7. Local Hasura metadata from `backend/nhost/metadata` is reapplied automatically on container startup, so tracked tables and permissions come back after a reset.
+8. Local dev seed data from `backend/nhost/seeds/seed.sql` is applied automatically on a fresh Postgres volume.
+9. Use `docker compose down -v` followed by `docker compose up -d` whenever init SQL or seed files change, because `docker-entrypoint-initdb.d` runs only when the data volume is created.
 
 ## Database Migration
 

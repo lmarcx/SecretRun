@@ -1,18 +1,6 @@
-﻿table:
+table:
   name: wallets
   schema: public
-object_relationships:
-  - name: profile
-    using:
-      foreign_key_constraint_on: user_id
-array_relationships:
-  - name: ledger_entries
-    using:
-      foreign_key_constraint_on:
-        column: wallet_id
-        table:
-          name: wallet_ledger
-          schema: public
 select_permissions:
   - role: user
     permission:
@@ -20,22 +8,6 @@ select_permissions:
       filter:
         user_id:
           _eq: X-Hasura-User-Id
-  - role: admin
-    permission:
-      columns: "*"
-      filter: {}
-insert_permissions:
-  - role: admin
-    permission:
-      check: {}
-      columns: "*"
-update_permissions:
-  - role: admin
-    permission:
-      columns: "*"
-      filter: {}
-      check: {}
-delete_permissions:
-  - role: admin
-    permission:
-      filter: {}
+      allow_aggregations: true
+      query_root_fields: [select, select_by_pk, select_aggregate]
+      subscription_root_fields: [select, select_by_pk, select_aggregate]

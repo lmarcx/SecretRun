@@ -1,4 +1,4 @@
-﻿table:
+table:
   name: wallet_ledger
   schema: public
 object_relationships:
@@ -8,27 +8,11 @@ object_relationships:
 select_permissions:
   - role: user
     permission:
-      columns: [id, wallet_id, delta, reason, transaction_type, reference_key, metadata, created_at]
+      columns: [id, wallet_id, delta, reason, created_at]
       filter:
         wallet:
           user_id:
             _eq: X-Hasura-User-Id
-  - role: admin
-    permission:
-      columns: "*"
-      filter: {}
-insert_permissions:
-  - role: admin
-    permission:
-      check: {}
-      columns: "*"
-update_permissions:
-  - role: admin
-    permission:
-      columns: "*"
-      filter: {}
-      check: {}
-delete_permissions:
-  - role: admin
-    permission:
-      filter: {}
+      allow_aggregations: true
+      query_root_fields: [select, select_by_pk, select_aggregate]
+      subscription_root_fields: [select, select_by_pk, select_aggregate]

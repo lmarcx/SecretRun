@@ -12,6 +12,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/initdb:/docker-entrypoint-initdb.d
       - ./migrations:/migrations:ro
+      - ./seeds:/seeds:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-secretrun}"]
       interval: 5s
@@ -20,8 +21,9 @@ services:
 
   hasura:
     # Database schema is created by Postgres init scripts from ./migrations (plain SQL).
-    # Hasura runs without SQL migration bootstrapping.
-    image: hasura/graphql-engine:v2.48.4
+    # The cli-migrations image reapplies local metadata on startup so tracked tables
+    # and permissions are deterministic after `docker compose down -v`.
+    image: hasura/graphql-engine:v2.48.4.cli-migrations-v3
     restart: unless-stopped
     depends_on:
       postgres:
