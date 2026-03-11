@@ -8,12 +8,13 @@ export interface EventListItem {
   description: string | null;
   startsAt: string;
   revealAt: string;
+  startAreaRadiusKm: number;
 }
 
 export interface EventDetail extends EventListItem {
-  startAreaRadiusKm: number;
   participantCount: number | null;
   viewerParticipationStatus: string | null;
+  viewerJoinedAt: string | null;
 }
 
 const PUBLIC_EVENTS_QUERY = gql`
@@ -24,6 +25,7 @@ const PUBLIC_EVENTS_QUERY = gql`
       description
       starts_at
       reveal_at
+      start_area_radius_km
     }
   }
 `;
@@ -37,13 +39,24 @@ const EVENT_DETAIL_QUERY = gql`
       starts_at
       reveal_at
       start_area_radius_km
-      participants(where: { user_id: { _eq: $viewerId } }, limit: 1) {
-        status
+    }
+    event_participants(where: { event_id: { _eq: $eventId }, user_id: { _eq: $viewerId } }, limit: 1) {
+      status
+      joined_at
+    }
+    event_participants_aggregate(where: { event_id: { _eq: $eventId } }) {
+      aggregate {
+        count
       }
-      participants_aggregate {
-        aggregate {
-          count
-        }
+    }
+  }
+`;
+
+const EVENT_PARTICIPATION_QUERY = gql`
+  query EventParticipation($eventId: uuid!, $viewerId: uuid!) {
+    event_participants(where: { event_id: { _eq: $eventId }, user_id: { _eq: $viewerId } }, limit: 1) {
+        status
+        joined_at
       }
     }
   }
@@ -79,6 +92,7 @@ interface PublicEventsQuery {
     description: string | null;
     starts_at: string;
     reveal_at: string;
+    start_area_radius_km: number | string;
   }>;
 }
 
@@ -90,15 +104,23 @@ interface EventDetailQuery {
     starts_at: string;
     reveal_at: string;
     start_area_radius_km: number | string;
-    participants?: Array<{
-      status: string;
-    }>;
-    participants_aggregate?: {
-      aggregate: {
-        count: number;
-      } | null;
-    };
   } | null;
+  event_participants?: Array<{
+    status: string;
+    joined_at: string;
+  }>;
+  event_participants_aggregate?: {
+    aggregate: {
+      count: number;
+    } | null;
+  };
+}
+
+interface EventParticipationQuery {
+  event_participants: Array<{
+    status: string;
+    joined_at: string;
+  }>;
 }
 
 interface JoinEventMutation {
@@ -116,16 +138,15 @@ function mapEventListItem(event: PublicEventsQuery['events'][number]): EventList
     description: event.description,
     startsAt: event.starts_at,
     revealAt: event.reveal_at,
+    startAreaRadiusKm: Number(event.start_area_radius_km),
   };
 }
 
-function mapEventDetail(event: NonNullable<EventDetailQuery['events_by_pk']>, includeParticipantData: boolean): EventDetail {
-  const viewerParticipationStatus = event.participants?.[0]?.status ?? null;
-  const participantCount =
-    includeParticipantData && viewerParticipationStatus
-      ? event.participants_aggregate?.aggregate?.count ?? null
-      : null;
-
+function mapEventDetail(
+  event: NonNullable<EventDetailQuery['events_by_pk']>,
+  participation?: EventDetailQuery['event_participants'],
+  participantCount?: number | null,
+): EventDetail {
   return {
     id: event.id,
     title: event.title,
@@ -133,8 +154,9 @@ function mapEventDetail(event: NonNullable<EventDetailQuery['events_by_pk']>, in
     startsAt: event.starts_at,
     revealAt: event.reveal_at,
     startAreaRadiusKm: Number(event.start_area_radius_km),
-    participantCount,
-    viewerParticipationStatus,
+    participantCount: participantCount ?? null,
+    viewerParticipationStatus: participation?.[0]?.status ?? null,
+    viewerJoinedAt: participation?.[0]?.joined_at ?? null,
   };
 }
 
@@ -155,7 +177,7 @@ export async function fetchEventDetails(eventId: string): Promise<EventDetail | 
       return null;
     }
 
-    return mapEventDetail(response.events_by_pk, false);
+    return mapEventDetail(response.events_by_pk);
   }
 
   const response = await requestGraphql<EventDetailQuery>(EVENT_DETAIL_QUERY, {
@@ -167,23 +189,55 @@ export async function fetchEventDetails(eventId: string): Promise<EventDetail | 
     return null;
   }
 
-  return mapEventDetail(response.events_by_pk, true);
+  return mapEventDetail(
+    response.events_by_pk,
+    response.event_participants,
+    response.event_participants_aggregate?.aggregate?.count ?? null,
+  );
 }
 
-export async function joinEvent(eventId: string): Promise<void> {
-  if (!nhost.auth.getUser()) {
+export async function joinEvent(eventId: string): Promise<'joined' | 'already_joined'> {
+  const viewerId = nhost.auth.getUser()?.id;
+  if (!viewerId) {
     throw new Error('Sign in to join an event.');
   }
 
-  await requestGraphql<JoinEventMutation>(JOIN_EVENT_MUTATION, { eventId });
+  const existingParticipation = await requestGraphql<EventParticipationQuery>(EVENT_PARTICIPATION_QUERY, {
+    eventId,
+    viewerId,
+  });
+
+  if (existingParticipation.event_participants.length > 0) {
+    return 'already_joined';
+  }
+
+  try {
+    await requestGraphql<JoinEventMutation>(JOIN_EVENT_MUTATION, { eventId });
+    return 'joined';
+  } catch (error) {
+    if (isAlreadyJoinedError(error)) {
+      return 'already_joined';
+    }
+
+    throw error;
+  }
 }
 
 export function getEventErrorMessage(error: unknown): string {
   if (error instanceof ClientError) {
     const firstMessage = error.response.errors?.[0]?.message;
     if (firstMessage) {
-      if (firstMessage.toLowerCase().includes('event_participants_pkey')) {
+      const lowerMessage = firstMessage.toLowerCase();
+      if (lowerMessage.includes('event_participants_pkey')) {
         return 'You already joined this event.';
+      }
+
+      if (lowerMessage.includes('event_participants_user_id_fkey')) {
+        return 'Your account is missing a profile record, so you cannot join events yet.';
+      }
+
+      if (lowerMessage.includes("field 'events' not found")) {
+        return 'Events are not exposed by the backend yet. Check the local Hasura metadata.';
       }
 
       return firstMessage;
@@ -196,8 +250,20 @@ export function getEventErrorMessage(error: unknown): string {
       return 'You already joined this event.';
     }
 
+    if (message.includes('event_participants_user_id_fkey') || message.includes('foreign key constraint')) {
+      return 'Your account is missing a profile record, so you cannot join events yet.';
+    }
+
     return error.message;
   }
 
   return 'Something went wrong. Please try again.';
+}
+
+function isAlreadyJoinedError(error: unknown): boolean {
+  if (error instanceof ClientError) {
+    return Boolean(error.response.errors?.some((entry) => entry.message.toLowerCase().includes('event_participants_pkey')));
+  }
+
+  return error instanceof Error && error.message.toLowerCase().includes('event_participants_pkey');
 }

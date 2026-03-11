@@ -1,6 +1,8 @@
 import { useAuthenticationStatus, useSignInEmailPassword, useSignOut, useSignUpEmailPassword } from '@nhost/react';
 import { nhostConfig } from '@/services/nhostClient';
 
+export type AuthState = 'unconfigured' | 'loading' | 'signed in' | 'signed out';
+
 export function useAuth() {
   const { isAuthenticated, isLoading: authLoading } = useAuthenticationStatus();
   const { signInEmailPassword, isLoading: signInLoading, error: signInError } = useSignInEmailPassword();
@@ -31,7 +33,7 @@ export function useAuth() {
     return response;
   };
 
-  const authState = !nhostConfig.isConfigured
+  const authState: AuthState = !nhostConfig.isConfigured
     ? 'unconfigured'
     : authLoading
       ? 'loading'
@@ -50,4 +52,23 @@ export function useAuth() {
     signInError,
     signUpError,
   };
+}
+
+export function getAuthErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+    const message = error.message;
+    const lowerMessage = message.toLowerCase();
+
+    if (lowerMessage.includes('network request failed') || lowerMessage.includes('fetch failed')) {
+      return 'Auth service is unreachable. Check the mobile env vars and the backend auth endpoint.';
+    }
+
+    if (lowerMessage.includes('invalid email or password') || lowerMessage.includes('invalid credentials')) {
+      return 'Invalid email or password.';
+    }
+
+    return message;
+  }
+
+  return 'Authentication failed. Please try again.';
 }

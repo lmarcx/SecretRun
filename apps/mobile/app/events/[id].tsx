@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useAuth } from '@/hooks/useAuth';
 import type { EventDetail } from '@/services/eventsService';
 import { fetchEventDetails, getEventErrorMessage, joinEvent } from '@/services/eventsService';
 
 export default function EventDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [joinLoading, setJoinLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const eventId = Array.isArray(id) ? id[0] : id;
 
   useEffect(() => {
     let active = true;
 
     const load = async () => {
-      if (!id) {
+      if (!eventId) {
         setError('Missing event id');
         setLoading(false);
         return;
@@ -26,7 +31,7 @@ export default function EventDetailsScreen() {
       setError(null);
 
       try {
-        const nextEvent = await fetchEventDetails(id);
+        const nextEvent = await fetchEventDetails(eventId);
         if (!active) {
           return;
         }
@@ -55,10 +60,15 @@ export default function EventDetailsScreen() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [eventId, isAuthenticated, reloadKey]);
 
   const handleJoin = async () => {
-    if (!id) {
+    if (!eventId) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      router.push('/(auth)/login');
       return;
     }
 
@@ -71,10 +81,13 @@ export default function EventDetailsScreen() {
     setFeedback(null);
 
     try {
-      await joinEvent(id);
-      const refreshed = await fetchEventDetails(id);
+      const result = await joinEvent(eventId);
+      const refreshed = await fetchEventDetails(eventId);
       setEvent(refreshed);
-      setFeedback({ type: 'success', message: 'Event joined successfully.' });
+      setFeedback({
+        type: 'success',
+        message: result === 'already_joined' ? 'You are already registered for this event.' : 'Event joined successfully.',
+      });
     } catch (err) {
       setFeedback({ type: 'error', message: getEventErrorMessage(err) });
     } finally {
@@ -96,6 +109,9 @@ export default function EventDetailsScreen() {
       <SafeAreaView style={styles.centered}>
         <Text style={styles.title}>Event</Text>
         <Text style={styles.error}>{error ?? 'Event not found.'}</Text>
+        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
+          <Text style={styles.secondaryButtonText}>Retry</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -121,6 +137,27 @@ export default function EventDetailsScreen() {
           <Text style={styles.value}>{event.startAreaRadiusKm} km</Text>
         </View>
 
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>Start area info</Text>
+          <Text style={styles.infoCardText}>
+            Meet inside the approximate start zone before kickoff. The detailed route stays hidden until reveal time.
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Participation</Text>
+          <Text style={styles.value}>
+            {isAuthenticated ? event.viewerParticipationStatus ?? 'Not joined yet' : 'Sign in to see your status'}
+          </Text>
+        </View>
+
+        {event.viewerJoinedAt ? (
+          <View style={styles.section}>
+            <Text style={styles.label}>Joined at</Text>
+            <Text style={styles.value}>{formatDateTime(event.viewerJoinedAt)}</Text>
+          </View>
+        ) : null}
+
         {event.participantCount !== null ? (
           <View style={styles.section}>
             <Text style={styles.label}>Participants</Text>
@@ -138,7 +175,7 @@ export default function EventDetailsScreen() {
           disabled={joinLoading}
         >
           <Text style={styles.buttonText}>
-            {event.viewerParticipationStatus ? 'Joined' : joinLoading ? 'Joining...' : 'Join event'}
+            {event.viewerParticipationStatus ? 'Already joined' : !isAuthenticated ? 'Sign in to join' : joinLoading ? 'Joining...' : 'Join event'}
           </Text>
         </Pressable>
       </ScrollView>
@@ -183,6 +220,23 @@ const styles = StyleSheet.create({
   section: {
     gap: 2,
   },
+  infoCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 6,
+  },
+  infoCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  infoCardText: {
+    color: '#475569',
+    lineHeight: 20,
+  },
   label: {
     fontSize: 12,
     fontWeight: '700',
@@ -218,5 +272,19 @@ const styles = StyleSheet.create({
     color: '#b91c1c',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  secondaryButton: {
+    minHeight: 48,
+    minWidth: 160,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e2e8f0',
+    paddingHorizontal: 18,
+  },
+  secondaryButtonText: {
+    color: '#0f172a',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

@@ -8,12 +8,13 @@ import { fetchCurrentProfile, getProfileErrorMessage } from '@/services/profileS
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { loading: authLoading, signOut } = useAuth();
+  const { isConfigured, loading: authLoading, signOut } = useAuth();
   const userId = nhost.auth.getUser()?.id ?? null;
   const [profile, setProfile] = useState<CurrentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -57,7 +58,7 @@ export default function ProfileScreen() {
     return () => {
       active = false;
     };
-  }, [userId]);
+  }, [reloadKey, userId]);
 
   const handleLogout = async () => {
     setLogoutLoading(true);
@@ -88,6 +89,11 @@ export default function ProfileScreen() {
       <SafeAreaView style={styles.centered}>
         <Text style={styles.title}>Profile</Text>
         <Text style={styles.info}>You are currently signed out.</Text>
+        <Text style={styles.info}>
+          {isConfigured
+            ? 'Sign in or create an account to see your profile and join events.'
+            : 'The auth UI is available, but backend auth is not configured here yet.'}
+        </Text>
         <Pressable style={styles.primaryButton} onPress={() => router.push('/(auth)/login')}>
           <Text style={styles.primaryButtonText}>Go to login</Text>
         </Pressable>
@@ -112,6 +118,9 @@ export default function ProfileScreen() {
       <SafeAreaView style={styles.centered}>
         <Text style={styles.title}>Profile</Text>
         <Text style={styles.error}>{error}</Text>
+        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
+          <Text style={styles.secondaryButtonText}>Retry</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -121,6 +130,9 @@ export default function ProfileScreen() {
       <SafeAreaView style={styles.centered}>
         <Text style={styles.title}>Profile</Text>
         <Text style={styles.info}>No profile record is available for this user yet.</Text>
+        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
+          <Text style={styles.secondaryButtonText}>Refresh</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -217,6 +229,7 @@ const styles = StyleSheet.create({
   info: {
     textAlign: 'center',
     color: '#475569',
+    maxWidth: 320,
   },
   error: {
     textAlign: 'center',

@@ -9,6 +9,7 @@ export default function EventsScreen() {
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -42,13 +43,13 @@ export default function EventsScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   if (loading) {
     return (
       <SafeAreaView style={styles.centered}>
         <ActivityIndicator size="large" />
-        <Text style={styles.info}>Loading public events...</Text>
+        <Text style={styles.info}>Loading events...</Text>
       </SafeAreaView>
     );
   }
@@ -58,6 +59,9 @@ export default function EventsScreen() {
       <SafeAreaView style={styles.centered}>
         <Text style={styles.title}>Events</Text>
         <Text style={styles.error}>{error}</Text>
+        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
+          <Text style={styles.secondaryButtonText}>Retry</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -66,7 +70,10 @@ export default function EventsScreen() {
     return (
       <SafeAreaView style={styles.centered}>
         <Text style={styles.title}>Events</Text>
-        <Text style={styles.info}>No public events are available yet.</Text>
+        <Text style={styles.info}>No events are available yet.</Text>
+        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
+          <Text style={styles.secondaryButtonText}>Refresh</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -89,12 +96,16 @@ export default function EventsScreen() {
               <Text style={styles.metaLabel}>Reveal</Text>
               <Text style={styles.metaValue}>{formatDateTime(item.revealAt)}</Text>
             </View>
+            <View style={styles.meta}>
+              <Text style={styles.metaLabel}>Start area radius</Text>
+              <Text style={styles.metaValue}>{item.startAreaRadiusKm} km</Text>
+            </View>
           </Pressable>
         )}
         ListHeaderComponent={
           <View style={styles.header}>
             <Text style={styles.title}>Events</Text>
-            <Text style={styles.subtitle}>Public runs currently open for discovery.</Text>
+            <Text style={styles.subtitle}>Available Secret Run events from the current backend seed.</Text>
           </View>
         }
       />
@@ -143,6 +154,21 @@ const styles = StyleSheet.create({
   error: {
     color: '#b91c1c',
     textAlign: 'center',
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    minHeight: 48,
+    minWidth: 160,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e2e8f0',
+    paddingHorizontal: 18,
+  },
+  secondaryButtonText: {
+    color: '#0f172a',
+    fontSize: 15,
+    fontWeight: '700',
   },
   card: {
     borderRadius: 12,
