@@ -6,7 +6,7 @@ import { createCurrentProfile, getProfileErrorMessage } from '@/services/profile
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { isAuthenticated, isConfigured, signUp, loading } = useAuth();
+  const { isAuthenticated, isAvailable, disabledMessage, signUp, loading } = useAuth();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -43,8 +43,8 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (!isConfigured) {
-      setError('Auth is not available in this environment yet.');
+    if (!isAvailable) {
+      setError(disabledMessage ?? 'Local auth is not available in this environment yet. Use signed-out mode for now.');
       return;
     }
 
@@ -83,9 +83,9 @@ export default function RegisterScreen() {
             <Text style={styles.title}>Register</Text>
             <Text style={styles.subtitle}>Create a simple account and profile for Sprint 1.</Text>
             <Text style={styles.note}>
-              {isConfigured
+              {isAvailable
                 ? 'This creates auth credentials first, then attempts to create the matching profile row.'
-                : 'Registration UI is available, but backend auth is not configured in this environment yet.'}
+                : disabledMessage}
             </Text>
           </View>
 
@@ -133,15 +133,16 @@ export default function RegisterScreen() {
               />
             </View>
 
+            {!isAvailable ? <Text style={styles.warning}>{disabledMessage}</Text> : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
             {success ? <Text style={styles.success}>{success}</Text> : null}
 
             <Pressable
-              style={[styles.button, (!isConfigured || loading) && styles.buttonDisabled]}
+              style={[styles.button, (!isAvailable || loading) && styles.buttonDisabled]}
               onPress={handleRegister}
-              disabled={loading || !isConfigured}
+              disabled={loading || !isAvailable}
             >
-              <Text style={styles.buttonText}>{loading ? 'Creating account...' : 'Create account'}</Text>
+              <Text style={styles.buttonText}>{isAvailable ? (loading ? 'Creating account...' : 'Create account') : 'Registration unavailable'}</Text>
             </Pressable>
           </View>
 
@@ -229,6 +230,10 @@ const styles = StyleSheet.create({
   },
   success: {
     color: '#166534',
+    fontWeight: '600',
+  },
+  warning: {
+    color: '#7c2d12',
     fontWeight: '600',
   },
   footer: {

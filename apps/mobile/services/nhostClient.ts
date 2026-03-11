@@ -31,11 +31,20 @@ const derivedBaseUrl =
       ? deriveBaseUrlFromSubdomainRegion(subdomain, region)
       : undefined;
 
+const isLocalPlaceholderAuthConfig =
+  (subdomain === fallbackSubdomain || !subdomain) && (!region || region === fallbackSubdomain);
+
 export const nhostConfig = {
   isConfigured: Boolean(derivedBaseUrl),
   baseUrl: derivedBaseUrl ?? 'http://localhost:1337',
   subdomain: subdomain ?? fallbackSubdomain,
   region,
+  isAuthEnabled: Boolean(derivedBaseUrl) && !isLocalPlaceholderAuthConfig,
+  authDisabledMessage: !derivedBaseUrl
+    ? 'Local auth is not available in this environment yet.'
+    : isLocalPlaceholderAuthConfig
+      ? 'Local auth is not available in this environment yet. Use signed-out mode for now.'
+      : null,
 };
 
 export const getGraphqlUrl = (): string =>

@@ -10,8 +10,8 @@ export function useAuth() {
   const { signOut } = useSignOut();
 
   const signIn = async (email: string, password: string) => {
-    if (!nhostConfig.isConfigured) {
-      throw new Error('Auth is unavailable until the Nhost environment variables are configured.');
+    if (!nhostConfig.isAuthEnabled) {
+      throw new Error(nhostConfig.authDisabledMessage ?? 'Local auth is not available in this environment yet.');
     }
 
     const response = await signInEmailPassword(email, password);
@@ -22,8 +22,8 @@ export function useAuth() {
   };
 
   const signUp = async (email: string, password: string) => {
-    if (!nhostConfig.isConfigured) {
-      throw new Error('Auth is unavailable until the Nhost environment variables are configured.');
+    if (!nhostConfig.isAuthEnabled) {
+      throw new Error(nhostConfig.authDisabledMessage ?? 'Local auth is not available in this environment yet.');
     }
 
     const response = await signUpEmailPassword(email, password);
@@ -42,8 +42,10 @@ export function useAuth() {
         : 'signed out';
 
   return {
-    isAuthenticated: nhostConfig.isConfigured ? isAuthenticated : false,
+    isAuthenticated: nhostConfig.isAuthEnabled ? isAuthenticated : false,
     isConfigured: nhostConfig.isConfigured,
+    isAvailable: nhostConfig.isAuthEnabled,
+    disabledMessage: nhostConfig.authDisabledMessage,
     authState,
     loading: authLoading || signInLoading || signUpLoading,
     signIn,
@@ -59,8 +61,14 @@ export function getAuthErrorMessage(error: unknown): string {
     const message = error.message;
     const lowerMessage = message.toLowerCase();
 
-    if (lowerMessage.includes('network request failed') || lowerMessage.includes('fetch failed')) {
-      return 'Auth service is unreachable. Check the mobile env vars and the backend auth endpoint.';
+    if (
+      lowerMessage.includes('network request failed') ||
+      lowerMessage.includes('fetch failed') ||
+      lowerMessage.includes('failed to fetch') ||
+      lowerMessage.includes('cors') ||
+      lowerMessage.includes('local.auth.local.nhost.run')
+    ) {
+      return 'Local auth is not available in this environment yet. Use signed-out mode for now.';
     }
 
     if (lowerMessage.includes('invalid email or password') || lowerMessage.includes('invalid credentials')) {

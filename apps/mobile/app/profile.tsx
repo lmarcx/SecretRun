@@ -8,7 +8,7 @@ import { fetchCurrentProfile, getProfileErrorMessage } from '@/services/profileS
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { isConfigured, loading: authLoading, signOut } = useAuth();
+  const { isAvailable, disabledMessage, loading: authLoading, signOut } = useAuth();
   const userId = nhost.auth.getUser()?.id ?? null;
   const [profile, setProfile] = useState<CurrentProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,9 +90,9 @@ export default function ProfileScreen() {
         <Text style={styles.title}>Profile</Text>
         <Text style={styles.info}>You are currently signed out.</Text>
         <Text style={styles.info}>
-          {isConfigured
+          {isAvailable
             ? 'Sign in or create an account to see your profile and join events.'
-            : 'The auth UI is available, but backend auth is not configured here yet.'}
+            : disabledMessage ?? 'Local auth is not available in this environment yet. Use signed-out mode for now.'}
         </Text>
         <Pressable style={styles.primaryButton} onPress={() => router.push('/(auth)/login')}>
           <Text style={styles.primaryButtonText}>Go to login</Text>

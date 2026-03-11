@@ -5,7 +5,7 @@ import { getAuthErrorMessage, useAuth } from '@/hooks/useAuth';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { isAuthenticated, isConfigured, signIn, loading } = useAuth();
+  const { isAuthenticated, isAvailable, disabledMessage, signIn, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -22,8 +22,8 @@ export default function LoginScreen() {
       return;
     }
 
-    if (!isConfigured) {
-      setError('Auth is not available in this environment yet.');
+    if (!isAvailable) {
+      setError(disabledMessage ?? 'Local auth is not available in this environment yet. Use signed-out mode for now.');
       return;
     }
 
@@ -55,11 +55,7 @@ export default function LoginScreen() {
           <View style={styles.hero}>
             <Text style={styles.title}>Sign in</Text>
             <Text style={styles.subtitle}>Use your email and password to join Secret Run events.</Text>
-            <Text style={styles.note}>
-              {isConfigured
-                ? 'Signed-out state is active until you authenticate.'
-                : 'Auth shell is available, but the backend auth endpoint is not configured here yet.'}
-            </Text>
+            <Text style={styles.note}>{isAvailable ? 'Signed-out state is active until you authenticate.' : disabledMessage}</Text>
           </View>
 
           <View style={styles.form}>
@@ -89,14 +85,15 @@ export default function LoginScreen() {
               />
             </View>
 
+            {!isAvailable ? <Text style={styles.warning}>{disabledMessage}</Text> : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
             <Pressable
-              style={[styles.button, (!isConfigured || loading) && styles.buttonDisabled]}
+              style={[styles.button, (!isAvailable || loading) && styles.buttonDisabled]}
               onPress={handleLogin}
-              disabled={loading || !isConfigured}
+              disabled={loading || !isAvailable}
             >
-              <Text style={styles.buttonText}>{loading ? 'Signing in...' : 'Sign in'}</Text>
+              <Text style={styles.buttonText}>{isAvailable ? (loading ? 'Signing in...' : 'Sign in') : 'Sign in unavailable'}</Text>
             </Pressable>
           </View>
 
@@ -180,6 +177,10 @@ const styles = StyleSheet.create({
   },
   error: {
     color: '#b91c1c',
+    fontWeight: '600',
+  },
+  warning: {
+    color: '#7c2d12',
     fontWeight: '600',
   },
   footer: {
