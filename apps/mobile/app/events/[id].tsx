@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { RouteMap } from '@/components/RouteMap';
 import { useAuth } from '@/hooks/useAuth';
+import { getEffectiveRunner, isDevRunnerActive } from '@/services/devRunnerMode';
 import { fetchEventRoute } from '@/services/eventRoutes';
 import type { EventDetail } from '@/services/eventsService';
 import { fetchEventDetails, getEventErrorMessage, joinEvent } from '@/services/eventsService';
@@ -23,6 +24,8 @@ export default function EventDetailsScreen() {
   const [reloadKey, setReloadKey] = useState(0);
   const eventId = Array.isArray(id) ? id[0] : id;
   const routeRevealed = event ? new Date(event.revealAt).getTime() <= Date.now() : false;
+  const devRunnerActive = isDevRunnerActive();
+  const effectiveRunner = getEffectiveRunner();
 
   useEffect(() => {
     let active = true;
@@ -123,7 +126,7 @@ export default function EventDetailsScreen() {
       return;
     }
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !devRunnerActive) {
       router.push('/(auth)/login');
       return;
     }
@@ -200,6 +203,13 @@ export default function EventDetailsScreen() {
           </Text>
         </View>
 
+        {devRunnerActive ? (
+          <View style={styles.devModeCard}>
+            <Text style={styles.devModeTitle}>DEV MODE</Text>
+            <Text style={styles.infoCardText}>{effectiveRunner?.username ?? 'Dev Runner'} is active locally without authentication.</Text>
+          </View>
+        ) : null}
+
         {!routeRevealed ? (
           <View style={styles.infoCard}>
             <Text style={styles.infoCardTitle}>Route not revealed yet</Text>
@@ -235,7 +245,7 @@ export default function EventDetailsScreen() {
         <View style={styles.section}>
           <Text style={styles.label}>Participation</Text>
           <Text style={styles.value}>
-            {isAuthenticated ? event.viewerParticipationStatus ?? 'Not joined yet' : 'Sign in to see your status'}
+            {isAuthenticated || devRunnerActive ? event.viewerParticipationStatus ?? 'Not joined yet' : 'Sign in to see your status'}
           </Text>
         </View>
 
@@ -263,7 +273,17 @@ export default function EventDetailsScreen() {
           disabled={joinLoading}
         >
           <Text style={styles.buttonText}>
-            {event.viewerParticipationStatus ? 'Already joined' : !isAuthenticated ? 'Sign in to join' : joinLoading ? 'Joining...' : 'Join event'}
+            {event.viewerParticipationStatus
+              ? 'Already joined'
+              : !isAuthenticated && devRunnerActive
+                ? joinLoading
+                  ? 'Joining...'
+                  : 'Join (Dev Mode)'
+                : !isAuthenticated
+                  ? 'Sign in to join'
+                  : joinLoading
+                    ? 'Joining...'
+                    : 'Join event'}
           </Text>
         </Pressable>
       </ScrollView>
@@ -323,6 +343,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e2e8f0',
     backgroundColor: '#ffffff',
+  },
+  devModeCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+    backgroundColor: '#fffbeb',
+    padding: 16,
+    gap: 6,
+  },
+  devModeTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400e',
+    textTransform: 'uppercase',
   },
   infoCardTitle: {
     fontSize: 15,

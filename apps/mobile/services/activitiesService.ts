@@ -1,4 +1,5 @@
 import { ClientError, gql } from 'graphql-request';
+import { getEffectiveRunner } from './devRunnerMode';
 import { nhost } from './nhostClient';
 import { requestGraphql } from './graphqlClient';
 
@@ -100,7 +101,23 @@ interface InsertTrackpointsMutation {
 }
 
 export async function persistCompletedRun(payload: CompletedRunPayload): Promise<UploadedActivity> {
-  if (!nhost.auth.getUser()) {
+  const realUser = nhost.auth.getUser();
+  const effectiveRunner = getEffectiveRunner();
+
+  if (!realUser) {
+    if (effectiveRunner?.isDev) {
+      return {
+        id: `dev-activity-${Date.now()}`,
+        status: 'completed',
+        points: 0,
+        distanceKm: Number(payload.distanceKm.toFixed(3)),
+        durationSeconds: payload.durationSeconds,
+        avgSpeedKmh: Number(payload.avgSpeedKmh.toFixed(2)),
+        startedAt: payload.startedAt,
+        finishedAt: payload.finishedAt,
+      };
+    }
+
     throw new ActivityUploadError('Sign in to upload this run. Local result is still available.');
   }
 

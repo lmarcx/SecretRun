@@ -1,5 +1,6 @@
 import { ClientError, gql } from 'graphql-request';
 import type { LatLng } from 'react-native-maps';
+import { getDevJoinedEvent, markDevJoinedEvent } from './devRunnerMode';
 import { nhost } from './nhostClient';
 import { requestGraphql } from './graphqlClient';
 import { parseGeoPoint } from '@/utils/route';
@@ -174,6 +175,7 @@ export async function fetchPublicEvents(): Promise<EventListItem[]> {
 
 export async function fetchEventDetails(eventId: string): Promise<EventDetail | null> {
   const viewerId = nhost.auth.getUser()?.id;
+  const devParticipation = getDevJoinedEvent(eventId);
 
   if (!viewerId) {
     const response = await requestGraphql<EventDetailQuery>(EVENT_DETAIL_QUERY_PUBLIC, {
@@ -184,7 +186,11 @@ export async function fetchEventDetails(eventId: string): Promise<EventDetail | 
       return null;
     }
 
-    return mapEventDetail(response.events_by_pk);
+    return {
+      ...mapEventDetail(response.events_by_pk),
+      viewerParticipationStatus: devParticipation?.status ?? null,
+      viewerJoinedAt: devParticipation?.joinedAt ?? null,
+    };
   }
 
   const response = await requestGraphql<EventDetailQuery>(EVENT_DETAIL_QUERY, {
@@ -206,7 +212,7 @@ export async function fetchEventDetails(eventId: string): Promise<EventDetail | 
 export async function joinEvent(eventId: string): Promise<'joined' | 'already_joined'> {
   const viewerId = nhost.auth.getUser()?.id;
   if (!viewerId) {
-    throw new Error('Sign in to join an event.');
+    return markDevJoinedEvent(eventId);
   }
 
   const existingParticipation = await requestGraphql<EventParticipationQuery>(EVENT_PARTICIPATION_QUERY, {
