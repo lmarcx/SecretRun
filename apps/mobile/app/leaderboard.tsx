@@ -4,13 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LeaderboardData, TeamLeaderboardEntry, UserLeaderboardEntry } from '@/services/leaderboardService';
 import { fetchLeaderboard, getLeaderboardErrorMessage } from '@/services/leaderboardService';
 
-type LeaderboardTab = 'global' | 'team';
+type LeaderboardTab = 'solo' | 'team';
 
 export default function LeaderboardScreen() {
-  const [tab, setTab] = useState<LeaderboardTab>('global');
+  const [tab, setTab] = useState<LeaderboardTab>('solo');
   const [data, setData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -44,7 +45,7 @@ export default function LeaderboardScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   if (loading) {
     return (
@@ -60,6 +61,9 @@ export default function LeaderboardScreen() {
       <SafeAreaView style={styles.centered}>
         <Text style={styles.title}>Leaderboard</Text>
         <Text style={styles.error}>{error}</Text>
+        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
+          <Text style={styles.secondaryButtonText}>Retry</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -75,19 +79,21 @@ export default function LeaderboardScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {tab === 'global' ? (
+      {tab === 'solo' ? (
         <FlatList
           data={data.users}
-          key="global"
+          key="solo"
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           ListHeaderComponent={<Header seasonName={data.seasonName} tab={tab} onChangeTab={setTab} />}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.info}>No user rankings are available yet.</Text>
+              <Text style={styles.info}>No solo rankings are available yet.</Text>
             </View>
           }
-          renderItem={({ item, index }) => <UserRow entry={item} fallbackRank={index + 1} />}
+          renderItem={({ item, index }) => (
+            <UserRow entry={item} fallbackRank={index + 1} isCurrentUser={data.currentUserId === item.id} />
+          )}
         />
       ) : (
         <FlatList
@@ -101,7 +107,9 @@ export default function LeaderboardScreen() {
               <Text style={styles.info}>No team rankings are available yet.</Text>
             </View>
           }
-          renderItem={({ item, index }) => <TeamRow entry={item} fallbackRank={index + 1} />}
+          renderItem={({ item, index }) => (
+            <TeamRow entry={item} fallbackRank={index + 1} isCurrentTeam={data.currentTeamIds.includes(item.id)} />
+          )}
         />
       )}
     </SafeAreaView>
@@ -121,36 +129,48 @@ function Header({
     <View style={styles.header}>
       <Text style={styles.title}>Leaderboard</Text>
       <Text style={styles.subtitle}>{seasonName}</Text>
+      <Text style={styles.caption}>Season totals only. Recent run results appear here after backend validation updates points.</Text>
       <View style={styles.toggleRow}>
-        <Pressable style={[styles.toggleButton, tab === 'global' && styles.toggleButtonActive]} onPress={() => onChangeTab('global')}>
-          <Text style={[styles.toggleText, tab === 'global' && styles.toggleTextActive]}>Global</Text>
+        <Pressable style={[styles.toggleButton, tab === 'solo' && styles.toggleButtonActive]} onPress={() => onChangeTab('solo')}>
+          <Text style={[styles.toggleText, tab === 'solo' && styles.toggleTextActive]}>Solo</Text>
         </Pressable>
         <Pressable style={[styles.toggleButton, tab === 'team' && styles.toggleButtonActive]} onPress={() => onChangeTab('team')}>
-          <Text style={[styles.toggleText, tab === 'team' && styles.toggleTextActive]}>Team</Text>
+          <Text style={[styles.toggleText, tab === 'team' && styles.toggleTextActive]}>Teams</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-function UserRow({ entry, fallbackRank }: { entry: UserLeaderboardEntry; fallbackRank: number }) {
+function UserRow({
+  entry,
+  fallbackRank,
+  isCurrentUser,
+}: {
+  entry: UserLeaderboardEntry;
+  fallbackRank: number;
+  isCurrentUser: boolean;
+}) {
   const profileMissing = !entry.displayName && !entry.username;
-  const label = profileMissing ? 'Utilisateur masqué' : entry.displayName || entry.username || 'Utilisateur masqué';
-  const secondary = profileMissing
-    ? 'Profil indisponible'
-    : entry.username
-      ? `@${entry.username}`
-      : 'Profil public';
+  const label = profileMissing ? 'Hidden runner' : entry.displayName || entry.username || 'Hidden runner';
+  const secondary = profileMissing ? 'Profile unavailable' : entry.username ? `@${entry.username}` : 'Public profile';
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isCurrentUser && styles.cardHighlighted]}>
       <View style={styles.rankBadge}>
         <Text style={styles.rankText}>{entry.rank ?? fallbackRank}</Text>
       </View>
       <View style={styles.identity}>
         <Avatar avatarUrl={entry.avatarUrl} fallbackLabel={label} />
         <View style={styles.identityText}>
-          <Text style={styles.name}>{label}</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.name}>{label}</Text>
+            {isCurrentUser ? (
+              <View style={styles.inlineBadge}>
+                <Text style={styles.inlineBadgeText}>You</Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={styles.secondary}>{secondary}</Text>
         </View>
       </View>
@@ -162,9 +182,17 @@ function UserRow({ entry, fallbackRank }: { entry: UserLeaderboardEntry; fallbac
   );
 }
 
-function TeamRow({ entry, fallbackRank }: { entry: TeamLeaderboardEntry; fallbackRank: number }) {
+function TeamRow({
+  entry,
+  fallbackRank,
+  isCurrentTeam,
+}: {
+  entry: TeamLeaderboardEntry;
+  fallbackRank: number;
+  isCurrentTeam: boolean;
+}) {
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isCurrentTeam && styles.cardHighlighted]}>
       <View style={styles.rankBadge}>
         <Text style={styles.rankText}>{entry.rank ?? fallbackRank}</Text>
       </View>
@@ -173,8 +201,15 @@ function TeamRow({ entry, fallbackRank }: { entry: TeamLeaderboardEntry; fallbac
           <Text style={styles.teamBadgeText}>{(entry.name ?? '?').slice(0, 1).toUpperCase()}</Text>
         </View>
         <View style={styles.identityText}>
-          <Text style={styles.name}>{entry.name ?? 'Team inconnue'}</Text>
-          <Text style={styles.secondary}>Classement equipe</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.name}>{entry.name ?? 'Unknown team'}</Text>
+            {isCurrentTeam ? (
+              <View style={styles.inlineBadge}>
+                <Text style={styles.inlineBadgeText}>Your team</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.secondary}>Season team ranking</Text>
         </View>
       </View>
       <View style={styles.pointsBlock}>
@@ -192,14 +227,6 @@ function Avatar({ avatarUrl, fallbackLabel }: { avatarUrl: string | null; fallba
     return <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />;
   }
 
-  if (!avatarUrl) {
-    return (
-      <View style={styles.avatarFallback}>
-        <Text style={styles.avatarFallbackText}>{initial}</Text>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.avatarFallback}>
       <Text style={styles.avatarFallbackText}>{initial}</Text>
@@ -210,6 +237,14 @@ function Avatar({ avatarUrl, fallbackLabel }: { avatarUrl: string | null; fallba
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 12,
     backgroundColor: '#f8fafc',
   },
   list: {
@@ -228,6 +263,10 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#475569',
+  },
+  caption: {
+    color: '#64748b',
+    lineHeight: 20,
   },
   toggleRow: {
     flexDirection: 'row',
@@ -253,14 +292,6 @@ const styles = StyleSheet.create({
   toggleTextActive: {
     color: '#ffffff',
   },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    gap: 12,
-    backgroundColor: '#f8fafc',
-  },
   empty: {
     paddingVertical: 24,
   },
@@ -273,6 +304,20 @@ const styles = StyleSheet.create({
     color: '#b91c1c',
     fontWeight: '600',
   },
+  secondaryButton: {
+    minHeight: 48,
+    minWidth: 180,
+    borderRadius: 12,
+    backgroundColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  secondaryButtonText: {
+    color: '#0f172a',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -282,6 +327,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e2e8f0',
     padding: 14,
+  },
+  cardHighlighted: {
+    borderColor: '#0f172a',
+    backgroundColor: '#f1f5f9',
   },
   rankBadge: {
     width: 40,
@@ -305,6 +354,12 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   name: {
     fontSize: 16,
     fontWeight: '700',
@@ -313,6 +368,17 @@ const styles = StyleSheet.create({
   secondary: {
     color: '#64748b',
     fontSize: 13,
+  },
+  inlineBadge: {
+    borderRadius: 999,
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  inlineBadgeText: {
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: '700',
   },
   pointsBlock: {
     alignItems: 'flex-end',

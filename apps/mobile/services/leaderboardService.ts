@@ -19,9 +19,12 @@ export interface TeamLeaderboardEntry {
 }
 
 export interface LeaderboardData {
+  seasonId: string;
   seasonName: string;
   users: UserLeaderboardEntry[];
   teams: TeamLeaderboardEntry[];
+  currentUserId: string | null;
+  currentTeamIds: string[];
 }
 
 const LEADERBOARD_QUERY = gql`
@@ -51,24 +54,10 @@ const LEADERBOARD_QUERY = gql`
   }
 `;
 
-const LEADERBOARD_QUERY_PUBLIC = gql`
-  query LeaderboardScreenPublic {
-    seasons(where: { is_active: { _eq: true } }, order_by: { starts_at: desc }, limit: 1) {
-      id
-      name
-      user_leaderboard(order_by: [{ rank: asc_nulls_last }, { points: desc }]) {
-        user_id
-        rank
-        points
-      }
-      team_leaderboard(order_by: [{ rank: asc_nulls_last }, { points: desc }]) {
-        team_id
-        rank
-        points
-        team {
-          name
-        }
-      }
+const CURRENT_USER_TEAM_MEMBERSHIPS_QUERY = gql`
+  query CurrentUserTeamMemberships($userId: uuid!) {
+    team_members(where: { user_id: { _eq: $userId } }) {
+      team_id
     }
   }
 `;
@@ -98,12 +87,17 @@ interface LeaderboardQuery {
   }>;
 }
 
+interface CurrentUserTeamMembershipsQuery {
+  team_members: Array<{
+    team_id: string;
+  }>;
+}
+
 export async function fetchLeaderboard(): Promise<LeaderboardData | null> {
-  const isAuthenticated = Boolean(nhost.auth.getUser());
   let response: LeaderboardQuery;
 
   try {
-    response = await requestGraphql<LeaderboardQuery>(isAuthenticated ? LEADERBOARD_QUERY : LEADERBOARD_QUERY_PUBLIC, {});
+    response = await requestGraphql<LeaderboardQuery>(LEADERBOARD_QUERY, {});
   } catch (error) {
     if (error instanceof ClientError) {
       const firstMessage = error.response.errors?.[0]?.message?.toLowerCase() ?? '';
@@ -116,13 +110,29 @@ export async function fetchLeaderboard(): Promise<LeaderboardData | null> {
   }
 
   const season = response.seasons[0];
-
   if (!season) {
     return null;
   }
 
+  const currentUserId = nhost.auth.getUser()?.id ?? null;
+  let currentTeamIds: string[] = [];
+
+  if (currentUserId) {
+    try {
+      const memberships = await requestGraphql<CurrentUserTeamMembershipsQuery>(CURRENT_USER_TEAM_MEMBERSHIPS_QUERY, {
+        userId: currentUserId,
+      });
+      currentTeamIds = memberships.team_members.map((entry) => entry.team_id);
+    } catch {
+      currentTeamIds = [];
+    }
+  }
+
   return {
+    seasonId: season.id,
     seasonName: season.name,
+    currentUserId,
+    currentTeamIds,
     users: season.user_leaderboard.map((entry) => ({
       id: entry.user_id,
       rank: entry.rank,

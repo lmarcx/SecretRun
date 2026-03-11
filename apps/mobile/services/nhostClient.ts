@@ -52,6 +52,8 @@ export const getGraphqlUrl = (): string =>
     ? configuredGraphqlUrl
     : `${nhostConfig.baseUrl}/v1/graphql`;
 
+export const getFunctionsBaseUrl = (): string => `${nhostConfig.baseUrl}/v1/functions`;
+
 const createNhostClient = () => {
   if (nhostConfig.isConfigured && subdomain) {
     if (region) {

@@ -546,7 +546,8 @@ export default function RunScreen() {
             <Text style={styles.info}>Duration: {formatDuration(result.durationSeconds)}</Text>
             <Text style={styles.info}>Distance: {result.distanceKm.toFixed(3)} km</Text>
             <Text style={styles.info}>Average speed: {result.avgSpeedKmh.toFixed(2)} km/h</Text>
-            <Text style={styles.info}>Points: {uploadedActivity ? uploadedActivity.points : 'Unavailable'}</Text>
+            <Text style={styles.info}>Activity points: {uploadedActivity ? uploadedActivity.points : 'Unavailable'}</Text>
+            <Text style={styles.info}>Season leaderboard totals update only when backend validation and scoring have completed.</Text>
 
             {uploading ? <Text style={styles.info}>Uploading activity...</Text> : null}
             {!uploading && !uploadError && result.status === 'completed' ? (

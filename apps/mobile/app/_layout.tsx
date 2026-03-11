@@ -1,13 +1,37 @@
 import { NhostProvider } from '@nhost/react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import { useEffect } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppNavigationShell } from '@/components/AppNavigationShell';
 import { DebugAuthBanner } from '@/components/DebugAuthBanner';
 import { nhost } from '@/services/nhostClient';
+import { configureNotificationHandling, getRouteFromNotificationData } from '@/services/notificationsService';
 
 export default function RootLayout() {
+  const router = useRouter();
+
+  useEffect(() => {
+    configureNotificationHandling();
+
+    if (Platform.OS === 'web') {
+      return;
+    }
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const route = getRouteFromNotificationData(response.notification.request.content.data);
+      if (route) {
+        router.push(route);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
+
   return (
     <NhostProvider nhost={nhost}>
       <SafeAreaProvider>

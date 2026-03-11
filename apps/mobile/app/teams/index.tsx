@@ -1,5 +1,231 @@
-import { PlaceholderScreen } from '@/components/PlaceholderScreen';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import type { TeamListItem, TeamsData } from '@/services/teamsService';
+import { fetchTeams, getTeamsErrorMessage } from '@/services/teamsService';
 
 export default function TeamsScreen() {
-  return <PlaceholderScreen title="Teams" subtitle="Build squads and join coordinated secret runs." />;
+  const [data, setData] = useState<TeamsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const nextData = await fetchTeams();
+        if (!active) {
+          return;
+        }
+
+        setData(nextData);
+      } catch (err) {
+        if (!active) {
+          return;
+        }
+
+        setError(getTeamsErrorMessage(err));
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [reloadKey]);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <ActivityIndicator size="large" />
+        <Text style={styles.info}>Loading teams...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <Text style={styles.title}>Teams</Text>
+        <Text style={styles.error}>{error}</Text>
+        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
+          <Text style={styles.secondaryButtonText}>Retry</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <FlatList
+        data={data?.items ?? []}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <Text style={styles.title}>Teams</Text>
+            <Text style={styles.subtitle}>Browse the current squads in this closed beta.</Text>
+            <View style={styles.noticeCard}>
+              <Text style={styles.noticeTitle}>Team access</Text>
+              <Text style={styles.info}>
+                {data?.supportsMembershipDetails
+                  ? 'Join-team actions are not exposed by the current backend permissions yet, so this screen stays read-only for now.'
+                  : 'Sign in to see membership counts. Team joining is not exposed by the current backend permissions yet.'}
+              </Text>
+            </View>
+          </View>
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.info}>No teams are available yet.</Text>
+          </View>
+        }
+        renderItem={({ item }) => <TeamCard item={item} supportsMembershipDetails={Boolean(data?.supportsMembershipDetails)} />}
+      />
+    </SafeAreaView>
+  );
 }
+
+function TeamCard({ item, supportsMembershipDetails }: { item: TeamListItem; supportsMembershipDetails: boolean }) {
+  return (
+    <View style={[styles.card, item.isCurrentUserMember && styles.cardHighlighted]}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.cardTitle}>{item.name}</Text>
+        {item.isCurrentUserMember ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>Your team</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.cardMeta}>Created {formatDate(item.createdAt)}</Text>
+      <Text style={styles.cardMeta}>
+        {supportsMembershipDetails && item.memberCount !== null
+          ? `${item.memberCount} member${item.memberCount === 1 ? '' : 's'}`
+          : 'Member count available after sign-in'}
+      </Text>
+    </View>
+  );
+}
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString();
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+    backgroundColor: '#f8fafc',
+  },
+  list: {
+    padding: 16,
+    gap: 12,
+  },
+  header: {
+    gap: 10,
+    marginBottom: 6,
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  subtitle: {
+    color: '#475569',
+    lineHeight: 20,
+  },
+  noticeCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 6,
+  },
+  noticeTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  card: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 6,
+  },
+  cardHighlighted: {
+    borderColor: '#0f172a',
+    backgroundColor: '#f1f5f9',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cardTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  cardMeta: {
+    color: '#64748b',
+  },
+  badge: {
+    borderRadius: 999,
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgeText: {
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  empty: {
+    paddingVertical: 24,
+  },
+  info: {
+    color: '#475569',
+    textAlign: 'center',
+  },
+  error: {
+    color: '#b91c1c',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    minHeight: 48,
+    minWidth: 180,
+    borderRadius: 12,
+    backgroundColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  secondaryButtonText: {
+    color: '#0f172a',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+});
