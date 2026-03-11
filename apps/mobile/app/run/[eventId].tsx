@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import type { LocationObject } from 'expo-location';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LatLng } from 'react-native-maps';
 import { RouteMap } from '@/components/RouteMap';
 import {
@@ -53,6 +53,7 @@ export default function RunScreen() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadedActivity, setUploadedActivity] = useState<UploadedActivity | null>(null);
   const devRunnerActive = isDevRunnerActive();
+  const isWeb = Platform.OS === 'web';
 
   useEffect(() => {
     let active = true;
@@ -132,7 +133,7 @@ export default function RunScreen() {
 
   useEffect(() => {
     let active = true;
-    let subscription: Location.LocationSubscription | null = null;
+    let subscription: Location.LocationSubscription | { remove?: () => void } | null = null;
 
     const setupLocation = async () => {
       try {
@@ -155,6 +156,11 @@ export default function RunScreen() {
         });
         if (active) {
           setCurrentLocation(initialLocation.coords);
+        }
+
+        if (isWeb) {
+          setPermissionMessage('Live GPS tracking is only enabled on mobile. Web uses a limited dev fallback.');
+          return;
         }
 
         subscription = await Location.watchPositionAsync(
@@ -184,9 +190,11 @@ export default function RunScreen() {
 
     return () => {
       active = false;
-      subscription?.remove();
+      if (subscription && typeof subscription.remove === 'function') {
+        subscription.remove();
+      }
     };
-  }, [runPhase]);
+  }, [isWeb, runPhase]);
 
   useEffect(() => {
     if (runPhase !== 'running' || !startedAt) {
@@ -213,7 +221,14 @@ export default function RunScreen() {
     currentLatLng && event?.startAreaCenter ? haversineDistanceMeters(currentLatLng, event.startAreaCenter) : null;
   const insideStartZone =
     currentLatLng && event?.startAreaCenter ? isWithinRadiusKm(currentLatLng, event.startAreaCenter, event.startAreaRadiusKm) : false;
-  const canStart = Boolean(route && event && permissionState === 'granted' && currentLatLng && insideStartZone && runPhase === 'ready');
+  const canStart = Boolean(
+    route &&
+      event &&
+      permissionState === 'granted' &&
+      (currentLatLng || (isWeb && devRunnerActive)) &&
+      (insideStartZone || devRunnerActive) &&
+      runPhase === 'ready',
+  );
 
   const liveStats = useMemo(
     () => ({
@@ -247,14 +262,16 @@ export default function RunScreen() {
   }
 
   function handleStartRun() {
-    if (!currentLocation || !canStart) {
+    if (!canStart) {
       return;
     }
 
-    const startLocation = mapLocationToTrackpoint({
-      coords: currentLocation,
-      timestamp: Date.now(),
-    } as LocationObject);
+    const startLocation = currentLocation
+      ? mapLocationToTrackpoint({
+          coords: currentLocation,
+          timestamp: Date.now(),
+        } as LocationObject)
+      : createFallbackTrackpoint(route?.startPoint ?? event?.startAreaCenter ?? null);
 
     setRunPhase('running');
     setTrackpoints([startLocation]);
@@ -305,7 +322,9 @@ export default function RunScreen() {
   async function handleFinishRun() {
     const finalPoint =
       currentLocation === null
-        ? null
+        ? isWeb
+          ? createFallbackTrackpoint(route?.endPoint ?? route?.startPoint ?? event?.startAreaCenter ?? null)
+          : null
         : mapLocationToTrackpoint({
             coords: currentLocation,
             timestamp: Date.now(),
@@ -494,23 +513,25 @@ export default function RunScreen() {
           ) : (
             <Text style={styles.info}>Move near the start zone to unlock the run.</Text>
           )}
+          {isWeb ? <Text style={styles.info}>Live GPS tracking is only enabled on mobile. Web uses a limited dev fallback.</Text> : null}
+          {devRunnerActive && !insideStartZone ? (
+            <Text style={styles.warning}>Dev mode: start zone validation bypassed</Text>
+          ) : null}
         </View>
 
         {runPhase === 'ready' ? (
           <Pressable style={[styles.primaryButton, !canStart && styles.buttonDisabled]} onPress={handleStartRun} disabled={!canStart}>
-            <Text style={styles.primaryButtonText}>
-              {permissionState !== 'granted' ? 'Location required' : !insideStartZone ? 'Move into start zone' : 'Start run'}
-            </Text>
+            <Text style={styles.primaryButtonText}>Start Run</Text>
           </Pressable>
         ) : null}
 
         {runPhase === 'running' ? (
           <View style={styles.actionRow}>
             <Pressable style={styles.secondaryButton} onPress={handleAbandonRun}>
-              <Text style={styles.secondaryButtonText}>Abandon</Text>
+              <Text style={styles.secondaryButtonText}>Abandon Run</Text>
             </Pressable>
             <Pressable style={styles.primaryButton} onPress={() => void handleFinishRun()}>
-              <Text style={styles.primaryButtonText}>Finish</Text>
+              <Text style={styles.primaryButtonText}>Finish Run</Text>
             </Pressable>
           </View>
         ) : null}
@@ -565,6 +586,17 @@ function mapLocationToTrackpoint(location: LocationObject): LocalTrackpoint {
     longitude: location.coords.longitude,
     recordedAt: new Date(location.timestamp ?? Date.now()).toISOString(),
     speedKmh: Number(Math.max(0, speedMs * 3.6).toFixed(2)),
+  };
+}
+
+function createFallbackTrackpoint(point: LatLng | null): LocalTrackpoint {
+  const fallbackPoint = point ?? { latitude: 53.3498, longitude: -6.2603 };
+
+  return {
+    latitude: fallbackPoint.latitude,
+    longitude: fallbackPoint.longitude,
+    recordedAt: new Date().toISOString(),
+    speedKmh: 0,
   };
 }
 
