@@ -83,6 +83,8 @@ INSERT INTO public.events (
   reveal_at,
   starts_at,
   ends_at,
+  start_point,
+  end_point,
   start_area_center,
   start_area_radius_km,
   created_by,
@@ -97,6 +99,8 @@ VALUES
     now() + interval '6 hours',
     now() + interval '8 hours',
     ST_GeogFromText('SRID=4326;POINT(-6.2603 53.3498)'),
+    ST_GeogFromText('SRID=4326;POINT(-6.2559 53.3512)'),
+    ST_GeogFromText('SRID=4326;POINT(-6.2603 53.3498)'),
     1.50,
     '11111111-1111-4111-8111-111111111111',
     now() - interval '2 days'
@@ -109,9 +113,25 @@ VALUES
     now() + interval '1 day 4 hours',
     now() + interval '1 day 6 hours',
     ST_GeogFromText('SRID=4326;POINT(-6.2675 53.3441)'),
+    ST_GeogFromText('SRID=4326;POINT(-6.2620 53.3414)'),
+    ST_GeogFromText('SRID=4326;POINT(-6.2675 53.3441)'),
     2.00,
     '22222222-2222-4222-8222-222222222222',
     now() - interval '1 day'
+  ),
+  (
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3',
+    'Local Dev Test Loop',
+    'A short revealed route seeded around the local dev fallback coordinates for field testing.',
+    now() - interval '3 hours',
+    now() - interval '90 minutes',
+    now() + interval '6 hours',
+    ST_GeogFromText('SRID=4326;POINT(-6.2603 53.3498)'),
+    ST_GeogFromText('SRID=4326;POINT(-6.2579 53.3489)'),
+    ST_GeogFromText('SRID=4326;POINT(-6.2603 53.3498)'),
+    0.35,
+    '11111111-1111-4111-8111-111111111111',
+    now() - interval '12 hours'
   )
 ON CONFLICT (id) DO UPDATE
 SET
@@ -120,9 +140,38 @@ SET
   reveal_at = EXCLUDED.reveal_at,
   starts_at = EXCLUDED.starts_at,
   ends_at = EXCLUDED.ends_at,
+  start_point = EXCLUDED.start_point,
+  end_point = EXCLUDED.end_point,
   start_area_center = EXCLUDED.start_area_center,
   start_area_radius_km = EXCLUDED.start_area_radius_km,
   created_by = EXCLUDED.created_by;
+
+INSERT INTO public.event_routes (
+  event_id,
+  route_encrypted,
+  route_polyline,
+  revealed,
+  revealed_at,
+  distance_m,
+  duration_sec
+)
+VALUES (
+  'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3',
+  'local-dev-test-route-v1',
+  '{"type":"LineString","coordinates":[[-6.2603,53.3498],[-6.2591,53.3510],[-6.2571,53.3504],[-6.2579,53.3489]]}',
+  true,
+  now() - interval '3 hours',
+  420.00,
+  540
+)
+ON CONFLICT (event_id) DO UPDATE
+SET
+  route_encrypted = EXCLUDED.route_encrypted,
+  route_polyline = EXCLUDED.route_polyline,
+  revealed = EXCLUDED.revealed,
+  revealed_at = EXCLUDED.revealed_at,
+  distance_m = EXCLUDED.distance_m,
+  duration_sec = EXCLUDED.duration_sec;
 
 INSERT INTO public.leaderboard_user_season (season_id, user_id, points, rank, updated_at)
 VALUES

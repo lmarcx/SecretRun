@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LeaderboardData, TeamLeaderboardEntry, UserLeaderboardEntry } from '@/services/leaderboardService';
 import { fetchLeaderboard, getLeaderboardErrorMessage } from '@/services/leaderboardService';
 

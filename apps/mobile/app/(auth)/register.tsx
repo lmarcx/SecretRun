@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
-import { KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getAuthErrorMessage, useAuth } from '@/hooks/useAuth';
 import { createCurrentProfile, getProfileErrorMessage } from '@/services/profileService';
 
