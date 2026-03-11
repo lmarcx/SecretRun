@@ -12,8 +12,10 @@ import {
   type LocalTrackpoint,
   type UploadedActivity,
 } from '@/services/activitiesService';
+import { isDevRunnerActive } from '@/services/devRunnerMode';
 import { fetchEventRoute } from '@/services/eventRoutes';
 import { fetchEventDetails, type EventDetail } from '@/services/eventsService';
+import { getStoredRunSession, setStoredRunSession } from '@/services/runSessionStore';
 import type { EventRoute } from '@/utils/route';
 import { calculatePolylineDistanceMeters, haversineDistanceMeters, isWithinRadiusKm } from '@/utils/route';
 
@@ -50,6 +52,7 @@ export default function RunScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadedActivity, setUploadedActivity] = useState<UploadedActivity | null>(null);
+  const devRunnerActive = isDevRunnerActive();
 
   useEffect(() => {
     let active = true;
@@ -77,22 +80,36 @@ export default function RunScreen() {
           return;
         }
 
-        if (new Date(nextEvent.revealAt).getTime() > Date.now()) {
+        if (!devRunnerActive && new Date(nextEvent.revealAt).getTime() > Date.now()) {
           setEvent(nextEvent);
           setRoute(null);
           setError('This route is not revealed yet.');
           return;
         }
 
-        if (!nextRoute) {
+        const fallbackRoute = !nextRoute && devRunnerActive && nextEvent.startAreaCenter ? createDevRoute(nextEvent.startAreaCenter) : null;
+        const resolvedRoute = nextRoute ?? fallbackRoute;
+
+        if (!resolvedRoute) {
           setEvent(nextEvent);
           setRoute(null);
           setError('Route details are not available yet.');
           return;
         }
 
+        const storedRunSession = getStoredRunSession(resolvedEventId);
         setEvent(nextEvent);
-        setRoute(nextRoute);
+        setRoute(resolvedRoute);
+
+        if (storedRunSession?.result) {
+          setResult(storedRunSession.result);
+          setRunPhase(storedRunSession.phase);
+          setElapsedSeconds(storedRunSession.result.durationSeconds);
+          setDistanceMeters(storedRunSession.result.distanceKm * 1000);
+          setStartedAt(storedRunSession.result.startedAt);
+          setUploadedActivity(storedRunSession.uploadedActivity);
+          setUploadError(storedRunSession.uploadError);
+        }
       } catch (err) {
         if (!active) {
           return;
@@ -266,6 +283,23 @@ export default function RunScreen() {
       trackpoints,
     });
     setUploadError('Abandoned runs are not persisted by the current MVP backend.');
+
+    if (resolvedEventId) {
+      setStoredRunSession(resolvedEventId, {
+        phase: 'abandoned',
+        result: {
+          status: 'abandoned',
+          startedAt: effectiveStartedAt,
+          finishedAt,
+          durationSeconds,
+          distanceKm: Number((distanceMeters / 1000).toFixed(3)),
+          avgSpeedKmh: durationSeconds > 0 ? Number((((distanceMeters / 1000) / durationSeconds) * 3600).toFixed(2)) : 0,
+          trackpoints,
+        },
+        uploadedActivity: null,
+        uploadError: 'Abandoned runs are not persisted by the current MVP backend.',
+      });
+    }
   }
 
   async function handleFinishRun() {
@@ -304,6 +338,23 @@ export default function RunScreen() {
     setUploadError(null);
     setUploadedActivity(null);
 
+    if (resolvedEventId) {
+      setStoredRunSession(resolvedEventId, {
+        phase: 'completed',
+        result: {
+          status: 'completed',
+          startedAt: nextResult.startedAt,
+          finishedAt: nextResult.finishedAt,
+          durationSeconds: nextResult.durationSeconds,
+          distanceKm: nextResult.distanceKm,
+          avgSpeedKmh: nextResult.avgSpeedKmh,
+          trackpoints: nextResult.trackpoints,
+        },
+        uploadedActivity: null,
+        uploadError: null,
+      });
+    }
+
     await persistResult(nextResult, null);
   }
 
@@ -328,11 +379,42 @@ export default function RunScreen() {
       });
 
       setUploadedActivity(activity);
+
+      setStoredRunSession(resolvedEventId, {
+        phase: 'completed',
+        result: {
+          status: nextResult.status,
+          startedAt: nextResult.startedAt,
+          finishedAt: nextResult.finishedAt,
+          durationSeconds: nextResult.durationSeconds,
+          distanceKm: nextResult.distanceKm,
+          avgSpeedKmh: nextResult.avgSpeedKmh,
+          trackpoints: nextResult.trackpoints,
+        },
+        uploadedActivity: activity,
+        uploadError: null,
+      });
     } catch (err) {
-      setUploadError(getActivityErrorMessage(err));
+      const nextUploadError = getActivityErrorMessage(err);
+      setUploadError(nextUploadError);
       if (err instanceof ActivityUploadError && err.activity) {
         setUploadedActivity(err.activity);
       }
+
+      setStoredRunSession(resolvedEventId, {
+        phase: 'completed',
+        result: {
+          status: nextResult.status,
+          startedAt: nextResult.startedAt,
+          finishedAt: nextResult.finishedAt,
+          durationSeconds: nextResult.durationSeconds,
+          distanceKm: nextResult.distanceKm,
+          avgSpeedKmh: nextResult.avgSpeedKmh,
+          trackpoints: nextResult.trackpoints,
+        },
+        uploadedActivity: err instanceof ActivityUploadError ? err.activity : null,
+        uploadError: nextUploadError,
+      });
     } finally {
       setUploading(false);
     }
@@ -366,6 +448,13 @@ export default function RunScreen() {
           <Text style={styles.title}>Run</Text>
           <Text style={styles.subtitle}>{event.title}</Text>
         </View>
+
+        {devRunnerActive ? (
+          <View style={styles.devModeCard}>
+            <Text style={styles.devModeTitle}>DEV MODE</Text>
+            <Text style={styles.info}>Route reveal and start-time checks are bypassed for local testing.</Text>
+          </View>
+        ) : null}
 
         <View style={styles.mapWrapper}>
           <RouteMap
@@ -642,4 +731,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0f172a',
   },
+  devModeCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+    backgroundColor: '#fffbeb',
+    padding: 16,
+    gap: 6,
+  },
+  devModeTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400e',
+    textTransform: 'uppercase',
+  },
 });
+
+function createDevRoute(center: LatLng): EventRoute {
+  const north = { latitude: center.latitude + 0.003, longitude: center.longitude };
+  const southEast = { latitude: center.latitude - 0.002, longitude: center.longitude + 0.003 };
+  const southWest = { latitude: center.latitude - 0.002, longitude: center.longitude - 0.003 };
+
+  return {
+    startPoint: center,
+    endPoint: southEast,
+    polyline: [center, north, southEast, southWest, center],
+  };
+}

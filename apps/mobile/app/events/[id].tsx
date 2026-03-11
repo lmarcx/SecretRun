@@ -7,6 +7,7 @@ import { getEffectiveRunner, isDevRunnerActive } from '@/services/devRunnerMode'
 import { fetchEventRoute } from '@/services/eventRoutes';
 import type { EventDetail } from '@/services/eventsService';
 import { fetchEventDetails, getEventErrorMessage, joinEvent } from '@/services/eventsService';
+import { getStoredRunSession } from '@/services/runSessionStore';
 import type { EventRoute } from '@/utils/route';
 
 export default function EventDetailsScreen() {
@@ -24,8 +25,12 @@ export default function EventDetailsScreen() {
   const [reloadKey, setReloadKey] = useState(0);
   const eventId = Array.isArray(id) ? id[0] : id;
   const routeRevealed = event ? new Date(event.revealAt).getTime() <= Date.now() : false;
+  const eventStarted = event ? new Date(event.startsAt).getTime() <= Date.now() : false;
   const devRunnerActive = isDevRunnerActive();
   const effectiveRunner = getEffectiveRunner();
+  const storedRunSession = eventId ? getStoredRunSession(eventId) : null;
+  const hasFinishedRun = storedRunSession?.phase === 'completed';
+  const canOpenRun = Boolean(event?.viewerParticipationStatus === 'registered' && (devRunnerActive || (routeRevealed && eventStarted)));
 
   useEffect(() => {
     let active = true;
@@ -236,9 +241,6 @@ export default function EventDetailsScreen() {
                 startZoneRadiusKm={event.startAreaRadiusKm}
               />
             </View>
-            <Pressable style={styles.button} onPress={() => router.push(`/run/${event.id}`)}>
-              <Text style={styles.buttonText}>Go to run</Text>
-            </Pressable>
           </>
         )}
 
@@ -267,25 +269,31 @@ export default function EventDetailsScreen() {
           <Text style={feedback.type === 'success' ? styles.success : styles.error}>{feedback.message}</Text>
         ) : null}
 
-        <Pressable
-          style={[styles.button, (joinLoading || Boolean(event.viewerParticipationStatus)) && styles.buttonDisabled]}
-          onPress={handleJoin}
-          disabled={joinLoading}
-        >
-          <Text style={styles.buttonText}>
-            {event.viewerParticipationStatus
-              ? 'Already joined'
-              : !isAuthenticated && devRunnerActive
-                ? joinLoading
-                  ? 'Joining...'
-                  : 'Join (Dev Mode)'
-                : !isAuthenticated
-                  ? 'Sign in to join'
-                  : joinLoading
-                    ? 'Joining...'
-                    : 'Join event'}
-          </Text>
-        </Pressable>
+        {event.viewerParticipationStatus === 'registered' && !devRunnerActive && !routeRevealed ? (
+          <Text style={styles.infoHint}>Start Run becomes available once the route is revealed.</Text>
+        ) : null}
+
+        {event.viewerParticipationStatus === 'registered' && !devRunnerActive && routeRevealed && !eventStarted ? (
+          <Text style={styles.infoHint}>Start Run becomes available when the event starts.</Text>
+        ) : null}
+
+        {hasFinishedRun ? (
+          <Pressable style={styles.button} onPress={() => router.push(`/run/${event.id}`)}>
+            <Text style={styles.buttonText}>View Activity</Text>
+          </Pressable>
+        ) : event.viewerParticipationStatus === 'registered' ? (
+          <Pressable style={[styles.button, !canOpenRun && styles.buttonDisabled]} onPress={() => router.push(`/run/${event.id}`)} disabled={!canOpenRun}>
+            <Text style={styles.buttonText}>Start Run</Text>
+          </Pressable>
+        ) : null}
+
+        {!event.viewerParticipationStatus ? (
+          <Pressable style={[styles.button, joinLoading && styles.buttonDisabled]} onPress={handleJoin} disabled={joinLoading}>
+            <Text style={styles.buttonText}>
+              {!isAuthenticated && devRunnerActive ? (joinLoading ? 'Joining...' : 'Join (Dev Mode)') : !isAuthenticated ? 'Sign in to join' : joinLoading ? 'Joining...' : 'Join'}
+            </Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -397,6 +405,10 @@ const styles = StyleSheet.create({
   success: {
     color: '#166534',
     fontWeight: '600',
+  },
+  infoHint: {
+    color: '#475569',
+    textAlign: 'center',
   },
   error: {
     color: '#b91c1c',
