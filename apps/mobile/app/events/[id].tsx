@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteMap } from '@/components/RouteMap';
 import { useAuth } from '@/hooks/useAuth';
-import { getEffectiveRunner, isDevRunnerActive } from '@/services/devRunnerMode';
+import { DEV_MODE_LABEL, getDevJoinLabel, getDevModeMessage, getEffectiveRunner, isDevRunnerActive } from '@/services/devRunnerMode';
 import { fetchEventRoute } from '@/services/eventRoutes';
 import type { EventDetail } from '@/services/eventsService';
 import { fetchEventDetails, getEventErrorMessage, joinEvent } from '@/services/eventsService';
@@ -25,20 +25,17 @@ export default function EventDetailsScreen() {
   const [routeError, setRouteError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const eventId = Array.isArray(id) ? id[0] : id;
-  const routeRevealed = event ? new Date(event.revealAt).getTime() <= Date.now() : false;
-  const eventStarted = event ? new Date(event.startsAt).getTime() <= Date.now() : false;
   const devRunnerActive = isDevRunnerActive();
   const effectiveRunner = getEffectiveRunner();
   const storedRunSession = eventId ? getStoredRunSession(eventId) : null;
   const hasFinishedRun = storedRunSession?.phase === 'completed';
-  const canOpenRun = Boolean(event?.viewerParticipationStatus === 'registered' && (devRunnerActive || (routeRevealed && eventStarted)));
 
   useEffect(() => {
     let active = true;
 
     const load = async () => {
       if (!eventId) {
-        setError('Missing event id');
+        setError('Missing event id.');
         setLoading(false);
         return;
       }
@@ -81,7 +78,17 @@ export default function EventDetailsScreen() {
   useEffect(() => {
     let active = true;
 
-    if (!event || !routeRevealed || !eventId) {
+    if (!event || !eventId) {
+      setRoute(null);
+      setRouteError(null);
+      setRouteLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    const routeRevealed = new Date(event.revealAt).getTime() <= Date.now();
+    if (!routeRevealed && !devRunnerActive) {
       setRoute(null);
       setRouteError(null);
       setRouteLoading(false);
@@ -125,7 +132,32 @@ export default function EventDetailsScreen() {
     return () => {
       active = false;
     };
-  }, [event, eventId, reloadKey, routeRevealed]);
+  }, [devRunnerActive, event, eventId, reloadKey]);
+
+  const eventState = useMemo(() => {
+    if (!event) {
+      return null;
+    }
+
+    const now = Date.now();
+    const routeRevealed = new Date(event.revealAt).getTime() <= now;
+    const started = new Date(event.startsAt).getTime() <= now;
+    const past = new Date(event.endsAt ?? event.startsAt).getTime() <= now;
+    const joined = event.viewerParticipationStatus === 'registered';
+    const canOpenRun = Boolean(joined && !hasFinishedRun && (devRunnerActive || (routeRevealed && started && !past)));
+
+    return {
+      routeRevealed,
+      started,
+      past,
+      joined,
+      canOpenRun,
+      statusLabels: [
+        hasFinishedRun ? 'Finished' : canOpenRun ? 'Ready to run' : joined ? 'Joined' : 'Not joined',
+        ...(routeRevealed ? ['Revealed'] : []),
+      ],
+    };
+  }, [devRunnerActive, event, hasFinishedRun]);
 
   const handleJoin = async () => {
     if (!eventId) {
@@ -169,7 +201,7 @@ export default function EventDetailsScreen() {
     );
   }
 
-  if (error || !event) {
+  if (error || !event || !eventState) {
     return (
       <SafeAreaView style={styles.centered}>
         <Text style={styles.title}>Event</Text>
@@ -181,58 +213,112 @@ export default function EventDetailsScreen() {
     );
   }
 
+  const primaryAction = getPrimaryAction({
+    hasFinishedRun,
+    joined: eventState.joined,
+    canOpenRun: eventState.canOpenRun,
+    devRunnerActive,
+    isAuthenticated,
+    joinLoading,
+  });
+
+  const handlePrimaryAction = () => {
+    if (primaryAction.kind === 'view_result' || primaryAction.kind === 'start_run') {
+      router.push(`/run/${event.id}`);
+      return;
+    }
+
+    if (primaryAction.kind === 'login') {
+      router.push('/(auth)/login');
+      return;
+    }
+
+    if (primaryAction.kind === 'join') {
+      void handleJoin();
+      return;
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>{event.title}</Text>
-        <Text style={styles.description}>{event.description || 'No description provided.'}</Text>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Starts at</Text>
-          <Text style={styles.value}>{formatDateTime(event.startsAt)}</Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Reveal at</Text>
-          <Text style={styles.value}>{formatDateTime(event.revealAt)}</Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Start area radius</Text>
-          <Text style={styles.value}>{event.startAreaRadiusKm} km</Text>
-        </View>
-
-        <View style={styles.infoCard}>
-          <Text style={styles.infoCardTitle}>Start area info</Text>
-          <Text style={styles.infoCardText}>
-            Meet inside the approximate start zone before kickoff. The detailed route stays hidden until reveal time.
-          </Text>
+        <View style={styles.heroCard}>
+          <View style={styles.badgeRow}>
+            {eventState.statusLabels.map((label) => (
+              <View
+                key={label}
+                style={[styles.badge, label === 'Ready to run' && styles.badgeActive, label === 'Finished' && styles.badgeFinished]}
+              >
+                <Text
+                  style={[
+                    styles.badgeText,
+                    label === 'Ready to run' && styles.badgeActiveText,
+                    label === 'Finished' && styles.badgeFinishedText,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.title}>{event.title}</Text>
+          <Text style={styles.description}>{event.description || 'No description provided.'}</Text>
         </View>
 
         {devRunnerActive ? (
           <View style={styles.devModeCard}>
-            <Text style={styles.devModeTitle}>DEV MODE</Text>
-            <Text style={styles.infoCardText}>{effectiveRunner?.username ?? 'Dev Runner'} is active locally without authentication.</Text>
+            <Text style={styles.devModeTitle}>{DEV_MODE_LABEL}</Text>
+            <Text style={styles.infoCardText}>{getDevModeMessage('event_detail')}</Text>
+            <Text style={styles.infoCardText}>Active runner: {effectiveRunner?.username ?? 'Dev Runner'}</Text>
           </View>
         ) : null}
 
-        {!routeRevealed ? (
+        <View style={styles.timelineCard}>
+          <Text style={styles.cardTitle}>Event timing</Text>
+          <MetaRow label="Reveal" value={formatDateTime(event.revealAt)} />
+          <MetaRow label="Starts" value={formatDateTime(event.startsAt)} />
+          {event.endsAt ? <MetaRow label="Ends" value={formatDateTime(event.endsAt)} /> : null}
+          <MetaRow label="Start zone" value={`${event.startAreaRadiusKm} km radius`} />
+        </View>
+
+        <View style={styles.infoCard}>
+          <Text style={styles.cardTitle}>Participation</Text>
+          <Text style={styles.infoCardText}>
+            {eventState.joined
+              ? hasFinishedRun
+                ? 'Your local run result is saved on this device for this event.'
+                : 'You are registered and ready for reveal/start timing updates.'
+              : devRunnerActive
+                ? 'Join locally in DEV mode to test the full flow without backend auth.'
+                : 'Join this event to unlock the run flow once reveal and start timing allow it.'}
+          </Text>
+          <MetaRow
+            label="Status"
+            value={eventState.joined ? event.viewerParticipationStatus ?? 'Registered' : isAuthenticated || devRunnerActive ? 'Not joined' : 'Signed out'}
+          />
+          {event.viewerJoinedAt ? <MetaRow label="Joined at" value={formatDateTime(event.viewerJoinedAt)} /> : null}
+          {event.participantCount !== null ? <MetaRow label="Participants" value={String(event.participantCount)} /> : null}
+        </View>
+
+        {!eventState.routeRevealed && !devRunnerActive ? (
           <View style={styles.infoCard}>
-            <Text style={styles.infoCardTitle}>Route not revealed yet</Text>
-            <Text style={styles.infoCardText}>The route will unlock after {formatDateTime(event.revealAt)}.</Text>
+            <Text style={styles.cardTitle}>Route locked</Text>
+            <Text style={styles.infoCardText}>The route will be revealed after {formatDateTime(event.revealAt)}. Until then, only the start zone stays visible.</Text>
           </View>
         ) : routeLoading ? (
           <View style={styles.infoCard}>
-            <Text style={styles.infoCardTitle}>Loading route</Text>
+            <Text style={styles.cardTitle}>Loading route</Text>
             <Text style={styles.infoCardText}>Fetching the revealed route now.</Text>
           </View>
         ) : routeError || !route ? (
           <View style={styles.infoCard}>
-            <Text style={styles.infoCardTitle}>No route yet</Text>
+            <Text style={styles.cardTitle}>Route unavailable</Text>
             <Text style={styles.infoCardText}>{routeError ?? 'Route details are not available yet.'}</Text>
           </View>
         ) : (
-          <>
+          <View style={styles.mapSection}>
+            <Text style={styles.cardTitle}>Route preview</Text>
+            <Text style={styles.infoCardText}>Start and finish markers are shown once the route is available.</Text>
             <View style={styles.mapCard}>
               <RouteMap
                 routePolyline={route.polyline}
@@ -242,66 +328,114 @@ export default function EventDetailsScreen() {
                 startZoneRadiusKm={event.startAreaRadiusKm}
               />
             </View>
-          </>
+          </View>
         )}
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Participation</Text>
-          <Text style={styles.value}>
-            {isAuthenticated || devRunnerActive ? event.viewerParticipationStatus ?? 'Not joined yet' : 'Sign in to see your status'}
-          </Text>
+        <View style={styles.primaryActionBlock}>
+          <Pressable
+            style={[styles.primaryButton, primaryAction.disabled && styles.buttonDisabled]}
+            onPress={handlePrimaryAction}
+            disabled={primaryAction.disabled}
+          >
+            <Text style={styles.primaryButtonText}>{primaryAction.label}</Text>
+          </Pressable>
+          {primaryAction.hint ? <Text style={styles.infoHint}>{primaryAction.hint}</Text> : null}
         </View>
 
-        {event.viewerJoinedAt ? (
-          <View style={styles.section}>
-            <Text style={styles.label}>Joined at</Text>
-            <Text style={styles.value}>{formatDateTime(event.viewerJoinedAt)}</Text>
-          </View>
-        ) : null}
-
-        {event.participantCount !== null ? (
-          <View style={styles.section}>
-            <Text style={styles.label}>Participants</Text>
-            <Text style={styles.value}>{event.participantCount}</Text>
-          </View>
-        ) : null}
-
         {feedback ? (
-          <Text style={feedback.type === 'success' ? styles.success : styles.error}>{feedback.message}</Text>
-        ) : null}
-
-        {event.viewerParticipationStatus === 'registered' && !devRunnerActive && !routeRevealed ? (
-          <Text style={styles.infoHint}>Start Run becomes available once the route is revealed.</Text>
-        ) : null}
-
-        {event.viewerParticipationStatus === 'registered' && !devRunnerActive && routeRevealed && !eventStarted ? (
-          <Text style={styles.infoHint}>Start Run becomes available when the event starts.</Text>
-        ) : null}
-
-        {hasFinishedRun ? (
-          <Pressable style={styles.button} onPress={() => router.push(`/run/${event.id}`)}>
-            <Text style={styles.buttonText}>View Activity</Text>
-          </Pressable>
-        ) : event.viewerParticipationStatus === 'registered' ? (
-          <Pressable style={[styles.button, !canOpenRun && styles.buttonDisabled]} onPress={() => router.push(`/run/${event.id}`)} disabled={!canOpenRun}>
-            <Text style={styles.buttonText}>Start Run</Text>
-          </Pressable>
-        ) : null}
-
-        {!event.viewerParticipationStatus ? (
-          <Pressable style={[styles.button, joinLoading && styles.buttonDisabled]} onPress={handleJoin} disabled={joinLoading}>
-            <Text style={styles.buttonText}>
-              {!isAuthenticated && devRunnerActive ? (joinLoading ? 'Joining...' : 'Join (Dev Mode)') : !isAuthenticated ? 'Sign in to join' : joinLoading ? 'Joining...' : 'Join'}
-            </Text>
-          </Pressable>
+          <View style={[styles.feedbackCard, feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError]}>
+            <Text style={feedback.type === 'success' ? styles.success : styles.error}>{feedback.message}</Text>
+          </View>
         ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+function getPrimaryAction({
+  hasFinishedRun,
+  joined,
+  canOpenRun,
+  devRunnerActive,
+  isAuthenticated,
+  joinLoading,
+}: {
+  hasFinishedRun: boolean;
+  joined: boolean;
+  canOpenRun: boolean;
+  devRunnerActive: boolean;
+  isAuthenticated: boolean;
+  joinLoading: boolean;
+}) {
+  if (hasFinishedRun) {
+    return {
+      kind: 'view_result' as const,
+      label: 'View result',
+      disabled: false,
+      hint: 'Open the saved result screen and upload state for this event.',
+    };
+  }
+
+  if (canOpenRun) {
+    return {
+      kind: 'start_run' as const,
+      label: 'Start Run',
+      disabled: false,
+      hint: 'Open the run tracker for this event.',
+    };
+  }
+
+  if (joined) {
+    return {
+      kind: 'joined' as const,
+      label: 'Already joined',
+      disabled: true,
+      hint: 'This event is registered. Start Run unlocks after reveal and start timing, unless DEV mode bypass is active.',
+    };
+  }
+
+  if (!isAuthenticated && devRunnerActive) {
+    return {
+      kind: 'join' as const,
+      label: joinLoading ? 'Joining...' : getDevJoinLabel(),
+      disabled: joinLoading,
+      hint: 'This joins locally only and keeps the backend auth system untouched.',
+    };
+  }
+
+  if (!isAuthenticated) {
+    return {
+      kind: 'login' as const,
+      label: 'Sign in to join',
+      disabled: false,
+      hint: 'Local auth is still unavailable in this environment, so this opens the signed-out auth shell.',
+    };
+  }
+
+  return {
+    kind: 'join' as const,
+    label: joinLoading ? 'Joining...' : 'Join',
+    disabled: joinLoading,
+    hint: 'Register now so the route reveal and run flow are ready when the event opens.',
+  };
+}
+
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metaRow}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value}>{value}</Text>
+    </View>
+  );
+}
+
 function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString();
+  return new Date(value).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 const styles = StyleSheet.create({
@@ -311,7 +445,7 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: 20,
-    gap: 14,
+    gap: 16,
   },
   centered: {
     flex: 1,
@@ -321,6 +455,14 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: '#f8fafc',
   },
+  heroCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 18,
+    gap: 10,
+  },
   title: {
     fontSize: 30,
     fontWeight: '700',
@@ -329,13 +471,47 @@ const styles = StyleSheet.create({
   description: {
     color: '#334155',
     fontSize: 16,
+    lineHeight: 22,
   },
   subtitle: {
     color: '#334155',
     textAlign: 'center',
   },
-  section: {
-    gap: 2,
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  badge: {
+    borderRadius: 999,
+    backgroundColor: '#e2e8f0',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  badgeActive: {
+    backgroundColor: '#dcfce7',
+  },
+  badgeFinished: {
+    backgroundColor: '#dbeafe',
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  badgeActiveText: {
+    color: '#166534',
+  },
+  badgeFinishedText: {
+    color: '#1d4ed8',
+  },
+  timelineCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 10,
   },
   infoCard: {
     borderRadius: 14,
@@ -343,7 +519,10 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     backgroundColor: '#ffffff',
     padding: 16,
-    gap: 6,
+    gap: 8,
+  },
+  mapSection: {
+    gap: 8,
   },
   mapCard: {
     height: 260,
@@ -367,14 +546,17 @@ const styles = StyleSheet.create({
     color: '#92400e',
     textTransform: 'uppercase',
   },
-  infoCardTitle: {
-    fontSize: 15,
+  cardTitle: {
+    fontSize: 17,
     fontWeight: '700',
     color: '#0f172a',
   },
   infoCardText: {
     color: '#475569',
     lineHeight: 20,
+  },
+  metaRow: {
+    gap: 2,
   },
   label: {
     fontSize: 12,
@@ -386,9 +568,11 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontSize: 16,
   },
-  button: {
-    marginTop: 8,
-    minHeight: 52,
+  primaryActionBlock: {
+    gap: 8,
+  },
+  primaryButton: {
+    minHeight: 54,
     borderRadius: 12,
     backgroundColor: '#0f172a',
     alignItems: 'center',
@@ -396,9 +580,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   buttonDisabled: {
-    backgroundColor: '#475569',
+    backgroundColor: '#94a3b8',
   },
-  buttonText: {
+  primaryButtonText: {
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 16,
@@ -410,11 +594,22 @@ const styles = StyleSheet.create({
   infoHint: {
     color: '#475569',
     textAlign: 'center',
+    lineHeight: 20,
   },
   error: {
     color: '#b91c1c',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  feedbackCard: {
+    borderRadius: 14,
+    padding: 14,
+  },
+  feedbackSuccess: {
+    backgroundColor: '#f0fdf4',
+  },
+  feedbackError: {
+    backgroundColor: '#fef2f2',
   },
   secondaryButton: {
     minHeight: 48,

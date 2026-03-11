@@ -86,8 +86,9 @@ export default function TeamsScreen() {
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.info}>No teams are available yet.</Text>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No teams yet</Text>
+            <Text style={styles.info}>Teams will appear here as soon as the current backend seed exposes more squads.</Text>
           </View>
         }
         renderItem={({ item }) => <TeamCard item={item} supportsMembershipDetails={Boolean(data?.supportsMembershipDetails)} />}
@@ -100,13 +101,19 @@ function TeamCard({ item, supportsMembershipDetails }: { item: TeamListItem; sup
   return (
     <View style={[styles.card, item.isCurrentUserMember && styles.cardHighlighted]}>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{item.name}</Text>
+        <View style={styles.teamIdentity}>
+          <View style={styles.teamBadge}>
+            <Text style={styles.teamBadgeText}>{item.name.slice(0, 1).toUpperCase()}</Text>
+          </View>
+          <Text style={styles.cardTitle}>{item.name}</Text>
+        </View>
         {item.isCurrentUserMember ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>Your team</Text>
           </View>
         ) : null}
       </View>
+      <Text style={styles.cardDescription}>Current MVP team pages are read-only, but season rankings and memberships are already visible where permissions allow them.</Text>
       <Text style={styles.cardMeta}>Created {formatDate(item.createdAt)}</Text>
       <Text style={styles.cardMeta}>
         {supportsMembershipDetails && item.memberCount !== null
@@ -170,7 +177,7 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     backgroundColor: '#ffffff',
     padding: 16,
-    gap: 6,
+    gap: 8,
   },
   cardHighlighted: {
     borderColor: '#0f172a',
@@ -182,11 +189,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  cardTitle: {
+  teamIdentity: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  teamBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamBadgeText: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  cardTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#0f172a',
+  },
+  cardDescription: {
+    color: '#475569',
+    lineHeight: 20,
   },
   cardMeta: {
     color: '#64748b',
@@ -202,8 +230,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  empty: {
-    paddingVertical: 24,
+  emptyCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+    textAlign: 'center',
   },
   info: {
     color: '#475569',

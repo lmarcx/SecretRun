@@ -1,38 +1,52 @@
-import { usePathname } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
-import { useAuth } from '@/hooks/useAuth';
-import { getEffectiveRunner, isDevRunnerActive } from '@/services/devRunnerMode';
-import { nhost } from '@/services/nhostClient';
+import { DEV_MODE_LABEL, getDevModeMessage, isDevRunnerActive } from '@/services/devRunnerMode';
+import { nhostConfig } from '@/services/nhostClient';
 
 export function DebugAuthBanner() {
-  const pathname = usePathname();
-  const { authState } = useAuth();
-  const userId = nhost.auth.getUser()?.id ?? getEffectiveRunner()?.id ?? 'none';
   const devRunnerActive = isDevRunnerActive();
 
   return (
     <View style={styles.banner}>
-      {devRunnerActive ? <Text style={styles.devMode}>DEV MODE</Text> : null}
-      <Text style={styles.text}>Route: {pathname || '/'}</Text>
-      <Text style={styles.text}>Auth: {authState}</Text>
-      <Text style={styles.text}>User: {userId}</Text>
+      <View style={styles.row}>
+        <Text style={styles.betaLabel}>Closed beta</Text>
+        {devRunnerActive ? <Text style={styles.devMode}>{DEV_MODE_LABEL}</Text> : null}
+      </View>
+      <Text style={styles.text}>
+        {devRunnerActive
+          ? getDevModeMessage('global')
+          : nhostConfig.isAuthEnabled
+            ? 'Core event, run, leaderboard, and feed flows are active against the current local backend.'
+            : 'Local auth is still unavailable. Signed-out fallback states remain active across the app.'}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   banner: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#cbd5e1',
-    gap: 2,
+    borderBottomColor: '#e2e8f0',
+    gap: 6,
   },
-  text: {
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  betaLabel: {
     color: '#0f172a',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  text: {
+    color: '#475569',
+    fontSize: 12,
+    lineHeight: 18,
   },
   devMode: {
     alignSelf: 'flex-start',

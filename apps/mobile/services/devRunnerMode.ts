@@ -1,6 +1,7 @@
 import { nhost } from './nhostClient';
 
 export const DEV_RUNNER_MODE = true;
+export const DEV_MODE_LABEL = 'DEV MODE';
 
 export const DEV_RUNNER = {
   id: 'dev-runner',
@@ -14,6 +15,8 @@ export interface EffectiveRunner {
   username: string;
   isDev: boolean;
 }
+
+export type DevModeContext = 'global' | 'events' | 'event_detail' | 'run' | 'profile';
 
 export function getEffectiveRunner(): EffectiveRunner | null {
   const realUser = nhost.auth.getUser();
@@ -37,6 +40,26 @@ export function getEffectiveRunner(): EffectiveRunner | null {
 
 export function isDevRunnerActive(): boolean {
   return !nhost.auth.getUser() && DEV_RUNNER_MODE;
+}
+
+export function getDevModeMessage(context: DevModeContext): string {
+  switch (context) {
+    case 'events':
+      return 'Local event participation can be tested without real authentication.';
+    case 'event_detail':
+      return 'Join, reveal timing, and run entry remain testable locally without backend auth.';
+    case 'run':
+      return 'Reveal timing, event start timing, and start-zone validation are bypassed for local testing.';
+    case 'profile':
+      return 'This device is browsing in local DEV runner mode. Backend-only profile and push actions still require real auth.';
+    case 'global':
+    default:
+      return 'Closed beta build running with the local DEV runner fallback.';
+  }
+}
+
+export function getDevJoinLabel(): string {
+  return 'Join (Dev Mode)';
 }
 
 export function getDevJoinedEvent(eventId: string): { status: 'registered'; joinedAt: string } | null {

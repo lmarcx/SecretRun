@@ -11,26 +11,48 @@ export interface EventListItem {
   description: string | null;
   startsAt: string;
   revealAt: string;
+  endsAt: string | null;
   startAreaRadiusKm: number;
+  startAreaCenter: LatLng | null;
+  viewerParticipationStatus: string | null;
+  viewerJoinedAt: string | null;
 }
 
 export interface EventDetail extends EventListItem {
   participantCount: number | null;
-  viewerParticipationStatus: string | null;
-  viewerJoinedAt: string | null;
-  startAreaCenter: LatLng | null;
 }
 
 const PUBLIC_EVENTS_QUERY = gql`
   query PublicEvents {
-    events(order_by: { starts_at: asc }) {
+    events(order_by: [{ starts_at: asc }, { reveal_at: asc }]) {
       id
       title
       description
       starts_at
       reveal_at
+      ends_at
       start_area_radius_km
       start_area_center
+    }
+  }
+`;
+
+const AUTHENTICATED_EVENTS_QUERY = gql`
+  query AuthenticatedEvents($viewerId: uuid!) {
+    events(order_by: [{ starts_at: asc }, { reveal_at: asc }]) {
+      id
+      title
+      description
+      starts_at
+      reveal_at
+      ends_at
+      start_area_radius_km
+      start_area_center
+    }
+    event_participants(where: { user_id: { _eq: $viewerId } }) {
+      event_id
+      status
+      joined_at
     }
   }
 `;
@@ -43,7 +65,9 @@ const EVENT_DETAIL_QUERY = gql`
       description
       starts_at
       reveal_at
+      ends_at
       start_area_radius_km
+      start_area_center
     }
     event_participants(where: { event_id: { _eq: $eventId }, user_id: { _eq: $viewerId } }, limit: 1) {
       status
@@ -60,9 +84,8 @@ const EVENT_DETAIL_QUERY = gql`
 const EVENT_PARTICIPATION_QUERY = gql`
   query EventParticipation($eventId: uuid!, $viewerId: uuid!) {
     event_participants(where: { event_id: { _eq: $eventId }, user_id: { _eq: $viewerId } }, limit: 1) {
-        status
-        joined_at
-      }
+      status
+      joined_at
     }
   }
 `;
@@ -75,6 +98,7 @@ const EVENT_DETAIL_QUERY_PUBLIC = gql`
       description
       starts_at
       reveal_at
+      ends_at
       start_area_radius_km
       start_area_center
     }
@@ -98,7 +122,17 @@ interface PublicEventsQuery {
     description: string | null;
     starts_at: string;
     reveal_at: string;
+    ends_at: string | null;
     start_area_radius_km: number | string;
+    start_area_center: unknown;
+  }>;
+}
+
+interface AuthenticatedEventsQuery extends PublicEventsQuery {
+  event_participants: Array<{
+    event_id: string;
+    status: string;
+    joined_at: string;
   }>;
 }
 
@@ -109,6 +143,7 @@ interface EventDetailQuery {
     description: string | null;
     starts_at: string;
     reveal_at: string;
+    ends_at: string | null;
     start_area_radius_km: number | string;
     start_area_center: unknown;
   } | null;
@@ -138,14 +173,21 @@ interface JoinEventMutation {
   } | null;
 }
 
-function mapEventListItem(event: PublicEventsQuery['events'][number]): EventListItem {
+function mapEventListItem(
+  event: PublicEventsQuery['events'][number],
+  participation?: { status: string; joined_at: string } | null,
+): EventListItem {
   return {
     id: event.id,
     title: event.title,
     description: event.description,
     startsAt: event.starts_at,
     revealAt: event.reveal_at,
+    endsAt: event.ends_at,
     startAreaRadiusKm: Number(event.start_area_radius_km),
+    startAreaCenter: parseGeoPoint(event.start_area_center),
+    viewerParticipationStatus: participation?.status ?? null,
+    viewerJoinedAt: participation?.joined_at ?? null,
   };
 }
 
@@ -155,22 +197,39 @@ function mapEventDetail(
   participantCount?: number | null,
 ): EventDetail {
   return {
-    id: event.id,
-    title: event.title,
-    description: event.description,
-    startsAt: event.starts_at,
-    revealAt: event.reveal_at,
-    startAreaRadiusKm: Number(event.start_area_radius_km),
+    ...mapEventListItem(event, participation?.[0] ?? null),
     participantCount: participantCount ?? null,
-    viewerParticipationStatus: participation?.[0]?.status ?? null,
-    viewerJoinedAt: participation?.[0]?.joined_at ?? null,
-    startAreaCenter: parseGeoPoint(event.start_area_center),
   };
 }
 
 export async function fetchPublicEvents(): Promise<EventListItem[]> {
-  const response = await requestGraphql<PublicEventsQuery>(PUBLIC_EVENTS_QUERY, {});
-  return response.events.map(mapEventListItem);
+  const viewerId = nhost.auth.getUser()?.id;
+
+  if (!viewerId) {
+    const response = await requestGraphql<PublicEventsQuery>(PUBLIC_EVENTS_QUERY, {});
+
+    return response.events.map((event) => {
+      const devParticipation = getDevJoinedEvent(event.id);
+      return mapEventListItem(
+        event,
+        devParticipation
+          ? {
+              status: devParticipation.status,
+              joined_at: devParticipation.joinedAt,
+            }
+          : null,
+      );
+    });
+  }
+
+  const response = await requestGraphql<AuthenticatedEventsQuery>(AUTHENTICATED_EVENTS_QUERY, {
+    viewerId,
+  });
+  const participationByEventId = new Map(
+    response.event_participants.map((entry) => [entry.event_id, { status: entry.status, joined_at: entry.joined_at }] as const),
+  );
+
+  return response.events.map((event) => mapEventListItem(event, participationByEventId.get(event.id) ?? null));
 }
 
 export async function fetchEventDetails(eventId: string): Promise<EventDetail | null> {

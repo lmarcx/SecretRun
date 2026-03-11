@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
 import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import type { FeedActivityItem, FeedData } from '@/services/feedService';
 import { fetchFeed, getFeedErrorMessage } from '@/services/feedService';
 
@@ -83,16 +83,24 @@ export default function FeedScreen() {
               </View>
             ) : null}
             {data?.requiresAuth ? (
-              <Pressable style={styles.secondaryButton} onPress={() => router.push('/profile')}>
-                <Text style={styles.secondaryButtonText}>Open profile</Text>
-              </Pressable>
+              <View style={styles.signedOutActions}>
+                <Pressable style={styles.secondaryButton} onPress={() => router.push('/events')}>
+                  <Text style={styles.secondaryButtonText}>Browse events</Text>
+                </Pressable>
+                <Pressable style={styles.secondaryButton} onPress={() => router.push('/profile')}>
+                  <Text style={styles.secondaryButtonText}>Profile status</Text>
+                </Pressable>
+              </View>
             ) : null}
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>{data?.requiresAuth ? 'Feed locked' : 'No recent activity yet'}</Text>
             <Text style={styles.info}>
-              {data?.requiresAuth ? 'Sign in to load your backend activity feed.' : 'No backend activities are available yet.'}
+              {data?.requiresAuth
+                ? 'This beta only exposes activity rows to the signed-in runner who created them. You can still browse events and test the run flow in DEV mode.'
+                : 'Complete a run and upload it to see your recent activity appear here.'}
             </Text>
           </View>
         }
@@ -224,6 +232,10 @@ const styles = StyleSheet.create({
     color: '#475569',
     lineHeight: 20,
   },
+  signedOutActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   card: {
     borderRadius: 14,
     borderWidth: 1,
@@ -289,8 +301,19 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: '#cbd5e1',
   },
-  empty: {
-    paddingVertical: 32,
+  emptyCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+    textAlign: 'center',
   },
   info: {
     color: '#475569',
@@ -308,6 +331,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
+    flex: 1,
   },
   secondaryButtonText: {
     color: '#0f172a',

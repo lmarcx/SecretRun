@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
+import { DEV_MODE_LABEL, getDevModeMessage, isDevRunnerActive } from '@/services/devRunnerMode';
 import { nhost } from '@/services/nhostClient';
 import {
   enablePushNotifications,
@@ -17,6 +18,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { isAvailable, disabledMessage, loading: authLoading, signOut } = useAuth();
   const userId = nhost.auth.getUser()?.id ?? null;
+  const devRunnerActive = isDevRunnerActive();
   const [profile, setProfile] = useState<CurrentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,29 +132,56 @@ export default function ProfileScreen() {
 
   if (!userId) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.title}>Profile</Text>
-        <Text style={styles.info}>You are currently signed out.</Text>
-        <Text style={styles.info}>
-          {isAvailable
-            ? 'Sign in or create an account to see your profile, load your backend feed, and register this device for notifications.'
-            : disabledMessage ?? 'Local auth is not available in this environment yet. Use signed-out mode for now.'}
-        </Text>
-        <Pressable style={styles.secondaryButton} onPress={() => router.push('/feed')}>
-          <Text style={styles.secondaryButtonText}>Open activity feed</Text>
-        </Pressable>
-        <NotificationCard
-          state={notificationState}
-          loading={notificationsLoading}
-          submitting={notificationsSubmitting}
-          onEnable={handleEnableNotifications}
-        />
-        <Pressable style={styles.primaryButton} onPress={() => router.push('/(auth)/login')}>
-          <Text style={styles.primaryButtonText}>Go to login</Text>
-        </Pressable>
-        <Pressable style={styles.secondaryButton} onPress={() => router.push('/(auth)/register')}>
-          <Text style={styles.secondaryButtonText}>Create account</Text>
-        </Pressable>
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.container}>
+          <View style={styles.heroCard}>
+            <Text style={styles.title}>Profile</Text>
+            <Text style={styles.info}>You are currently browsing in signed-out mode.</Text>
+            <Text style={styles.info}>
+              {isAvailable
+                ? 'Sign in or create an account to sync your profile, activity feed, and push notifications.'
+                : disabledMessage ?? 'Local auth is not available in this environment yet. Use signed-out mode for now.'}
+            </Text>
+          </View>
+
+          {devRunnerActive ? (
+            <View style={styles.devModeCard}>
+              <Text style={styles.devModeTitle}>{DEV_MODE_LABEL}</Text>
+              <Text style={styles.devModeText}>{getDevModeMessage('profile')}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>What still works</Text>
+            <Text style={styles.cardText}>Events, event detail, local join flow, run tracking, leaderboard, and read-only team browsing remain available.</Text>
+          </View>
+
+          <NotificationCard
+            state={notificationState}
+            loading={notificationsLoading}
+            submitting={notificationsSubmitting}
+            onEnable={handleEnableNotifications}
+          />
+
+          <View style={styles.actionColumn}>
+            <Pressable style={styles.secondaryButton} onPress={() => router.push('/events')}>
+              <Text style={styles.secondaryButtonText}>Browse events</Text>
+            </Pressable>
+            <Pressable style={styles.secondaryButton} onPress={() => router.push('/feed')}>
+              <Text style={styles.secondaryButtonText}>Open feed status</Text>
+            </Pressable>
+            {isAvailable ? (
+              <>
+                <Pressable style={styles.primaryButton} onPress={() => router.push('/(auth)/login')}>
+                  <Text style={styles.primaryButtonText}>Go to login</Text>
+                </Pressable>
+                <Pressable style={styles.secondaryButton} onPress={() => router.push('/(auth)/register')}>
+                  <Text style={styles.secondaryButtonText}>Create account</Text>
+                </Pressable>
+              </>
+            ) : null}
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -193,32 +222,26 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.identitySection}>
-          {profile.avatarUrl ? (
-            <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.avatarFallbackText}>{profile.displayName.slice(0, 1).toUpperCase()}</Text>
-            </View>
-          )}
+        <View style={styles.heroCard}>
+          <View style={styles.identitySection}>
+            {profile.avatarUrl ? (
+              <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.avatarFallbackText}>{profile.displayName.slice(0, 1).toUpperCase()}</Text>
+              </View>
+            )}
 
-          <Text style={styles.title}>{profile.displayName}</Text>
-          <Text style={styles.username}>@{profile.username}</Text>
+            <Text style={styles.title}>{profile.displayName}</Text>
+            <Text style={styles.username}>@{profile.username}</Text>
+          </View>
         </View>
 
-        <View style={styles.metaCard}>
-          <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>Display name</Text>
-            <Text style={styles.metaValue}>{profile.displayName}</Text>
-          </View>
-          <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>Username</Text>
-            <Text style={styles.metaValue}>@{profile.username}</Text>
-          </View>
-          <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>Created</Text>
-            <Text style={styles.metaValue}>{formatDate(profile.createdAt)}</Text>
-          </View>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Profile details</Text>
+          <MetaRow label="Display name" value={profile.displayName} />
+          <MetaRow label="Username" value={`@${profile.username}`} />
+          <MetaRow label="Created" value={formatDate(profile.createdAt)} />
         </View>
 
         <View style={styles.actionRow}>
@@ -241,10 +264,6 @@ export default function ProfileScreen() {
   );
 }
 
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString();
-}
-
 function NotificationCard({
   state,
   loading,
@@ -257,11 +276,11 @@ function NotificationCard({
   onEnable: () => void;
 }) {
   return (
-    <View style={styles.notificationCard}>
-      <Text style={styles.notificationTitle}>Notifications</Text>
-      {loading ? <Text style={styles.info}>Checking device notification support...</Text> : null}
-      {!loading && state ? <Text style={styles.info}>{state.message}</Text> : null}
-      {state?.pushToken ? <Text style={styles.metaValue}>Push token: {state.pushToken}</Text> : null}
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>Notifications</Text>
+      {loading ? <Text style={styles.cardText}>Checking device notification support...</Text> : null}
+      {!loading && state ? <Text style={styles.cardText}>{state.message}</Text> : null}
+      {state?.pushToken ? <Text style={styles.cardText}>Push token: {state.pushToken}</Text> : null}
 
       <View style={styles.notificationList}>
         {notificationCapabilities.map((capability) => (
@@ -290,6 +309,19 @@ function NotificationCard({
   );
 }
 
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metaRow}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      <Text style={styles.metaValue}>{value}</Text>
+    </View>
+  );
+}
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString();
+}
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -299,10 +331,6 @@ const styles = StyleSheet.create({
     padding: 24,
     gap: 16,
   },
-  identitySection: {
-    alignItems: 'center',
-    gap: 8,
-  },
   centered: {
     flex: 1,
     alignItems: 'center',
@@ -310,6 +338,18 @@ const styles = StyleSheet.create({
     padding: 24,
     gap: 12,
     backgroundColor: '#f8fafc',
+  },
+  heroCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 18,
+    gap: 10,
+  },
+  identitySection: {
+    alignItems: 'center',
+    gap: 8,
   },
   avatar: {
     width: 112,
@@ -340,38 +380,50 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#475569',
   },
+  card: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 12,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  cardText: {
+    color: '#475569',
+    lineHeight: 20,
+  },
   info: {
     textAlign: 'center',
     color: '#475569',
-    maxWidth: 320,
+    lineHeight: 21,
   },
   error: {
     textAlign: 'center',
     color: '#b91c1c',
     fontWeight: '600',
   },
-  metaCard: {
-    width: '100%',
+  devModeCard: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
+    borderColor: '#f59e0b',
+    backgroundColor: '#fffbeb',
     padding: 16,
-    gap: 12,
+    gap: 6,
   },
-  notificationCard: {
-    width: '100%',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 12,
+  devModeTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400e',
+    textTransform: 'uppercase',
   },
-  notificationTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
+  devModeText: {
+    color: '#92400e',
+    lineHeight: 20,
   },
   notificationList: {
     gap: 10,
@@ -429,9 +481,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#0f172a',
   },
+  actionColumn: {
+    gap: 10,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
   primaryButton: {
     minHeight: 52,
-    minWidth: 220,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -454,7 +513,6 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     minHeight: 52,
-    minWidth: 220,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -474,11 +532,6 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontSize: 16,
     fontWeight: '700',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
   },
   buttonDisabled: {
     opacity: 0.5,

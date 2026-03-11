@@ -13,7 +13,7 @@ import {
   type LocalTrackpoint,
   type UploadedActivity,
 } from '@/services/activitiesService';
-import { isDevRunnerActive } from '@/services/devRunnerMode';
+import { DEV_MODE_LABEL, getDevModeMessage, isDevRunnerActive } from '@/services/devRunnerMode';
 import { fetchEventRoute } from '@/services/eventRoutes';
 import { fetchEventDetails, type EventDetail } from '@/services/eventsService';
 import { getStoredRunSession, setStoredRunSession } from '@/services/runSessionStore';
@@ -130,7 +130,7 @@ export default function RunScreen() {
     return () => {
       active = false;
     };
-  }, [resolvedEventId]);
+  }, [devRunnerActive, resolvedEventId]);
 
   useEffect(() => {
     let active = true;
@@ -238,6 +238,16 @@ export default function RunScreen() {
     }),
     [distanceMeters, elapsedSeconds],
   );
+  const runStatusText =
+    runPhase === 'running'
+      ? 'Tracking is active on this device. Keep the app open and finish when your route is complete.'
+      : runPhase === 'completed'
+        ? uploadError
+          ? 'Your local result is saved. Backend upload still needs attention.'
+          : 'Your run is complete and the local result is ready.'
+        : runPhase === 'abandoned'
+          ? 'This run was abandoned and kept locally for review.'
+          : 'Move into the start zone, review the route, and begin when ready.';
 
   function appendTrackpoint(location: LocationObject) {
     const nextPoint = mapLocationToTrackpoint(location);
@@ -471,10 +481,16 @@ export default function RunScreen() {
 
         {devRunnerActive ? (
           <View style={styles.devModeCard}>
-            <Text style={styles.devModeTitle}>DEV MODE</Text>
-            <Text style={styles.info}>Route reveal and start-time checks are bypassed for local testing.</Text>
+            <Text style={styles.devModeTitle}>{DEV_MODE_LABEL}</Text>
+            <Text style={styles.info}>{getDevModeMessage('run')}</Text>
           </View>
         ) : null}
+
+        <View style={styles.statusCard}>
+          <Text style={styles.statusLabel}>Run status</Text>
+          <Text style={styles.statusValue}>{formatRunPhase(runPhase)}</Text>
+          <Text style={styles.info}>{runStatusText}</Text>
+        </View>
 
         <View style={styles.mapWrapper}>
           <RouteMap
@@ -495,7 +511,7 @@ export default function RunScreen() {
         </View>
 
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Location status</Text>
+          <Text style={styles.infoTitle}>Location and tracking</Text>
           {permissionState === 'loading' ? <Text style={styles.info}>Requesting location permission...</Text> : null}
           {permissionMessage ? <Text style={styles.warning}>{permissionMessage}</Text> : null}
           {currentLatLng ? (
@@ -514,10 +530,9 @@ export default function RunScreen() {
           ) : (
             <Text style={styles.info}>Move near the start zone to unlock the run.</Text>
           )}
+          {runPhase === 'running' ? <Text style={styles.success}>Tracking active: timer, distance, and trackpoints are updating locally.</Text> : null}
           {isWeb ? <Text style={styles.info}>Live GPS tracking is only enabled on mobile. Web uses a limited dev fallback.</Text> : null}
-          {devRunnerActive && !insideStartZone ? (
-            <Text style={styles.warning}>Dev mode: start zone validation bypassed</Text>
-          ) : null}
+          {devRunnerActive && !insideStartZone ? <Text style={styles.warning}>Dev mode: start zone validation bypassed</Text> : null}
         </View>
 
         {runPhase === 'ready' ? (
@@ -527,13 +542,17 @@ export default function RunScreen() {
         ) : null}
 
         {runPhase === 'running' ? (
-          <View style={styles.actionRow}>
-            <Pressable style={styles.secondaryButton} onPress={handleAbandonRun}>
-              <Text style={styles.secondaryButtonText}>Abandon Run</Text>
-            </Pressable>
-            <Pressable style={styles.primaryButton} onPress={() => void handleFinishRun()}>
-              <Text style={styles.primaryButtonText}>Finish Run</Text>
-            </Pressable>
+          <View style={styles.controlsCard}>
+            <Text style={styles.controlsTitle}>Active run controls</Text>
+            <Text style={styles.info}>Finish when you are done or abandon to keep the local attempt without upload.</Text>
+            <View style={styles.actionRow}>
+              <Pressable style={styles.secondaryButton} onPress={handleAbandonRun}>
+                <Text style={styles.secondaryButtonText}>Abandon Run</Text>
+              </Pressable>
+              <Pressable style={styles.primaryButton} onPress={() => void handleFinishRun()}>
+                <Text style={styles.primaryButtonText}>Finish Run</Text>
+              </Pressable>
+            </View>
           </View>
         ) : null}
 
@@ -543,10 +562,12 @@ export default function RunScreen() {
             <Text style={result.status === 'completed' ? styles.success : styles.warning}>
               Status: {result.status === 'completed' ? 'Completed' : 'Abandoned'}
             </Text>
-            <Text style={styles.info}>Duration: {formatDuration(result.durationSeconds)}</Text>
-            <Text style={styles.info}>Distance: {result.distanceKm.toFixed(3)} km</Text>
-            <Text style={styles.info}>Average speed: {result.avgSpeedKmh.toFixed(2)} km/h</Text>
-            <Text style={styles.info}>Activity points: {uploadedActivity ? uploadedActivity.points : 'Unavailable'}</Text>
+            <View style={styles.resultStats}>
+              <ResultMetric label="Duration" value={formatDuration(result.durationSeconds)} />
+              <ResultMetric label="Distance" value={`${result.distanceKm.toFixed(3)} km`} />
+              <ResultMetric label="Average speed" value={`${result.avgSpeedKmh.toFixed(2)} km/h`} />
+              <ResultMetric label="Activity points" value={uploadedActivity ? String(uploadedActivity.points) : 'Unavailable'} />
+            </View>
             <Text style={styles.info}>Season leaderboard totals update only when backend validation and scoring have completed.</Text>
 
             {uploading ? <Text style={styles.info}>Uploading activity...</Text> : null}
@@ -576,6 +597,15 @@ function StatCard({ label, value }: { label: string; value: string }) {
     <View style={styles.statCard}>
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
+    </View>
+  );
+}
+
+function ResultMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.resultMetric}>
+      <Text style={styles.resultMetricLabel}>{label}</Text>
+      <Text style={styles.resultMetricValue}>{value}</Text>
     </View>
   );
 }
@@ -632,6 +662,19 @@ function formatDuration(durationSeconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function formatRunPhase(value: RunPhase): string {
+  switch (value) {
+    case 'running':
+      return 'Tracking active';
+    case 'completed':
+      return 'Completed';
+    case 'abandoned':
+      return 'Abandoned';
+    default:
+      return 'Ready';
+  }
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -663,6 +706,7 @@ const styles = StyleSheet.create({
   },
   info: {
     color: '#334155',
+    lineHeight: 20,
   },
   warning: {
     color: '#9a3412',
@@ -682,6 +726,25 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     overflow: 'hidden',
   },
+  statusCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 6,
+  },
+  statusLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  statusValue: {
+    fontSize: 20,
+    color: '#0f172a',
+    fontWeight: '700',
+  },
   statsGrid: {
     flexDirection: 'row',
     gap: 10,
@@ -692,8 +755,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e2e8f0',
     backgroundColor: '#ffffff',
-    padding: 14,
-    gap: 4,
+    padding: 16,
+    gap: 6,
   },
   statLabel: {
     fontSize: 12,
@@ -702,7 +765,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 22,
     color: '#0f172a',
     fontWeight: '700',
   },
@@ -726,6 +789,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
+    flex: 1,
   },
   primaryButtonText: {
     color: '#ffffff',
@@ -749,6 +813,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
+  controlsCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 10,
+  },
+  controlsTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
   buttonDisabled: {
     backgroundColor: '#94a3b8',
   },
@@ -764,6 +841,23 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#0f172a',
+  },
+  resultStats: {
+    gap: 10,
+  },
+  resultMetric: {
+    gap: 2,
+  },
+  resultMetricLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  resultMetricValue: {
+    fontSize: 17,
+    color: '#0f172a',
+    fontWeight: '700',
   },
   devModeCard: {
     borderRadius: 14,
