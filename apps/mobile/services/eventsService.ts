@@ -1,6 +1,8 @@
 import { ClientError, gql } from 'graphql-request';
+import type { LatLng } from 'react-native-maps';
 import { nhost } from './nhostClient';
 import { requestGraphql } from './graphqlClient';
+import { parseGeoPoint } from '@/utils/route';
 
 export interface EventListItem {
   id: string;
@@ -15,6 +17,7 @@ export interface EventDetail extends EventListItem {
   participantCount: number | null;
   viewerParticipationStatus: string | null;
   viewerJoinedAt: string | null;
+  startAreaCenter: LatLng | null;
 }
 
 const PUBLIC_EVENTS_QUERY = gql`
@@ -26,6 +29,7 @@ const PUBLIC_EVENTS_QUERY = gql`
       starts_at
       reveal_at
       start_area_radius_km
+      start_area_center
     }
   }
 `;
@@ -71,6 +75,7 @@ const EVENT_DETAIL_QUERY_PUBLIC = gql`
       starts_at
       reveal_at
       start_area_radius_km
+      start_area_center
     }
   }
 `;
@@ -104,6 +109,7 @@ interface EventDetailQuery {
     starts_at: string;
     reveal_at: string;
     start_area_radius_km: number | string;
+    start_area_center: unknown;
   } | null;
   event_participants?: Array<{
     status: string;
@@ -157,6 +163,7 @@ function mapEventDetail(
     participantCount: participantCount ?? null,
     viewerParticipationStatus: participation?.[0]?.status ?? null,
     viewerJoinedAt: participation?.[0]?.joined_at ?? null,
+    startAreaCenter: parseGeoPoint(event.start_area_center),
   };
 }
 

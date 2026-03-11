@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RouteMap } from '@/components/RouteMap';
 import { useAuth } from '@/hooks/useAuth';
+import { fetchEventRoute } from '@/services/eventRoutes';
 import type { EventDetail } from '@/services/eventsService';
 import { fetchEventDetails, getEventErrorMessage, joinEvent } from '@/services/eventsService';
+import type { EventRoute } from '@/utils/route';
 
 export default function EventDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -14,8 +17,12 @@ export default function EventDetailsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [joinLoading, setJoinLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [route, setRoute] = useState<EventRoute | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const eventId = Array.isArray(id) ? id[0] : id;
+  const routeRevealed = event ? new Date(event.revealAt).getTime() <= Date.now() : false;
 
   useEffect(() => {
     let active = true;
@@ -61,6 +68,55 @@ export default function EventDetailsScreen() {
       active = false;
     };
   }, [eventId, isAuthenticated, reloadKey]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!event || !routeRevealed || !eventId) {
+      setRoute(null);
+      setRouteError(null);
+      setRouteLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    const loadRoute = async () => {
+      setRouteLoading(true);
+      setRouteError(null);
+
+      try {
+        const nextRoute = await fetchEventRoute(eventId);
+        if (!active) {
+          return;
+        }
+
+        if (!nextRoute) {
+          setRoute(null);
+          setRouteError('The route should be revealed now, but route details are not available yet.');
+        } else {
+          setRoute(nextRoute);
+        }
+      } catch (err) {
+        if (!active) {
+          return;
+        }
+
+        setRoute(null);
+        setRouteError(err instanceof Error ? err.message : 'Failed to load the route.');
+      } finally {
+        if (active) {
+          setRouteLoading(false);
+        }
+      }
+    };
+
+    void loadRoute();
+
+    return () => {
+      active = false;
+    };
+  }, [event, eventId, reloadKey, routeRevealed]);
 
   const handleJoin = async () => {
     if (!eventId) {
@@ -143,6 +199,38 @@ export default function EventDetailsScreen() {
             Meet inside the approximate start zone before kickoff. The detailed route stays hidden until reveal time.
           </Text>
         </View>
+
+        {!routeRevealed ? (
+          <View style={styles.infoCard}>
+            <Text style={styles.infoCardTitle}>Route not revealed yet</Text>
+            <Text style={styles.infoCardText}>The route will unlock after {formatDateTime(event.revealAt)}.</Text>
+          </View>
+        ) : routeLoading ? (
+          <View style={styles.infoCard}>
+            <Text style={styles.infoCardTitle}>Loading route</Text>
+            <Text style={styles.infoCardText}>Fetching the revealed route now.</Text>
+          </View>
+        ) : routeError || !route ? (
+          <View style={styles.infoCard}>
+            <Text style={styles.infoCardTitle}>No route yet</Text>
+            <Text style={styles.infoCardText}>{routeError ?? 'Route details are not available yet.'}</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.mapCard}>
+              <RouteMap
+                routePolyline={route.polyline}
+                startPoint={route.startPoint}
+                endPoint={route.endPoint}
+                startZoneCenter={event.startAreaCenter}
+                startZoneRadiusKm={event.startAreaRadiusKm}
+              />
+            </View>
+            <Pressable style={styles.button} onPress={() => router.push(`/run/${event.id}`)}>
+              <Text style={styles.buttonText}>Go to run</Text>
+            </Pressable>
+          </>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.label}>Participation</Text>
@@ -227,6 +315,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     padding: 16,
     gap: 6,
+  },
+  mapCard: {
+    height: 260,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
   },
   infoCardTitle: {
     fontSize: 15,
