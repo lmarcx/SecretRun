@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import type { LocationObject } from 'expo-location';
@@ -33,6 +33,8 @@ interface RunResult {
   trackpoints: LocalTrackpoint[];
 }
 
+const RUN_ACCESS_DENIED_MESSAGE = 'Join this event before starting a run. Revealed routes are available only to participants.';
+
 export default function RunScreen() {
   const router = useRouter();
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
@@ -53,8 +55,10 @@ export default function RunScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadedActivity, setUploadedActivity] = useState<UploadedActivity | null>(null);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState<string | null>(null);
   const devRunnerActive = isDevRunnerActive();
   const isWeb = Platform.OS === 'web';
+  const hasRedirectedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -68,9 +72,10 @@ export default function RunScreen() {
 
       setLoading(true);
       setError(null);
+      setAccessDeniedMessage(null);
 
       try {
-        const [nextEvent, nextRoute] = await Promise.all([fetchEventDetails(resolvedEventId), fetchEventRoute(resolvedEventId)]);
+        const nextEvent = await fetchEventDetails(resolvedEventId);
         if (!active) {
           return;
         }
@@ -79,6 +84,19 @@ export default function RunScreen() {
           setEvent(null);
           setRoute(null);
           setError('Event not found.');
+          return;
+        }
+
+        const canAccessRun = devRunnerActive || nextEvent.viewerParticipationStatus === 'registered';
+        if (!canAccessRun) {
+          setEvent(nextEvent);
+          setRoute(null);
+          setAccessDeniedMessage(RUN_ACCESS_DENIED_MESSAGE);
+          return;
+        }
+
+        const nextRoute = await fetchEventRoute(resolvedEventId);
+        if (!active) {
           return;
         }
 
@@ -131,6 +149,26 @@ export default function RunScreen() {
       active = false;
     };
   }, [devRunnerActive, resolvedEventId]);
+
+  useEffect(() => {
+    if (!accessDeniedMessage || hasRedirectedRef.current) {
+      return;
+    }
+
+    hasRedirectedRef.current = true;
+    if (resolvedEventId) {
+      router.replace({
+        pathname: '/events/[id]',
+        params: {
+          id: resolvedEventId,
+          notice: accessDeniedMessage,
+        },
+      });
+      return;
+    }
+
+    router.replace('/events');
+  }, [accessDeniedMessage, resolvedEventId, router]);
 
   useEffect(() => {
     let active = true;
@@ -455,6 +493,16 @@ export default function RunScreen() {
       <SafeAreaView style={styles.centered}>
         <ActivityIndicator size="large" />
         <Text style={styles.info}>Loading run...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (accessDeniedMessage) {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <Text style={styles.title}>Run</Text>
+        <Text style={styles.warning}>{accessDeniedMessage}</Text>
+        <Text style={styles.info}>Redirecting you back to the event details.</Text>
       </SafeAreaView>
     );
   }

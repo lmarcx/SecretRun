@@ -1,8 +1,13 @@
-﻿import { GraphQLClient, gql } from 'graphql-request';
+import { GraphQLClient, gql } from 'graphql-request';
 
 interface Input {
   event_id: string;
-  user_id: string;
+  user_id?: string;
+}
+
+interface AuthenticatedRequest {
+  body?: Input;
+  headers?: Record<string, string | string[] | undefined>;
 }
 
 const getEventTeamQuery = gql`
@@ -21,7 +26,42 @@ function getFunctionsBaseUrl(): string {
   return process.env.NHOST_FUNCTIONS_BASE_URL ?? 'http://127.0.0.1:1337/v1/functions';
 }
 
-export default async function handler(req: { body?: Input }) {
+function getHeaderValue(
+  headers: Record<string, string | string[] | undefined> | undefined,
+  name: string,
+): string | null {
+  const direct = headers?.[name] ?? headers?.[name.toLowerCase()] ?? headers?.[name.toUpperCase()];
+  if (!direct) {
+    return null;
+  }
+
+  return Array.isArray(direct) ? direct[0] : direct;
+}
+
+function getEffectiveUserId(req: AuthenticatedRequest, adminSecret: string): string | null {
+  const headerUserId =
+    getHeaderValue(req.headers, 'x-hasura-user-id') ?? getHeaderValue(req.headers, 'X-Hasura-User-Id');
+  const bodyUserId = req.body?.user_id;
+  const internalAdminSecret =
+    getHeaderValue(req.headers, 'x-hasura-admin-secret') ?? getHeaderValue(req.headers, 'X-Hasura-Admin-Secret');
+  const isInternalAdminCall = internalAdminSecret === adminSecret;
+
+  if (headerUserId) {
+    if (bodyUserId && bodyUserId !== headerUserId) {
+      throw new Error('Body user_id does not match authenticated user.');
+    }
+
+    return headerUserId;
+  }
+
+  if (isInternalAdminCall && bodyUserId) {
+    return bodyUserId;
+  }
+
+  return null;
+}
+
+export default async function handler(req: AuthenticatedRequest) {
   const url = process.env.NHOST_GRAPHQL_URL;
   const adminSecret = process.env.NHOST_ADMIN_SECRET;
 
@@ -30,8 +70,22 @@ export default async function handler(req: { body?: Input }) {
   }
 
   const payload = req.body;
-  if (!payload?.event_id || !payload?.user_id) {
-    return { success: false, error: 'event_id and user_id are required' };
+  if (!payload?.event_id) {
+    return { success: false, error: 'event_id is required' };
+  }
+
+  let currentUserId: string | null;
+  try {
+    currentUserId = getEffectiveUserId(req, adminSecret);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Could not verify user identity.',
+    };
+  }
+
+  if (!currentUserId) {
+    return { success: false, error: 'Missing verified user identity.' };
   }
 
   const client = new GraphQLClient(url, {
@@ -43,7 +97,7 @@ export default async function handler(req: { body?: Input }) {
     team_members: Array<{ team_id: string }>;
   }>(getEventTeamQuery, {
     eventId: payload.event_id,
-    userId: payload.user_id,
+    userId: currentUserId,
   });
 
   const event = eventResponse.events_by_pk;
@@ -68,7 +122,7 @@ export default async function handler(req: { body?: Input }) {
     },
     body: JSON.stringify({
       event_id: payload.event_id,
-      user_id: payload.user_id,
+      user_id: currentUserId,
     }),
   });
 
@@ -87,10 +141,25 @@ export default async function handler(req: { body?: Input }) {
     participationResult = { success: false, error: 'Invalid participation-reward response' };
   }
 
+  if (
+    typeof participationResult === 'object' &&
+    participationResult !== null &&
+    'success' in participationResult &&
+    participationResult.success === false
+  ) {
+    return {
+      success: false,
+      error:
+        'error' in participationResult && typeof participationResult.error === 'string'
+          ? participationResult.error
+          : 'participation-reward refused the request.',
+    };
+  }
+
   return {
     success: true,
     event_id: payload.event_id,
-    user_id: payload.user_id,
+    user_id: currentUserId,
     participation: participationResult,
   };
 }

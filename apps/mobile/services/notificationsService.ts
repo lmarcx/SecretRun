@@ -18,6 +18,14 @@ export interface NotificationRegistrationState {
 
 export type NotificationRoute = '/leaderboard' | '/feed' | `/events/${string}`;
 
+export const notificationEventTypes = {
+  eventReveal: 'event_reveal',
+  eventStart: 'event_start',
+  eventStartLegacy: 'event_start_reminder',
+  resultsAvailable: 'results_available',
+  activityComment: 'activity_comment',
+} as const;
+
 export const notificationCapabilities: NotificationCapability[] = [
   {
     key: 'route_reveal',
@@ -120,7 +128,7 @@ export async function enablePushNotifications(): Promise<NotificationRegistratio
     const projectId = Constants.easConfig?.projectId ?? extra.eas?.projectId ?? process.env.EXPO_PUBLIC_EXPO_PROJECT_ID ?? undefined;
     const pushToken = (await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : {})).data;
 
-    await registerDeviceToken(user.id, pushToken);
+    await registerDeviceToken(pushToken);
 
     return {
       kind: 'registered',
@@ -145,22 +153,27 @@ export function getRouteFromNotificationData(data: unknown): NotificationRoute |
   const type = typeof payload.type === 'string' ? payload.type : null;
   const eventId = typeof payload.event_id === 'string' ? payload.event_id : null;
 
-  if ((type === 'event_reveal' || type === 'event_start') && eventId) {
+  if (
+    (type === notificationEventTypes.eventReveal ||
+      type === notificationEventTypes.eventStart ||
+      type === notificationEventTypes.eventStartLegacy) &&
+    eventId
+  ) {
     return `/events/${eventId}`;
   }
 
-  if (type === 'results_available') {
+  if (type === notificationEventTypes.resultsAvailable) {
     return '/leaderboard';
   }
 
-  if (type === 'activity_comment' && typeof payload.activity_id === 'string') {
+  if (type === notificationEventTypes.activityComment && typeof payload.activity_id === 'string') {
     return '/feed';
   }
 
   return null;
 }
 
-async function registerDeviceToken(userId: string, pushToken: string) {
+async function registerDeviceToken(pushToken: string) {
   const accessToken = nhost.auth.getAccessToken();
   const response = await fetch(`${getFunctionsBaseUrl()}/register-device`, {
     method: 'POST',
@@ -169,7 +182,6 @@ async function registerDeviceToken(userId: string, pushToken: string) {
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: JSON.stringify({
-      user_id: userId,
       push_token: pushToken,
       platform: Platform.OS,
     }),

@@ -1,4 +1,6 @@
-﻿import { GraphQLClient, gql } from 'graphql-request';
+import { GraphQLClient, gql } from 'graphql-request';
+
+const EVENT_START_NOTIFICATION_TYPE = 'event_start';
 
 const upcomingEventsQuery = gql`
   query UpcomingEvents($from: timestamptz!, $to: timestamptz!) {
@@ -85,7 +87,7 @@ export default async function handler() {
         title: 'Your run starts in 30 minutes',
         body: 'Get ready. Warm up and head to the start area.',
         data: {
-          type: 'event_start_reminder',
+          type: EVENT_START_NOTIFICATION_TYPE,
           event_id: event.id,
           starts_at: event.starts_at,
         },

@@ -6,21 +6,17 @@ object_relationships:
     using:
       foreign_key_constraint_on: event_id
 select_permissions:
-  - role: anonymous
-    permission:
-      columns: [id, event_id, route_polyline, revealed, revealed_at, created_at]
-      filter:
-        revealed:
-          _eq: true
-      allow_aggregations: true
-      query_root_fields: [select, select_by_pk, select_aggregate]
-      subscription_root_fields: [select, select_by_pk, select_aggregate]
   - role: user
     permission:
       columns: [id, event_id, route_polyline, revealed, revealed_at, created_at]
       filter:
-        revealed:
-          _eq: true
+        _and:
+          - revealed:
+              _eq: true
+          - event:
+              participants:
+                user_id:
+                  _eq: X-Hasura-User-Id
       allow_aggregations: true
       query_root_fields: [select, select_by_pk, select_aggregate]
       subscription_root_fields: [select, select_by_pk, select_aggregate]

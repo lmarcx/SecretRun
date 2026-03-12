@@ -119,13 +119,25 @@ const getFeedWithCursorQuery = gql`
 
 function getCurrentUserId(
   headers?: Record<string, string | string[] | undefined>,
+  adminSecret?: string,
   bodyUserId?: string,
 ): string | null {
   const value = headers?.['x-hasura-user-id'] ?? headers?.['X-Hasura-User-Id'];
   if (value) {
-    return Array.isArray(value) ? value[0] : value;
+    const headerUserId = Array.isArray(value) ? value[0] : value;
+    if (bodyUserId && bodyUserId !== headerUserId) {
+      throw new Error('Body user_id does not match authenticated user.');
+    }
+    return headerUserId;
   }
-  return bodyUserId ?? null;
+
+  const adminHeader = headers?.['x-hasura-admin-secret'] ?? headers?.['X-Hasura-Admin-Secret'];
+  const resolvedAdminHeader = Array.isArray(adminHeader) ? adminHeader[0] : adminHeader;
+  if (resolvedAdminHeader && adminSecret && resolvedAdminHeader === adminSecret && bodyUserId) {
+    return bodyUserId;
+  }
+
+  return null;
 }
 
 function clampLimit(limit?: number): number {
@@ -161,9 +173,18 @@ export default async function handler(req: {
   }
 
   const payload = req.body;
-  const currentUserId = getCurrentUserId(req.headers, payload?.user_id);
+  let currentUserId: string | null;
+  try {
+    currentUserId = getCurrentUserId(req.headers, adminSecret, payload?.user_id);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Could not verify user identity.',
+    };
+  }
+
   if (!currentUserId) {
-    return { success: false, error: 'user_id is required' };
+    return { success: false, error: 'Missing verified user identity.' };
   }
 
   const limit = clampLimit(payload?.limit);

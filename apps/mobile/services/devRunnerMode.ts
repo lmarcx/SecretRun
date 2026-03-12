@@ -1,6 +1,21 @@
 import { nhost } from './nhostClient';
 
-export const DEV_RUNNER_MODE = true;
+const configuredDevRunnerMode = process.env.EXPO_PUBLIC_DEV_RUNNER_MODE;
+const devRuntimeEnabled = typeof __DEV__ !== 'undefined' && __DEV__;
+
+function isConfiguredDevRunnerEnabled(): boolean {
+  if (!devRuntimeEnabled) {
+    return false;
+  }
+
+  if (configuredDevRunnerMode === undefined) {
+    return true;
+  }
+
+  return configuredDevRunnerMode === 'true';
+}
+
+export const DEV_RUNNER_MODE = isConfiguredDevRunnerEnabled();
 export const DEV_MODE_LABEL = 'DEV MODE';
 
 export const DEV_RUNNER = {

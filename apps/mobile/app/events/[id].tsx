@@ -12,7 +12,7 @@ import { getStoredRunSession } from '@/services/runSessionStore';
 import type { EventRoute } from '@/utils/route';
 
 export default function EventDetailsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, notice } = useLocalSearchParams<{ id: string; notice?: string }>();
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const [event, setEvent] = useState<EventDetail | null>(null);
@@ -29,6 +29,7 @@ export default function EventDetailsScreen() {
   const effectiveRunner = getEffectiveRunner();
   const storedRunSession = eventId ? getStoredRunSession(eventId) : null;
   const hasFinishedRun = storedRunSession?.phase === 'completed';
+  const noticeMessage = Array.isArray(notice) ? notice[0] : notice;
 
   useEffect(() => {
     let active = true;
@@ -88,7 +89,9 @@ export default function EventDetailsScreen() {
     }
 
     const routeRevealed = new Date(event.revealAt).getTime() <= Date.now();
-    if (!routeRevealed && !devRunnerActive) {
+    const joined = event.viewerParticipationStatus === 'registered';
+
+    if ((!joined || !routeRevealed) && !devRunnerActive) {
       setRoute(null);
       setRouteError(null);
       setRouteLoading(false);
@@ -273,6 +276,12 @@ export default function EventDetailsScreen() {
           </View>
         ) : null}
 
+        {noticeMessage ? (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeText}>{noticeMessage}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.timelineCard}>
           <Text style={styles.cardTitle}>Event timing</Text>
           <MetaRow label="Reveal" value={formatDateTime(event.revealAt)} />
@@ -300,7 +309,12 @@ export default function EventDetailsScreen() {
           {event.participantCount !== null ? <MetaRow label="Participants" value={String(event.participantCount)} /> : null}
         </View>
 
-        {!eventState.routeRevealed && !devRunnerActive ? (
+        {!eventState.joined && !devRunnerActive ? (
+          <View style={styles.infoCard}>
+            <Text style={styles.cardTitle}>Route access</Text>
+            <Text style={styles.infoCardText}>Join this event first. Revealed routes are visible only to participants.</Text>
+          </View>
+        ) : !eventState.routeRevealed && !devRunnerActive ? (
           <View style={styles.infoCard}>
             <Text style={styles.cardTitle}>Route locked</Text>
             <Text style={styles.infoCardText}>The route will be revealed after {formatDateTime(event.revealAt)}. Until then, only the start zone stays visible.</Text>
@@ -520,6 +534,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     padding: 16,
     gap: 8,
+  },
+  noticeCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#fdba74',
+    backgroundColor: '#fff7ed',
+    padding: 16,
+  },
+  noticeText: {
+    color: '#9a3412',
+    fontWeight: '600',
+    lineHeight: 20,
   },
   mapSection: {
     gap: 8,

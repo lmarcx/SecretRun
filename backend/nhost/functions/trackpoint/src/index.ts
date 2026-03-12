@@ -1,4 +1,4 @@
-﻿import { GraphQLClient, gql } from 'graphql-request';
+import { GraphQLClient, gql } from 'graphql-request';
 
 interface Input {
   activity_id: string;
@@ -13,8 +13,18 @@ interface PrevTrackpoint {
   recorded_at: string;
 }
 
+interface AuthenticatedRequest {
+  body?: Input;
+  headers?: Record<string, string | string[] | undefined>;
+}
+
 const getPreviousTrackpointQuery = gql`
   query PreviousTrackpoint($activityId: uuid!) {
+    activities_by_pk(id: $activityId) {
+      id
+      user_id
+      finished_at
+    }
     activity_trackpoints(
       where: { activity_id: { _eq: $activityId } }
       order_by: [{ seq: desc }, { recorded_at: desc }]
@@ -53,6 +63,24 @@ const insertTrackpointMutation = gql`
   }
 `;
 
+function getHeaderValue(
+  headers: Record<string, string | string[] | undefined> | undefined,
+  name: string,
+): string | null {
+  const direct = headers?.[name] ?? headers?.[name.toLowerCase()] ?? headers?.[name.toUpperCase()];
+  if (!direct) {
+    return null;
+  }
+
+  return Array.isArray(direct) ? direct[0] : direct;
+}
+
+function getAuthenticatedUserId(req: AuthenticatedRequest): string | null {
+  return (
+    getHeaderValue(req.headers, 'x-hasura-user-id') ?? getHeaderValue(req.headers, 'X-Hasura-User-Id')
+  );
+}
+
 function toRadians(value: number): number {
   return (value * Math.PI) / 180;
 }
@@ -88,7 +116,7 @@ function computeSpeedMps(previous: PrevTrackpoint | null, lat: number, lng: numb
   return Number((distanceMeters / deltaSeconds).toFixed(3));
 }
 
-export default async function handler(req: { body?: Input }) {
+export default async function handler(req: AuthenticatedRequest) {
   const url = process.env.NHOST_GRAPHQL_URL;
   const adminSecret = process.env.NHOST_ADMIN_SECRET;
 
@@ -104,18 +132,48 @@ export default async function handler(req: { body?: Input }) {
     };
   }
 
+  const currentUserId = getAuthenticatedUserId(req);
+  if (!currentUserId) {
+    return {
+      success: false,
+      error: 'Missing authenticated user context.',
+    };
+  }
+
   const client = new GraphQLClient(url, {
     headers: {
       'x-hasura-admin-secret': adminSecret,
     },
   });
 
-  const previousResponse = await client.request<{ activity_trackpoints: PrevTrackpoint[] }>(
-    getPreviousTrackpointQuery,
-    {
-      activityId: payload.activity_id,
-    },
-  );
+  const previousResponse = await client.request<{
+    activities_by_pk: { id: string; user_id: string; finished_at: string | null } | null;
+    activity_trackpoints: PrevTrackpoint[];
+  }>(getPreviousTrackpointQuery, {
+    activityId: payload.activity_id,
+  });
+
+  const activity = previousResponse.activities_by_pk;
+  if (!activity) {
+    return {
+      success: false,
+      error: 'Activity not found.',
+    };
+  }
+
+  if (activity.user_id !== currentUserId) {
+    return {
+      success: false,
+      error: 'You cannot add trackpoints to another runner\'s activity.',
+    };
+  }
+
+  if (activity.finished_at) {
+    return {
+      success: false,
+      error: 'Trackpoints cannot be added after the activity is finished.',
+    };
+  }
 
   const previous = previousResponse.activity_trackpoints[0] ?? null;
   const nextSeq = (previous?.seq ?? 0) + 1;

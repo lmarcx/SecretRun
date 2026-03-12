@@ -1,10 +1,15 @@
-﻿import { GraphQLClient, gql } from 'graphql-request';
+import { GraphQLClient, gql } from 'graphql-request';
 
 interface Input {
   user_id: string;
   title: string;
   body: string;
   data?: Record<string, unknown>;
+}
+
+interface RequestWithHeaders {
+  body?: Input;
+  headers?: Record<string, string | string[] | undefined>;
 }
 
 const getDevicesQuery = gql`
@@ -20,6 +25,30 @@ function getExpoPushUrl(): string {
   return process.env.EXPO_PUSH_API_URL ?? 'https://exp.host/--/api/v2/push/send';
 }
 
+function getHeaderValue(
+  headers: Record<string, string | string[] | undefined> | undefined,
+  name: string,
+): string | null {
+  const direct = headers?.[name] ?? headers?.[name.toLowerCase()] ?? headers?.[name.toUpperCase()];
+  if (!direct) {
+    return null;
+  }
+
+  return Array.isArray(direct) ? direct[0] : direct;
+}
+
+function isVerifiedSender(req: RequestWithHeaders, adminSecret: string): boolean {
+  const adminHeader =
+    getHeaderValue(req.headers, 'x-hasura-admin-secret') ?? getHeaderValue(req.headers, 'X-Hasura-Admin-Secret');
+  if (adminHeader === adminSecret) {
+    return true;
+  }
+
+  const userId =
+    getHeaderValue(req.headers, 'x-hasura-user-id') ?? getHeaderValue(req.headers, 'X-Hasura-User-Id');
+  return Boolean(userId && userId === req.body?.user_id);
+}
+
 function splitChunks<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -28,7 +57,7 @@ function splitChunks<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-export default async function handler(req: { body?: Input }) {
+export default async function handler(req: RequestWithHeaders) {
   const url = process.env.NHOST_GRAPHQL_URL;
   const adminSecret = process.env.NHOST_ADMIN_SECRET;
 
@@ -39,6 +68,10 @@ export default async function handler(req: { body?: Input }) {
   const payload = req.body;
   if (!payload?.user_id || !payload?.title || !payload?.body) {
     return { success: false, error: 'user_id, title and body are required' };
+  }
+
+  if (!isVerifiedSender(req, adminSecret)) {
+    return { success: false, error: 'Notification target could not be verified.' };
   }
 
   const client = new GraphQLClient(url, {

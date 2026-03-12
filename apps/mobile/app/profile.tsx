@@ -280,7 +280,7 @@ function NotificationCard({
       <Text style={styles.cardTitle}>Notifications</Text>
       {loading ? <Text style={styles.cardText}>Checking device notification support...</Text> : null}
       {!loading && state ? <Text style={styles.cardText}>{state.message}</Text> : null}
-      {state?.pushToken ? <Text style={styles.cardText}>Push token: {state.pushToken}</Text> : null}
+      {state?.pushToken ? <Text style={styles.cardText}>Device push token registered successfully.</Text> : null}
 
       <View style={styles.notificationList}>
         {notificationCapabilities.map((capability) => (
