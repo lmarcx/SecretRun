@@ -18,13 +18,14 @@ import { fetchEventRoute } from '@/services/eventRoutes';
 import { fetchEventDetails, type EventDetail } from '@/services/eventsService';
 import { getStoredRunSession, setStoredRunSession } from '@/services/runSessionStore';
 import type { EventRoute } from '@/utils/route';
-import { calculatePolylineDistanceMeters, haversineDistanceMeters, isWithinRadiusKm } from '@/utils/route';
+import { haversineDistanceMeters, isWithinRadiusKm } from '@/utils/route';
 
 type PermissionState = 'loading' | 'granted' | 'denied' | 'error';
-type RunPhase = 'ready' | 'running' | 'completed' | 'abandoned';
+type RunPhase = 'ready' | 'running' | 'completed' | 'abandoned' | 'invalid';
+type ResultStatus = 'completed' | 'abandoned' | 'invalid';
 
 interface RunResult {
-  status: 'completed' | 'abandoned';
+  status: ResultStatus;
   startedAt: string;
   finishedAt: string;
   durationSeconds: number;
@@ -33,7 +34,24 @@ interface RunResult {
   trackpoints: LocalTrackpoint[];
 }
 
-const RUN_ACCESS_DENIED_MESSAGE = 'Join this event before starting a run. Revealed routes are available only to participants.';
+interface TrackpointDecision {
+  accept: boolean;
+  distanceDeltaMeters: number;
+  message: string | null;
+  suspiciousWarning: string | null;
+}
+
+const RUN_ACCESS_DENIED_MESSAGE =
+  'Join this event before starting a run. Revealed routes are available only to participants.';
+const MAX_STALE_FIX_MS = 15000;
+const MAX_ACCURACY_METERS = 80;
+const MIN_DUPLICATE_DISTANCE_METERS = 2;
+const MIN_DUPLICATE_WINDOW_MS = 1500;
+const MAX_SEGMENT_SPEED_KMH = 30;
+const MAX_JUMP_METERS = 250;
+const MAX_JUMP_WINDOW_MS = 10000;
+const MIN_RUN_DURATION_SECONDS = 60;
+const MIN_RUN_DISTANCE_METERS = 250;
 
 export default function RunScreen() {
   const router = useRouter();
@@ -45,6 +63,7 @@ export default function RunScreen() {
   const [error, setError] = useState<string | null>(null);
   const [permissionState, setPermissionState] = useState<PermissionState>('loading');
   const [permissionMessage, setPermissionMessage] = useState<string | null>(null);
+  const [gpsQualityMessage, setGpsQualityMessage] = useState<string | null>(null);
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObjectCoords | null>(null);
   const [runPhase, setRunPhase] = useState<RunPhase>('ready');
   const [trackpoints, setTrackpoints] = useState<LocalTrackpoint[]>([]);
@@ -55,10 +74,37 @@ export default function RunScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadedActivity, setUploadedActivity] = useState<UploadedActivity | null>(null);
+  const [suspiciousWarning, setSuspiciousWarning] = useState<string | null>(null);
+  const [finishWarning, setFinishWarning] = useState<string | null>(null);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState<string | null>(null);
   const devRunnerActive = isDevRunnerActive();
   const isWeb = Platform.OS === 'web';
   const hasRedirectedRef = useRef(false);
+  const trackpointsRef = useRef<LocalTrackpoint[]>([]);
+  const distanceMetersRef = useRef(0);
+  const startedAtRef = useRef<string | null>(null);
+  const uploadedActivityRef = useRef<UploadedActivity | null>(null);
+  const suspiciousWarningRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    trackpointsRef.current = trackpoints;
+  }, [trackpoints]);
+
+  useEffect(() => {
+    distanceMetersRef.current = distanceMeters;
+  }, [distanceMeters]);
+
+  useEffect(() => {
+    startedAtRef.current = startedAt;
+  }, [startedAt]);
+
+  useEffect(() => {
+    uploadedActivityRef.current = uploadedActivity;
+  }, [uploadedActivity]);
+
+  useEffect(() => {
+    suspiciousWarningRef.current = suspiciousWarning;
+  }, [suspiciousWarning]);
 
   useEffect(() => {
     let active = true;
@@ -107,7 +153,8 @@ export default function RunScreen() {
           return;
         }
 
-        const fallbackRoute = !nextRoute && devRunnerActive && nextEvent.startAreaCenter ? createDevRoute(nextEvent.startAreaCenter) : null;
+        const fallbackRoute =
+          !nextRoute && devRunnerActive && nextEvent.startAreaCenter ? createDevRoute(nextEvent.startAreaCenter) : null;
         const resolvedRoute = nextRoute ?? fallbackRoute;
 
         if (!resolvedRoute) {
@@ -121,21 +168,45 @@ export default function RunScreen() {
         setEvent(nextEvent);
         setRoute(resolvedRoute);
 
+        if (storedRunSession?.phase === 'running' && storedRunSession.draft) {
+          trackpointsRef.current = storedRunSession.draft.trackpoints;
+          distanceMetersRef.current = storedRunSession.draft.distanceMeters;
+          startedAtRef.current = storedRunSession.draft.startedAt;
+          uploadedActivityRef.current = storedRunSession.draft.activity;
+          suspiciousWarningRef.current = storedRunSession.draft.suspiciousWarning;
+          setRunPhase('running');
+          setTrackpoints(storedRunSession.draft.trackpoints);
+          setDistanceMeters(storedRunSession.draft.distanceMeters);
+          setStartedAt(storedRunSession.draft.startedAt);
+          setElapsedSeconds(
+            Math.max(0, Math.floor((Date.now() - new Date(storedRunSession.draft.startedAt).getTime()) / 1000)),
+          );
+          setUploadedActivity(storedRunSession.draft.activity);
+          setSuspiciousWarning(storedRunSession.draft.suspiciousWarning);
+          setFinishWarning('Recovered an active run from local session state on this device.');
+          setUploadError(storedRunSession.uploadError);
+          setResult(null);
+          return;
+        }
+
         if (storedRunSession?.result) {
+          trackpointsRef.current = storedRunSession.result.trackpoints;
+          distanceMetersRef.current = storedRunSession.result.distanceKm * 1000;
+          startedAtRef.current = storedRunSession.result.startedAt;
+          uploadedActivityRef.current = storedRunSession.uploadedActivity;
           setResult(storedRunSession.result);
           setRunPhase(storedRunSession.phase);
           setElapsedSeconds(storedRunSession.result.durationSeconds);
           setDistanceMeters(storedRunSession.result.distanceKm * 1000);
+          setTrackpoints(storedRunSession.result.trackpoints);
           setStartedAt(storedRunSession.result.startedAt);
           setUploadedActivity(storedRunSession.uploadedActivity);
           setUploadError(storedRunSession.uploadError);
         }
       } catch (err) {
-        if (!active) {
-          return;
+        if (active) {
+          setError(err instanceof Error ? err.message : 'Failed to load the run.');
         }
-
-        setError(err instanceof Error ? err.message : 'Failed to load the run.');
       } finally {
         if (active) {
           setLoading(false);
@@ -157,13 +228,7 @@ export default function RunScreen() {
 
     hasRedirectedRef.current = true;
     if (resolvedEventId) {
-      router.replace({
-        pathname: '/events/[id]',
-        params: {
-          id: resolvedEventId,
-          notice: accessDeniedMessage,
-        },
-      });
+      router.replace({ pathname: '/events/[id]', params: { id: resolvedEventId, notice: accessDeniedMessage } });
       return;
     }
 
@@ -190,9 +255,7 @@ export default function RunScreen() {
         setPermissionState('granted');
         setPermissionMessage(null);
 
-        const initialLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
+        const initialLocation = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         if (active) {
           setCurrentLocation(initialLocation.coords);
         }
@@ -203,11 +266,7 @@ export default function RunScreen() {
         }
 
         subscription = await Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.Balanced,
-            timeInterval: 2000,
-            distanceInterval: 3,
-          },
+          { accuracy: Location.Accuracy.Balanced, timeInterval: 2000, distanceInterval: 3 },
           (location) => {
             setCurrentLocation(location.coords);
             if (runPhase === 'running') {
@@ -216,12 +275,10 @@ export default function RunScreen() {
           },
         );
       } catch (err) {
-        if (!active) {
-          return;
+        if (active) {
+          setPermissionState('error');
+          setPermissionMessage(err instanceof Error ? err.message : 'Location is unavailable in this environment.');
         }
-
-        setPermissionState('error');
-        setPermissionMessage(err instanceof Error ? err.message : 'Location is unavailable in this environment.');
       }
     };
 
@@ -250,16 +307,14 @@ export default function RunScreen() {
   }, [runPhase, startedAt]);
 
   const currentLatLng: LatLng | null = currentLocation
-    ? {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-      }
+    ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude }
     : null;
-
   const distanceToStartMeters =
     currentLatLng && event?.startAreaCenter ? haversineDistanceMeters(currentLatLng, event.startAreaCenter) : null;
   const insideStartZone =
-    currentLatLng && event?.startAreaCenter ? isWithinRadiusKm(currentLatLng, event.startAreaCenter, event.startAreaRadiusKm) : false;
+    currentLatLng && event?.startAreaCenter
+      ? isWithinRadiusKm(currentLatLng, event.startAreaCenter, event.startAreaRadiusKm)
+      : false;
   const canStart = Boolean(
     route &&
       event &&
@@ -272,42 +327,82 @@ export default function RunScreen() {
   const liveStats = useMemo(
     () => ({
       distanceKm: Number((distanceMeters / 1000).toFixed(3)),
-      avgSpeedKmh: elapsedSeconds > 0 ? Number((((distanceMeters / 1000) / elapsedSeconds) * 3600).toFixed(2)) : 0,
+      avgSpeedKmh:
+        elapsedSeconds > 0 ? Number((((distanceMeters / 1000) / elapsedSeconds) * 3600).toFixed(2)) : 0,
     }),
     [distanceMeters, elapsedSeconds],
   );
+
   const runStatusText =
     runPhase === 'running'
-      ? 'Tracking is active on this device. Keep the app open and finish when your route is complete.'
+      ? 'Tracking is active on this device. Weak or impossible GPS points are filtered before upload.'
       : runPhase === 'completed'
         ? uploadError
           ? 'Your local result is saved. Backend upload still needs attention.'
-          : 'Your run is complete and the local result is ready.'
+          : uploadedActivity?.status === 'rejected'
+            ? 'Your run finished locally, but backend validation flagged it for review.'
+            : 'Your run is complete and the trusted backend flow has finished.'
         : runPhase === 'abandoned'
           ? 'This run was abandoned and kept locally for review.'
-          : 'Move into the start zone, review the route, and begin when ready.';
+          : runPhase === 'invalid'
+            ? 'This run was not accepted as a valid completion.'
+            : 'Move into the start zone, review the route, and begin when ready.';
+
+  function persistRunningDraft(nextTrackpoints: LocalTrackpoint[], nextDistanceMeters: number, nextStartedAt: string) {
+    if (!resolvedEventId) {
+      return;
+    }
+
+    setStoredRunSession(resolvedEventId, {
+      phase: 'running',
+      draft: {
+        startedAt: nextStartedAt,
+        distanceMeters: nextDistanceMeters,
+        trackpoints: nextTrackpoints,
+        activity: uploadedActivityRef.current,
+        suspiciousWarning: suspiciousWarningRef.current,
+      },
+      result: null,
+      uploadedActivity: uploadedActivityRef.current,
+      uploadError: null,
+    });
+  }
+
+  function saveSuspiciousWarning(message: string | null) {
+    if (!message) {
+      return;
+    }
+
+    suspiciousWarningRef.current = message;
+    setSuspiciousWarning((previous) => previous ?? message);
+  }
 
   function appendTrackpoint(location: LocationObject) {
     const nextPoint = mapLocationToTrackpoint(location);
+    const previousPoint = trackpointsRef.current[trackpointsRef.current.length - 1] ?? null;
+    const decision = evaluateTrackpoint(previousPoint, nextPoint);
 
-    setTrackpoints((previous) => {
-      const lastPoint = previous[previous.length - 1];
-      if (lastPoint) {
-        const deltaMeters = haversineDistanceMeters(
-          { latitude: lastPoint.latitude, longitude: lastPoint.longitude },
-          { latitude: nextPoint.latitude, longitude: nextPoint.longitude },
-        );
-        const deltaMs = new Date(nextPoint.recordedAt).getTime() - new Date(lastPoint.recordedAt).getTime();
+    if (!decision.accept) {
+      setGpsQualityMessage(decision.message);
+      saveSuspiciousWarning(decision.suspiciousWarning);
+      return;
+    }
 
-        if (deltaMeters < 2 && deltaMs < 1500) {
-          return previous;
-        }
+    const nextTrackpoints = [...trackpointsRef.current, nextPoint];
+    const nextDistanceMeters = distanceMetersRef.current + decision.distanceDeltaMeters;
+    const nextStartedAt = startedAtRef.current ?? nextPoint.recordedAt;
 
-        setDistanceMeters((value) => value + deltaMeters);
-      }
+    trackpointsRef.current = nextTrackpoints;
+    distanceMetersRef.current = nextDistanceMeters;
+    startedAtRef.current = nextStartedAt;
 
-      return [...previous, nextPoint];
-    });
+    setTrackpoints(nextTrackpoints);
+    setDistanceMeters(nextDistanceMeters);
+    setStartedAt(nextStartedAt);
+    setElapsedSeconds(Math.max(0, Math.floor((Date.now() - new Date(nextStartedAt).getTime()) / 1000)));
+    setGpsQualityMessage(null);
+    saveSuspiciousWarning(decision.suspiciousWarning);
+    persistRunningDraft(nextTrackpoints, nextDistanceMeters, nextStartedAt);
   }
 
   function handleStartRun() {
@@ -316,11 +411,14 @@ export default function RunScreen() {
     }
 
     const startLocation = currentLocation
-      ? mapLocationToTrackpoint({
-          coords: currentLocation,
-          timestamp: Date.now(),
-        } as LocationObject)
+      ? mapLocationToTrackpoint({ coords: currentLocation, timestamp: Date.now() } as LocationObject)
       : createFallbackTrackpoint(route?.startPoint ?? event?.startAreaCenter ?? null);
+
+    trackpointsRef.current = [startLocation];
+    distanceMetersRef.current = 0;
+    startedAtRef.current = startLocation.recordedAt;
+    uploadedActivityRef.current = null;
+    suspiciousWarningRef.current = null;
 
     setRunPhase('running');
     setTrackpoints([startLocation]);
@@ -330,38 +428,39 @@ export default function RunScreen() {
     setResult(null);
     setUploadError(null);
     setUploadedActivity(null);
+    setSuspiciousWarning(null);
+    setGpsQualityMessage(null);
+    setFinishWarning(null);
+    persistRunningDraft([startLocation], 0, startLocation.recordedAt);
   }
 
   function handleAbandonRun() {
-    const effectiveStartedAt = startedAt ?? new Date().toISOString();
+    const effectiveStartedAt = startedAtRef.current ?? new Date().toISOString();
     const finishedAt = new Date().toISOString();
-    const durationSeconds = Math.max(0, Math.floor((new Date(finishedAt).getTime() - new Date(effectiveStartedAt).getTime()) / 1000));
+    const durationSeconds = Math.max(
+      0,
+      Math.floor((new Date(finishedAt).getTime() - new Date(effectiveStartedAt).getTime()) / 1000),
+    );
+    const nextResult = buildRunResult(
+      'abandoned',
+      effectiveStartedAt,
+      finishedAt,
+      durationSeconds,
+      distanceMetersRef.current,
+      trackpointsRef.current,
+    );
 
     setRunPhase('abandoned');
     setElapsedSeconds(durationSeconds);
-    setResult({
-      status: 'abandoned',
-      startedAt: effectiveStartedAt,
-      finishedAt,
-      durationSeconds,
-      distanceKm: Number((distanceMeters / 1000).toFixed(3)),
-      avgSpeedKmh: durationSeconds > 0 ? Number((((distanceMeters / 1000) / durationSeconds) * 3600).toFixed(2)) : 0,
-      trackpoints,
-    });
+    setResult(nextResult);
+    setFinishWarning('Abandoned runs stay local and are not uploaded to the backend.');
     setUploadError('Abandoned runs are not persisted by the current MVP backend.');
 
     if (resolvedEventId) {
       setStoredRunSession(resolvedEventId, {
         phase: 'abandoned',
-        result: {
-          status: 'abandoned',
-          startedAt: effectiveStartedAt,
-          finishedAt,
-          durationSeconds,
-          distanceKm: Number((distanceMeters / 1000).toFixed(3)),
-          avgSpeedKmh: durationSeconds > 0 ? Number((((distanceMeters / 1000) / durationSeconds) * 3600).toFixed(2)) : 0,
-          trackpoints,
-        },
+        draft: null,
+        result: nextResult,
         uploadedActivity: null,
         uploadError: 'Abandoned runs are not persisted by the current MVP backend.',
       });
@@ -369,34 +468,71 @@ export default function RunScreen() {
   }
 
   async function handleFinishRun() {
+    setFinishWarning(null);
+
     const finalPoint =
       currentLocation === null
         ? isWeb
           ? createFallbackTrackpoint(route?.endPoint ?? route?.startPoint ?? event?.startAreaCenter ?? null)
           : null
-        : mapLocationToTrackpoint({
-            coords: currentLocation,
-            timestamp: Date.now(),
-          } as LocationObject);
-    const allTrackpoints = buildFinishedTrackpoints(trackpoints, finalPoint);
-    const finishedAt = finalPoint?.recordedAt ?? new Date().toISOString();
-    const effectiveStartedAt = startedAt ?? allTrackpoints[0]?.recordedAt ?? new Date().toISOString();
-    const totalDistanceMeters = calculatePolylineDistanceMeters(
-      allTrackpoints.map((point) => ({
-        latitude: point.latitude,
-        longitude: point.longitude,
-      })),
+        : mapLocationToTrackpoint({ coords: currentLocation, timestamp: Date.now() } as LocationObject);
+
+    let allTrackpoints = trackpointsRef.current;
+    let totalDistanceMeters = distanceMetersRef.current;
+
+    if (finalPoint) {
+      const decision = evaluateTrackpoint(trackpointsRef.current[trackpointsRef.current.length - 1] ?? null, finalPoint);
+      if (decision.accept) {
+        allTrackpoints = [...trackpointsRef.current, finalPoint];
+        totalDistanceMeters += decision.distanceDeltaMeters;
+      } else if (decision.message) {
+        setGpsQualityMessage(decision.message);
+        saveSuspiciousWarning(decision.suspiciousWarning);
+      }
+    }
+
+    const finishedAt = allTrackpoints[allTrackpoints.length - 1]?.recordedAt ?? new Date().toISOString();
+    const effectiveStartedAt = startedAtRef.current ?? allTrackpoints[0]?.recordedAt ?? new Date().toISOString();
+    const durationSeconds = Math.max(
+      0,
+      Math.floor((new Date(finishedAt).getTime() - new Date(effectiveStartedAt).getTime()) / 1000),
     );
-    const durationSeconds = Math.max(0, Math.floor((new Date(finishedAt).getTime() - new Date(effectiveStartedAt).getTime()) / 1000));
-    const nextResult: RunResult = {
-      status: 'completed',
-      startedAt: effectiveStartedAt,
+
+    if (allTrackpoints.length < 2) {
+      finalizeInvalidRun(
+        buildRunResult('invalid', effectiveStartedAt, finishedAt, durationSeconds, totalDistanceMeters, allTrackpoints),
+        'We need more stable GPS samples before this run can be completed.',
+      );
+      return;
+    }
+
+    if (durationSeconds < MIN_RUN_DURATION_SECONDS) {
+      finalizeInvalidRun(
+        buildRunResult('invalid', effectiveStartedAt, finishedAt, durationSeconds, totalDistanceMeters, allTrackpoints),
+        `Run too short. Keep moving for at least ${MIN_RUN_DURATION_SECONDS} seconds before finishing.`,
+      );
+      return;
+    }
+
+    if (totalDistanceMeters < MIN_RUN_DISTANCE_METERS) {
+      finalizeInvalidRun(
+        buildRunResult('invalid', effectiveStartedAt, finishedAt, durationSeconds, totalDistanceMeters, allTrackpoints),
+        `Run too short. Cover at least ${(MIN_RUN_DISTANCE_METERS / 1000).toFixed(2)} km before finishing.`,
+      );
+      return;
+    }
+
+    const nextResult = buildRunResult(
+      'completed',
+      effectiveStartedAt,
       finishedAt,
       durationSeconds,
-      distanceKm: Number((totalDistanceMeters / 1000).toFixed(3)),
-      avgSpeedKmh: durationSeconds > 0 ? Number((((totalDistanceMeters / 1000) / durationSeconds) * 3600).toFixed(2)) : 0,
-      trackpoints: allTrackpoints,
-    };
+      totalDistanceMeters,
+      allTrackpoints,
+    );
+
+    trackpointsRef.current = allTrackpoints;
+    distanceMetersRef.current = totalDistanceMeters;
 
     setRunPhase('completed');
     setTrackpoints(allTrackpoints);
@@ -404,26 +540,44 @@ export default function RunScreen() {
     setElapsedSeconds(durationSeconds);
     setResult(nextResult);
     setUploadError(null);
-    setUploadedActivity(null);
+    setGpsQualityMessage(null);
 
     if (resolvedEventId) {
       setStoredRunSession(resolvedEventId, {
         phase: 'completed',
-        result: {
-          status: 'completed',
-          startedAt: nextResult.startedAt,
-          finishedAt: nextResult.finishedAt,
-          durationSeconds: nextResult.durationSeconds,
-          distanceKm: nextResult.distanceKm,
-          avgSpeedKmh: nextResult.avgSpeedKmh,
-          trackpoints: nextResult.trackpoints,
-        },
-        uploadedActivity: null,
+        draft: null,
+        result: nextResult,
+        uploadedActivity: uploadedActivityRef.current,
         uploadError: null,
       });
     }
 
-    await persistResult(nextResult, null);
+    await persistResult(nextResult, uploadedActivityRef.current);
+  }
+
+  function finalizeInvalidRun(nextResult: RunResult, message: string) {
+    trackpointsRef.current = nextResult.trackpoints;
+    distanceMetersRef.current = nextResult.distanceKm * 1000;
+    startedAtRef.current = nextResult.startedAt;
+
+    setRunPhase('invalid');
+    setTrackpoints(nextResult.trackpoints);
+    setDistanceMeters(nextResult.distanceKm * 1000);
+    setElapsedSeconds(nextResult.durationSeconds);
+    setResult(nextResult);
+    setUploadError(message);
+    setFinishWarning(message);
+    setUploading(false);
+
+    if (resolvedEventId) {
+      setStoredRunSession(resolvedEventId, {
+        phase: 'invalid',
+        draft: null,
+        result: nextResult,
+        uploadedActivity: null,
+        uploadError: message,
+      });
+    }
   }
 
   async function persistResult(nextResult: RunResult, existingActivity: UploadedActivity | null) {
@@ -446,40 +600,37 @@ export default function RunScreen() {
         existingActivity,
       });
 
+      uploadedActivityRef.current = activity;
       setUploadedActivity(activity);
+      setFinishWarning(
+        activity.status === 'rejected'
+          ? 'This run was flagged during backend validation and was not scored.'
+          : suspiciousWarningRef.current
+            ? 'This run was uploaded, but some GPS samples looked suspicious and may still be reviewed.'
+            : null,
+      );
 
       setStoredRunSession(resolvedEventId, {
         phase: 'completed',
-        result: {
-          status: nextResult.status,
-          startedAt: nextResult.startedAt,
-          finishedAt: nextResult.finishedAt,
-          durationSeconds: nextResult.durationSeconds,
-          distanceKm: nextResult.distanceKm,
-          avgSpeedKmh: nextResult.avgSpeedKmh,
-          trackpoints: nextResult.trackpoints,
-        },
+        draft: null,
+        result: nextResult,
         uploadedActivity: activity,
         uploadError: null,
       });
     } catch (err) {
       const nextUploadError = getActivityErrorMessage(err);
       setUploadError(nextUploadError);
+      setFinishWarning('Local result kept on device. Retry upload after the backend or network recovers.');
+
       if (err instanceof ActivityUploadError && err.activity) {
+        uploadedActivityRef.current = err.activity;
         setUploadedActivity(err.activity);
       }
 
       setStoredRunSession(resolvedEventId, {
         phase: 'completed',
-        result: {
-          status: nextResult.status,
-          startedAt: nextResult.startedAt,
-          finishedAt: nextResult.finishedAt,
-          durationSeconds: nextResult.durationSeconds,
-          distanceKm: nextResult.distanceKm,
-          avgSpeedKmh: nextResult.avgSpeedKmh,
-          trackpoints: nextResult.trackpoints,
-        },
+        draft: null,
+        result: nextResult,
         uploadedActivity: err instanceof ActivityUploadError ? err.activity : null,
         uploadError: nextUploadError,
       });
@@ -553,15 +704,27 @@ export default function RunScreen() {
         </View>
 
         <View style={styles.statsGrid}>
-          <StatCard label="Timer" value={formatDuration(runPhase === 'running' ? elapsedSeconds : result?.durationSeconds ?? elapsedSeconds)} />
-          <StatCard label="Distance" value={`${(runPhase === 'running' ? liveStats.distanceKm : result?.distanceKm ?? liveStats.distanceKm).toFixed(3)} km`} />
-          <StatCard label="Avg speed" value={`${(runPhase === 'running' ? liveStats.avgSpeedKmh : result?.avgSpeedKmh ?? liveStats.avgSpeedKmh).toFixed(2)} km/h`} />
+          <StatCard
+            label="Timer"
+            value={formatDuration(runPhase === 'running' ? elapsedSeconds : result?.durationSeconds ?? elapsedSeconds)}
+          />
+          <StatCard
+            label="Distance"
+            value={`${(runPhase === 'running' ? liveStats.distanceKm : result?.distanceKm ?? liveStats.distanceKm).toFixed(3)} km`}
+          />
+          <StatCard
+            label="Avg speed"
+            value={`${(runPhase === 'running' ? liveStats.avgSpeedKmh : result?.avgSpeedKmh ?? liveStats.avgSpeedKmh).toFixed(2)} km/h`}
+          />
         </View>
 
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>Location and tracking</Text>
           {permissionState === 'loading' ? <Text style={styles.info}>Requesting location permission...</Text> : null}
           {permissionMessage ? <Text style={styles.warning}>{permissionMessage}</Text> : null}
+          {gpsQualityMessage ? <Text style={styles.warning}>{gpsQualityMessage}</Text> : null}
+          {suspiciousWarning ? <Text style={styles.warning}>{suspiciousWarning}</Text> : null}
+          {finishWarning ? <Text style={styles.info}>{finishWarning}</Text> : null}
           {currentLatLng ? (
             <Text style={styles.info}>
               Current location: {currentLatLng.latitude.toFixed(5)}, {currentLatLng.longitude.toFixed(5)}
@@ -578,7 +741,9 @@ export default function RunScreen() {
           ) : (
             <Text style={styles.info}>Move near the start zone to unlock the run.</Text>
           )}
-          {runPhase === 'running' ? <Text style={styles.success}>Tracking active: timer, distance, and trackpoints are updating locally.</Text> : null}
+          {runPhase === 'running' ? (
+            <Text style={styles.success}>Tracking active: accepted GPS samples are updating locally.</Text>
+          ) : null}
           {isWeb ? <Text style={styles.info}>Live GPS tracking is only enabled on mobile. Web uses a limited dev fallback.</Text> : null}
           {devRunnerActive && !insideStartZone ? <Text style={styles.warning}>Dev mode: start zone validation bypassed</Text> : null}
         </View>
@@ -592,7 +757,9 @@ export default function RunScreen() {
         {runPhase === 'running' ? (
           <View style={styles.controlsCard}>
             <Text style={styles.controlsTitle}>Active run controls</Text>
-            <Text style={styles.info}>Finish when you are done or abandon to keep the local attempt without upload.</Text>
+            <Text style={styles.info}>
+              Finish when you are done. Runs shorter than {(MIN_RUN_DISTANCE_METERS / 1000).toFixed(2)} km or under {MIN_RUN_DURATION_SECONDS} seconds stay invalid and local only.
+            </Text>
             <View style={styles.actionRow}>
               <Pressable style={styles.secondaryButton} onPress={handleAbandonRun}>
                 <Text style={styles.secondaryButtonText}>Abandon Run</Text>
@@ -607,8 +774,8 @@ export default function RunScreen() {
         {result ? (
           <View style={styles.resultCard}>
             <Text style={styles.resultTitle}>Run result</Text>
-            <Text style={result.status === 'completed' ? styles.success : styles.warning}>
-              Status: {result.status === 'completed' ? 'Completed' : 'Abandoned'}
+            <Text style={result.status === 'completed' ? styles.success : result.status === 'invalid' ? styles.error : styles.warning}>
+              Status: {formatResultStatus(result.status)}
             </Text>
             <View style={styles.resultStats}>
               <ResultMetric label="Duration" value={formatDuration(result.durationSeconds)} />
@@ -617,19 +784,17 @@ export default function RunScreen() {
               <ResultMetric label="Activity points" value={uploadedActivity ? String(uploadedActivity.points) : 'Unavailable'} />
             </View>
             <Text style={styles.info}>Season leaderboard totals update only when backend validation and scoring have completed.</Text>
-
             {uploading ? <Text style={styles.info}>Uploading activity...</Text> : null}
-            {!uploading && !uploadError && result.status === 'completed' ? (
+            {!uploading && result.status === 'completed' && !uploadError && uploadedActivity?.status !== 'rejected' ? (
               <Text style={styles.success}>Finish success. Activity upload completed.</Text>
             ) : null}
+            {uploadedActivity?.status === 'rejected' ? <Text style={styles.warning}>Backend validation flagged this run. It was not scored.</Text> : null}
             {uploadError ? <Text style={styles.error}>Upload failed: {uploadError}</Text> : null}
-
             {result.status === 'completed' && uploadError ? (
-              <Pressable style={styles.secondaryButton} onPress={() => void persistResult(result, uploadedActivity)}>
+              <Pressable style={styles.secondaryButton} onPress={() => void persistResult(result, uploadedActivityRef.current)}>
                 <Text style={styles.secondaryButtonText}>Retry upload</Text>
               </Pressable>
             ) : null}
-
             <Pressable style={styles.secondaryButton} onPress={() => router.replace(`/events/${event.id}`)}>
               <Text style={styles.secondaryButtonText}>Back to event</Text>
             </Pressable>
@@ -666,6 +831,7 @@ function mapLocationToTrackpoint(location: LocationObject): LocalTrackpoint {
     longitude: location.coords.longitude,
     recordedAt: new Date(location.timestamp ?? Date.now()).toISOString(),
     speedKmh: Number(Math.max(0, speedMs * 3.6).toFixed(2)),
+    accuracyMeters: location.coords.accuracy ?? null,
   };
 }
 
@@ -677,25 +843,98 @@ function createFallbackTrackpoint(point: LatLng | null): LocalTrackpoint {
     longitude: fallbackPoint.longitude,
     recordedAt: new Date().toISOString(),
     speedKmh: 0,
+    accuracyMeters: null,
   };
 }
 
-function buildFinishedTrackpoints(trackpoints: LocalTrackpoint[], finalPoint: LocalTrackpoint | null): LocalTrackpoint[] {
-  if (!finalPoint) {
-    return trackpoints;
+function evaluateTrackpoint(previousPoint: LocalTrackpoint | null, nextPoint: LocalTrackpoint): TrackpointDecision {
+  const recordedAtMs = new Date(nextPoint.recordedAt).getTime();
+  if (Number.isNaN(recordedAtMs)) {
+    return {
+      accept: false,
+      distanceDeltaMeters: 0,
+      message: 'Ignoring a GPS fix with an invalid timestamp.',
+      suspiciousWarning: 'Some GPS samples looked inconsistent during this run.',
+    };
   }
 
-  const lastPoint = trackpoints[trackpoints.length - 1];
+  if (Date.now() - recordedAtMs > MAX_STALE_FIX_MS) {
+    return {
+      accept: false,
+      distanceDeltaMeters: 0,
+      message: 'Weak GPS signal. Waiting for a fresher location fix.',
+      suspiciousWarning: null,
+    };
+  }
+
+  if (nextPoint.accuracyMeters != null && nextPoint.accuracyMeters > MAX_ACCURACY_METERS) {
+    return {
+      accept: false,
+      distanceDeltaMeters: 0,
+      message: 'GPS accuracy is weak right now. Move into a clearer area and keep running.',
+      suspiciousWarning: null,
+    };
+  }
+
+  if (!previousPoint) {
+    return { accept: true, distanceDeltaMeters: 0, message: null, suspiciousWarning: null };
+  }
+
+  const previousRecordedAtMs = new Date(previousPoint.recordedAt).getTime();
+  const deltaMs = recordedAtMs - previousRecordedAtMs;
+  if (deltaMs <= 0) {
+    return {
+      accept: false,
+      distanceDeltaMeters: 0,
+      message: 'Ignoring an out-of-order GPS fix.',
+      suspiciousWarning: 'Some GPS timestamps became incoherent during this run.',
+    };
+  }
+
+  const distanceDeltaMeters = haversineDistanceMeters(
+    { latitude: previousPoint.latitude, longitude: previousPoint.longitude },
+    { latitude: nextPoint.latitude, longitude: nextPoint.longitude },
+  );
+
+  if (distanceDeltaMeters < MIN_DUPLICATE_DISTANCE_METERS && deltaMs < MIN_DUPLICATE_WINDOW_MS) {
+    return { accept: false, distanceDeltaMeters: 0, message: null, suspiciousWarning: null };
+  }
+
+  const deltaSeconds = deltaMs / 1000;
+  const segmentSpeedKmh = (distanceDeltaMeters / deltaSeconds) * 3.6;
   if (
-    lastPoint &&
-    lastPoint.latitude === finalPoint.latitude &&
-    lastPoint.longitude === finalPoint.longitude &&
-    lastPoint.recordedAt === finalPoint.recordedAt
+    segmentSpeedKmh > MAX_SEGMENT_SPEED_KMH ||
+    (distanceDeltaMeters > MAX_JUMP_METERS && deltaMs <= MAX_JUMP_WINDOW_MS)
   ) {
-    return trackpoints;
+    return {
+      accept: false,
+      distanceDeltaMeters: 0,
+      message: 'Ignoring an impossible GPS jump. Keep the app open until the signal stabilizes.',
+      suspiciousWarning: 'Some GPS samples looked suspicious. Backend validation may review this run.',
+    };
   }
 
-  return [...trackpoints, finalPoint];
+  return { accept: true, distanceDeltaMeters, message: null, suspiciousWarning: null };
+}
+
+function buildRunResult(
+  status: ResultStatus,
+  startedAt: string,
+  finishedAt: string,
+  durationSeconds: number,
+  totalDistanceMeters: number,
+  trackpoints: LocalTrackpoint[],
+): RunResult {
+  return {
+    status,
+    startedAt,
+    finishedAt,
+    durationSeconds,
+    distanceKm: Number((totalDistanceMeters / 1000).toFixed(3)),
+    avgSpeedKmh:
+      durationSeconds > 0 ? Number((((totalDistanceMeters / 1000) / durationSeconds) * 3600).toFixed(2)) : 0,
+    trackpoints,
+  };
 }
 
 function formatDuration(durationSeconds: number): string {
@@ -718,209 +957,61 @@ function formatRunPhase(value: RunPhase): string {
       return 'Completed';
     case 'abandoned':
       return 'Abandoned';
+    case 'invalid':
+      return 'Invalid';
     default:
       return 'Ready';
   }
 }
 
+function formatResultStatus(value: ResultStatus): string {
+  switch (value) {
+    case 'completed':
+      return 'Completed';
+    case 'abandoned':
+      return 'Abandoned';
+    default:
+      return 'Invalid';
+  }
+}
+
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  content: {
-    padding: 16,
-    gap: 14,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    padding: 16,
-    gap: 8,
-  },
-  header: {
-    gap: 4,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#475569',
-  },
-  info: {
-    color: '#334155',
-    lineHeight: 20,
-  },
-  warning: {
-    color: '#9a3412',
-    fontWeight: '600',
-  },
-  success: {
-    color: '#166534',
-    fontWeight: '600',
-  },
-  error: {
-    color: '#b91c1c',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  mapWrapper: {
-    height: 280,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  statusCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 6,
-  },
-  statusLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  statusValue: {
-    fontSize: 20,
-    color: '#0f172a',
-    fontWeight: '700',
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 6,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    textTransform: 'uppercase',
-    fontWeight: '700',
-  },
-  statValue: {
-    fontSize: 22,
-    color: '#0f172a',
-    fontWeight: '700',
-  },
-  infoCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 8,
-  },
-  infoTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  primaryButton: {
-    minHeight: 52,
-    borderRadius: 12,
-    backgroundColor: '#0f172a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    flex: 1,
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    minHeight: 52,
-    borderRadius: 12,
-    backgroundColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  secondaryButtonText: {
-    color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  controlsCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 10,
-  },
-  controlsTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  buttonDisabled: {
-    backgroundColor: '#94a3b8',
-  },
-  resultCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 10,
-  },
-  resultTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  resultStats: {
-    gap: 10,
-  },
-  resultMetric: {
-    gap: 2,
-  },
-  resultMetricLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  resultMetricValue: {
-    fontSize: 17,
-    color: '#0f172a',
-    fontWeight: '700',
-  },
-  devModeCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#f59e0b',
-    backgroundColor: '#fffbeb',
-    padding: 16,
-    gap: 6,
-  },
-  devModeTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#92400e',
-    textTransform: 'uppercase',
-  },
+  screen: { flex: 1, backgroundColor: '#f8fafc' },
+  content: { padding: 16, gap: 14 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc', padding: 16, gap: 8 },
+  header: { gap: 4 },
+  title: { fontSize: 28, fontWeight: '700', color: '#0f172a' },
+  subtitle: { fontSize: 16, color: '#475569' },
+  info: { color: '#334155', lineHeight: 20 },
+  warning: { color: '#9a3412', fontWeight: '600' },
+  success: { color: '#166534', fontWeight: '600' },
+  error: { color: '#b91c1c', fontWeight: '600', textAlign: 'center' },
+  mapWrapper: { height: 280, borderRadius: 14, overflow: 'hidden' },
+  statusCard: { borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 16, gap: 6 },
+  statusLabel: { fontSize: 12, color: '#64748b', fontWeight: '700', textTransform: 'uppercase' },
+  statusValue: { fontSize: 20, color: '#0f172a', fontWeight: '700' },
+  statsGrid: { flexDirection: 'row', gap: 10 },
+  statCard: { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 16, gap: 6 },
+  statLabel: { fontSize: 12, color: '#64748b', textTransform: 'uppercase', fontWeight: '700' },
+  statValue: { fontSize: 22, color: '#0f172a', fontWeight: '700' },
+  infoCard: { borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 16, gap: 8 },
+  infoTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
+  primaryButton: { minHeight: 52, borderRadius: 12, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, flex: 1 },
+  primaryButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
+  secondaryButton: { minHeight: 52, borderRadius: 12, backgroundColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  secondaryButtonText: { color: '#0f172a', fontSize: 16, fontWeight: '700' },
+  actionRow: { flexDirection: 'row', gap: 12 },
+  controlsCard: { borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 16, gap: 10 },
+  controlsTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a' },
+  buttonDisabled: { backgroundColor: '#94a3b8' },
+  resultCard: { borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 16, gap: 10 },
+  resultTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
+  resultStats: { gap: 10 },
+  resultMetric: { gap: 2 },
+  resultMetricLabel: { fontSize: 12, color: '#64748b', fontWeight: '700', textTransform: 'uppercase' },
+  resultMetricValue: { fontSize: 17, color: '#0f172a', fontWeight: '700' },
+  devModeCard: { borderRadius: 14, borderWidth: 1, borderColor: '#f59e0b', backgroundColor: '#fffbeb', padding: 16, gap: 6 },
+  devModeTitle: { fontSize: 13, fontWeight: '800', color: '#92400e', textTransform: 'uppercase' },
 });
 
 function createDevRoute(center: LatLng): EventRoute {

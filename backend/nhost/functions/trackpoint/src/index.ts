@@ -1,10 +1,19 @@
 import { GraphQLClient, gql } from 'graphql-request';
 
-interface Input {
-  activity_id: string;
+interface RawTrackpointInput {
   lat: number;
   lng: number;
   timestamp: string;
+  speed_kmh?: number | null;
+}
+
+interface Input {
+  activity_id: string;
+  lat?: number;
+  lng?: number;
+  timestamp?: string;
+  speed_kmh?: number | null;
+  trackpoints?: RawTrackpointInput[];
 }
 
 interface PrevTrackpoint {
@@ -13,10 +22,32 @@ interface PrevTrackpoint {
   recorded_at: string;
 }
 
+interface NormalizedTrackpoint {
+  lat: number;
+  lng: number;
+  timestamp: string;
+  speedKmh: number | null;
+}
+
+interface TrackpointInsertInput {
+  activity_id: string;
+  seq: number;
+  recorded_at: string;
+  point: string;
+  speed_mps: number;
+  speed_kmh: number;
+}
+
 interface AuthenticatedRequest {
   body?: Input;
   headers?: Record<string, string | string[] | undefined>;
 }
+
+const MAX_JUMP_METERS = 250;
+const MAX_JUMP_WINDOW_SECONDS = 10;
+const MAX_SPEED_MPS = 8.5;
+const DUPLICATE_DISTANCE_METERS = 2;
+const DUPLICATE_WINDOW_MS = 1500;
 
 const getPreviousTrackpointQuery = gql`
   query PreviousTrackpoint($activityId: uuid!) {
@@ -37,28 +68,10 @@ const getPreviousTrackpointQuery = gql`
   }
 `;
 
-const insertTrackpointMutation = gql`
-  mutation InsertTrackpoint(
-    $activityId: uuid!
-    $seq: Int!
-    $recordedAt: timestamptz!
-    $point: geography!
-    $speedMps: numeric
-    $speedKmh: numeric
-  ) {
-    insert_activity_trackpoints_one(
-      object: {
-        activity_id: $activityId
-        seq: $seq
-        recorded_at: $recordedAt
-        point: $point
-        speed_mps: $speedMps
-        speed_kmh: $speedKmh
-      }
-    ) {
-      id
-      seq
-      speed_mps
+const insertTrackpointsMutation = gql`
+  mutation InsertTrackpoints($objects: [activity_trackpoints_insert_input!]!) {
+    insert_activity_trackpoints(objects: $objects) {
+      affected_rows
     }
   }
 `;
@@ -98,22 +111,61 @@ function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2:
   return earthRadiusM * c;
 }
 
-function computeSpeedMps(previous: PrevTrackpoint | null, lat: number, lng: number, timestamp: string): number {
-  if (!previous?.point?.coordinates) {
-    return 0;
+function normalizeTrackpoints(payload: Input | undefined): NormalizedTrackpoint[] {
+  if (!payload?.activity_id) {
+    return [];
   }
 
-  const [prevLng, prevLat] = previous.point.coordinates;
-  const prevTimestampMs = new Date(previous.recorded_at).getTime();
-  const currentTimestampMs = new Date(timestamp).getTime();
+  const rawTrackpoints =
+    payload.trackpoints && payload.trackpoints.length > 0
+      ? payload.trackpoints
+      : payload.lat !== undefined && payload.lng !== undefined && payload.timestamp
+        ? [
+            {
+              lat: payload.lat,
+              lng: payload.lng,
+              timestamp: payload.timestamp,
+              speed_kmh: payload.speed_kmh ?? null,
+            },
+          ]
+        : [];
 
-  const deltaSeconds = (currentTimestampMs - prevTimestampMs) / 1000;
-  if (deltaSeconds <= 0) {
-    return 0;
+  return rawTrackpoints.map((trackpoint) => {
+    if (!Number.isFinite(trackpoint.lat) || !Number.isFinite(trackpoint.lng)) {
+      throw new Error('Trackpoints must include finite lat/lng values.');
+    }
+
+    const timestamp = new Date(trackpoint.timestamp);
+    if (Number.isNaN(timestamp.getTime())) {
+      throw new Error('Trackpoints must include valid ISO timestamps.');
+    }
+
+    return {
+      lat: trackpoint.lat,
+      lng: trackpoint.lng,
+      timestamp: timestamp.toISOString(),
+      speedKmh:
+        trackpoint.speed_kmh === undefined || trackpoint.speed_kmh === null
+          ? null
+          : Number(Number(trackpoint.speed_kmh).toFixed(2)),
+    };
+  });
+}
+
+function buildWarning(insertedCount: number, skippedCount: number, suspiciousPoints: number): string | null {
+  if (insertedCount === 0 && skippedCount > 0) {
+    return 'No trackpoints were accepted from this batch.';
   }
 
-  const distanceMeters = haversineDistanceMeters(prevLat, prevLng, lat, lng);
-  return Number((distanceMeters / deltaSeconds).toFixed(3));
+  if (suspiciousPoints > 0) {
+    return 'Some trackpoints were skipped because they looked inconsistent.';
+  }
+
+  if (skippedCount > 0) {
+    return 'Some duplicate trackpoints were skipped.';
+  }
+
+  return null;
 }
 
 export default async function handler(req: AuthenticatedRequest) {
@@ -125,10 +177,27 @@ export default async function handler(req: AuthenticatedRequest) {
   }
 
   const payload = req.body;
-  if (!payload?.activity_id || payload.lat === undefined || payload.lng === undefined || !payload.timestamp) {
+  if (!payload?.activity_id) {
     return {
       success: false,
-      error: 'activity_id, lat, lng and timestamp are required',
+      error: 'activity_id is required',
+    };
+  }
+
+  let normalizedTrackpoints: NormalizedTrackpoint[];
+  try {
+    normalizedTrackpoints = normalizeTrackpoints(payload);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Trackpoint payload is invalid.',
+    };
+  }
+
+  if (normalizedTrackpoints.length === 0) {
+    return {
+      success: false,
+      error: 'At least one trackpoint is required.',
     };
   }
 
@@ -175,27 +244,93 @@ export default async function handler(req: AuthenticatedRequest) {
     };
   }
 
-  const previous = previousResponse.activity_trackpoints[0] ?? null;
-  const nextSeq = (previous?.seq ?? 0) + 1;
-  const speedMps = computeSpeedMps(previous, payload.lat, payload.lng, payload.timestamp);
-  const speedKmh = Number((speedMps * 3.6).toFixed(2));
-  const point = `SRID=4326;POINT(${payload.lng} ${payload.lat})`;
+  let previousAccepted = previousResponse.activity_trackpoints[0] ?? null;
+  let nextSeq = (previousAccepted?.seq ?? 0) + 1;
+  let skippedCount = 0;
+  let suspiciousPoints = 0;
+  const objects: TrackpointInsertInput[] = [];
 
-  const insertResponse = await client.request<{
-    insert_activity_trackpoints_one: { id: number; seq: number; speed_mps: number | null };
-  }>(insertTrackpointMutation, {
-    activityId: payload.activity_id,
-    seq: nextSeq,
-    recordedAt: payload.timestamp,
-    point,
-    speedMps,
-    speedKmh,
-  });
+  for (const trackpoint of normalizedTrackpoints) {
+    const currentTimestampMs = new Date(trackpoint.timestamp).getTime();
+
+    if (previousAccepted?.recorded_at) {
+      const previousTimestampMs = new Date(previousAccepted.recorded_at).getTime();
+      const deltaMs = currentTimestampMs - previousTimestampMs;
+
+      if (deltaMs <= 0) {
+        skippedCount += 1;
+        suspiciousPoints += 1;
+        continue;
+      }
+
+      if (previousAccepted.point?.coordinates) {
+        const [prevLng, prevLat] = previousAccepted.point.coordinates;
+        const distanceMeters = haversineDistanceMeters(prevLat, prevLng, trackpoint.lat, trackpoint.lng);
+        if (distanceMeters < DUPLICATE_DISTANCE_METERS && deltaMs < DUPLICATE_WINDOW_MS) {
+          skippedCount += 1;
+          continue;
+        }
+
+        const deltaSeconds = deltaMs / 1000;
+        const computedSpeedMps = distanceMeters / deltaSeconds;
+        const looksLikeJump = distanceMeters > MAX_JUMP_METERS && deltaSeconds <= MAX_JUMP_WINDOW_SECONDS;
+
+        if (looksLikeJump || computedSpeedMps > MAX_SPEED_MPS) {
+          skippedCount += 1;
+          suspiciousPoints += 1;
+          continue;
+        }
+      }
+    }
+
+    let speedMps = 0;
+    if (previousAccepted?.point?.coordinates) {
+      const [prevLng, prevLat] = previousAccepted.point.coordinates;
+      const previousTimestampMs = new Date(previousAccepted.recorded_at).getTime();
+      const deltaSeconds = (currentTimestampMs - previousTimestampMs) / 1000;
+
+      if (deltaSeconds > 0) {
+        const distanceMeters = haversineDistanceMeters(prevLat, prevLng, trackpoint.lat, trackpoint.lng);
+        speedMps = Number((distanceMeters / deltaSeconds).toFixed(3));
+      }
+    }
+
+    const speedKmh = trackpoint.speedKmh ?? Number((speedMps * 3.6).toFixed(2));
+    objects.push({
+      activity_id: payload.activity_id,
+      seq: nextSeq,
+      recorded_at: trackpoint.timestamp,
+      point: `SRID=4326;POINT(${trackpoint.lng} ${trackpoint.lat})`,
+      speed_mps: speedMps,
+      speed_kmh: speedKmh,
+    });
+
+    previousAccepted = {
+      seq: nextSeq,
+      recorded_at: trackpoint.timestamp,
+      point: {
+        coordinates: [trackpoint.lng, trackpoint.lat],
+      },
+    };
+    nextSeq += 1;
+  }
+
+  if (objects.length > 0) {
+    await client.request<{
+      insert_activity_trackpoints: { affected_rows: number };
+    }>(insertTrackpointsMutation, {
+      objects,
+    });
+  }
+
+  const insertedCount = objects.length;
+  const warning = buildWarning(insertedCount, skippedCount, suspiciousPoints);
 
   return {
     success: true,
-    trackpoint_id: insertResponse.insert_activity_trackpoints_one.id,
-    seq: insertResponse.insert_activity_trackpoints_one.seq,
-    speed_mps: insertResponse.insert_activity_trackpoints_one.speed_mps,
+    inserted_count: insertedCount,
+    skipped_count: skippedCount,
+    suspicious_points: suspiciousPoints,
+    warning,
   };
 }

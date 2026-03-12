@@ -1,13 +1,13 @@
-import { ClientError, gql } from 'graphql-request';
+import { ClientError } from 'graphql-request';
 import { getEffectiveRunner } from './devRunnerMode';
 import { getFunctionsBaseUrl, nhost } from './nhostClient';
-import { requestGraphql } from './graphqlClient';
 
 export interface LocalTrackpoint {
   latitude: number;
   longitude: number;
   recordedAt: string;
   speedKmh: number | null;
+  accuracyMeters?: number | null;
 }
 
 export interface CompletedRunPayload {
@@ -18,6 +18,7 @@ export interface CompletedRunPayload {
   distanceKm: number;
   avgSpeedKmh: number;
   trackpoints: LocalTrackpoint[];
+  activity?: UploadedActivity | null;
   existingActivity?: UploadedActivity | null;
 }
 
@@ -32,35 +33,26 @@ export interface UploadedActivity {
   finishedAt: string | null;
 }
 
-export class ActivityUploadError extends Error {
-  activity: UploadedActivity | null;
-
-  constructor(message: string, activity: UploadedActivity | null = null) {
-    super(message);
-    this.name = 'ActivityUploadError';
-    this.activity = activity;
-  }
-}
-
-const INSERT_TRACKPOINTS_MUTATION = gql`
-  mutation InsertTrackpoints($objects: [activity_trackpoints_insert_input!]!) {
-    insert_activity_trackpoints(objects: $objects) {
-      affected_rows
-    }
-  }
-`;
-
-interface InsertTrackpointsMutation {
-  insert_activity_trackpoints: {
-    affected_rows: number;
-  };
+export interface TrackpointBatchResult {
+  insertedCount: number;
+  skippedCount: number;
+  suspiciousPoints: number;
+  warning: string | null;
 }
 
 interface WorkflowResponse<TPayload> {
   success?: boolean;
   error?: string;
   activity?: TPayload;
-  status?: string;
+}
+
+interface TrackpointsWorkflowResponse {
+  success?: boolean;
+  error?: string;
+  inserted_count?: number;
+  skipped_count?: number;
+  suspicious_points?: number;
+  warning?: string | null;
 }
 
 interface WorkflowActivityPayload {
@@ -72,6 +64,77 @@ interface WorkflowActivityPayload {
   avg_speed_kmh: number | string | null;
   started_at: string | null;
   finished_at: string | null;
+}
+
+export class ActivityUploadError extends Error {
+  activity: UploadedActivity | null;
+
+  constructor(message: string, activity: UploadedActivity | null = null) {
+    super(message);
+    this.name = 'ActivityUploadError';
+    this.activity = activity;
+  }
+}
+
+export async function startRunActivity(eventId: string, startedAt: string): Promise<UploadedActivity | null> {
+  const realUser = nhost.auth.getUser();
+  if (!realUser) {
+    return null;
+  }
+
+  try {
+    const response = await callActivityWorkflow('start-activity', {
+      event_id: eventId,
+      started_at: startedAt,
+    });
+    return mapWorkflowActivity(response);
+  } catch (error) {
+    throw new ActivityUploadError(getActivityErrorMessage(error));
+  }
+}
+
+export async function ingestTrackpoints(
+  activityId: string,
+  trackpoints: LocalTrackpoint[],
+): Promise<TrackpointBatchResult> {
+  if (trackpoints.length === 0) {
+    return {
+      insertedCount: 0,
+      skippedCount: 0,
+      suspiciousPoints: 0,
+      warning: null,
+    };
+  }
+
+  const accessToken = nhost.auth.getAccessToken();
+  const response = await fetch(`${getFunctionsBaseUrl()}/trackpoints`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: JSON.stringify({
+      activity_id: activityId,
+      trackpoints: trackpoints.map((point) => ({
+        lat: point.latitude,
+        lng: point.longitude,
+        timestamp: point.recordedAt,
+        speed_kmh: point.speedKmh,
+      })),
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as TrackpointsWorkflowResponse | null;
+  if (!response.ok || !payload?.success) {
+    throw new Error(payload?.error ?? `trackpoints failed with status ${response.status}.`);
+  }
+
+  return {
+    insertedCount: payload.inserted_count ?? 0,
+    skippedCount: payload.skipped_count ?? 0,
+    suspiciousPoints: payload.suspicious_points ?? 0,
+    warning: payload.warning ?? null,
+  };
 }
 
 export async function persistCompletedRun(payload: CompletedRunPayload): Promise<UploadedActivity> {
@@ -95,44 +158,22 @@ export async function persistCompletedRun(payload: CompletedRunPayload): Promise
     throw new ActivityUploadError('Sign in to upload this run. Local result is still available.');
   }
 
-  const activity = payload.existingActivity ?? (await startActivityWorkflow(payload));
+  const activity = payload.activity ?? payload.existingActivity ?? (await startRunActivity(payload.eventId, payload.startedAt));
+  if (!activity) {
+    throw new ActivityUploadError('Could not start the trusted activity workflow.');
+  }
 
   try {
-    if (payload.trackpoints.length > 0) {
-      // TODO(security): move trackpoint ingestion to a batched trusted function endpoint.
-      // Sprint 5 makes the backend workflow the preferred source of truth for activity
-      // creation and final validation, but trackpoints still flow through Hasura directly.
-      await requestGraphql<InsertTrackpointsMutation>(INSERT_TRACKPOINTS_MUTATION, {
-        objects: payload.trackpoints.map((point) => ({
-          activity_id: activity.id,
-          point: `SRID=4326;POINT(${point.longitude} ${point.latitude})`,
-          recorded_at: point.recordedAt,
-          speed_kmh: point.speedKmh,
-        })),
-      });
-    }
-
+    await ingestTrackpoints(activity.id, payload.trackpoints);
     return await finishActivityWorkflow(activity.id);
   } catch (error) {
     throw new ActivityUploadError(getActivityErrorMessage(error), activity);
   }
 }
 
-async function startActivityWorkflow(payload: CompletedRunPayload): Promise<UploadedActivity> {
-  try {
-    const response = await callWorkflowFunction<WorkflowActivityPayload>('start-activity', {
-      event_id: payload.eventId,
-      started_at: payload.startedAt,
-    });
-    return mapWorkflowActivity(response);
-  } catch (error) {
-    throw new ActivityUploadError(getActivityErrorMessage(error));
-  }
-}
-
 async function finishActivityWorkflow(activityId: string): Promise<UploadedActivity> {
   try {
-    const response = await callWorkflowFunction<WorkflowActivityPayload>('finish-activity', {
+    const response = await callActivityWorkflow('finish-activity', {
       activity_id: activityId,
     });
     return mapWorkflowActivity(response);
@@ -141,10 +182,10 @@ async function finishActivityWorkflow(activityId: string): Promise<UploadedActiv
   }
 }
 
-async function callWorkflowFunction<TPayload>(
+async function callActivityWorkflow(
   name: 'start-activity' | 'finish-activity',
   body: Record<string, unknown>,
-): Promise<TPayload> {
+): Promise<WorkflowActivityPayload> {
   const accessToken = nhost.auth.getAccessToken();
   const response = await fetch(`${getFunctionsBaseUrl()}/${name}`, {
     method: 'POST',
@@ -155,7 +196,7 @@ async function callWorkflowFunction<TPayload>(
     body: JSON.stringify(body),
   });
 
-  const payload = (await response.json().catch(() => null)) as WorkflowResponse<TPayload> | null;
+  const payload = (await response.json().catch(() => null)) as WorkflowResponse<WorkflowActivityPayload> | null;
   if (!response.ok || !payload?.success || !payload.activity) {
     throw new Error(payload?.error ?? `${name} failed with status ${response.status}.`);
   }
@@ -184,10 +225,6 @@ export function getActivityErrorMessage(error: unknown): string {
   if (error instanceof ClientError) {
     const firstMessage = error.response.errors?.[0]?.message;
     if (firstMessage) {
-      if (firstMessage.toLowerCase().includes("field 'insert_activities_one' not found")) {
-        return 'Activity upload is not exposed by the current backend permissions.';
-      }
-
       return firstMessage;
     }
   }
