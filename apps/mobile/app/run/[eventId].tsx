@@ -14,7 +14,7 @@ import {
   type UploadedActivity,
 } from '@/services/activitiesService';
 import { DEV_MODE_LABEL, getDevModeMessage, isDevRunnerActive } from '@/services/devRunnerMode';
-import { fetchEventRoute } from '@/services/eventRoutes';
+import { canFetchProtectedEventRoute, fetchEventRoute } from '@/services/eventRoutes';
 import { fetchEventDetails, type EventDetail } from '@/services/eventsService';
 import { getStoredRunSession, setStoredRunSession } from '@/services/runSessionStore';
 import type { EventRoute } from '@/utils/route';
@@ -141,15 +141,20 @@ export default function RunScreen() {
           return;
         }
 
-        const nextRoute = await fetchEventRoute(resolvedEventId);
-        if (!active) {
-          return;
-        }
-
         if (!devRunnerActive && new Date(nextEvent.revealAt).getTime() > Date.now()) {
           setEvent(nextEvent);
           setRoute(null);
           setError('This route is not revealed yet.');
+          return;
+        }
+
+        const canRequestBackendRoute = canFetchProtectedEventRoute(nextEvent.viewerParticipationStatus);
+        const nextRoute = canRequestBackendRoute
+          ? await fetchEventRoute(resolvedEventId, {
+              allowRequest: canRequestBackendRoute,
+            })
+          : null;
+        if (!active) {
           return;
         }
 

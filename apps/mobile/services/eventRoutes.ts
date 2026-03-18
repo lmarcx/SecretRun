@@ -1,6 +1,7 @@
-import { gql } from 'graphql-request';
+import { ClientError, gql } from 'graphql-request';
 import type { EventRoute } from '@/utils/route';
 import { normalizeEventRoute } from '@/utils/route';
+import { nhost } from './nhostClient';
 import { requestGraphql } from './graphqlClient';
 
 const EVENT_ROUTE_QUERY = gql`
@@ -17,11 +18,56 @@ interface EventRouteQuery {
   }>;
 }
 
-export async function fetchEventRoute(eventId: string): Promise<EventRoute | null> {
-  const response = await requestGraphql<EventRouteQuery>(EVENT_ROUTE_QUERY, {
-    eventId,
-  });
+interface FetchEventRouteOptions {
+  allowRequest?: boolean;
+}
 
-  const route = response.event_routes[0];
-  return normalizeEventRoute(route?.route_polyline ?? null);
+export function canFetchProtectedEventRoute(viewerParticipationStatus: string | null | undefined): boolean {
+  return Boolean(nhost.auth.getUser()?.id && viewerParticipationStatus === 'registered');
+}
+
+export async function fetchEventRoute(eventId: string, options: FetchEventRouteOptions = {}): Promise<EventRoute | null> {
+  if (!options.allowRequest) {
+    return null;
+  }
+
+  try {
+    const response = await requestGraphql<EventRouteQuery>(EVENT_ROUTE_QUERY, {
+      eventId,
+    });
+
+    const route = response.event_routes[0];
+    return normalizeEventRoute(route?.route_polyline ?? null);
+  } catch (error) {
+    if (isEventRouteUnavailableForRoleError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+function isEventRouteUnavailableForRoleError(error: unknown): boolean {
+  if (error instanceof ClientError) {
+    return Boolean(error.response.errors?.some((entry) => isEventRouteUnavailableMessage(entry.message)));
+  }
+
+  if (error instanceof Error) {
+    return isEventRouteUnavailableMessage(error.message);
+  }
+
+  return false;
+}
+
+function isEventRouteUnavailableMessage(message: string): boolean {
+  const lowerMessage = message.toLowerCase();
+
+  return (
+    lowerMessage.includes('event_routes') &&
+    (lowerMessage.includes('query_root') ||
+      lowerMessage.includes('not found') ||
+      lowerMessage.includes('cannot query field') ||
+      lowerMessage.includes('field') ||
+      lowerMessage.includes('permission'))
+  );
 }

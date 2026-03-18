@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { EventRoute } from '@/utils/route';
-import { fetchEventRoute } from '@/services/eventRoutes';
+import { canFetchProtectedEventRoute, fetchEventRoute } from '@/services/eventRoutes';
 
 interface UseEventRouteState {
   route: EventRoute | null;
@@ -8,10 +8,16 @@ interface UseEventRouteState {
   error: string | null;
 }
 
-export function useEventRoute(eventId?: string): UseEventRouteState {
+interface UseEventRouteOptions {
+  viewerParticipationStatus?: string | null;
+  allowRequest?: boolean;
+}
+
+export function useEventRoute(eventId?: string, options: UseEventRouteOptions = {}): UseEventRouteState {
   const [route, setRoute] = useState<EventRoute | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const allowRequest = options.allowRequest ?? canFetchProtectedEventRoute(options.viewerParticipationStatus);
 
   useEffect(() => {
     let isMounted = true;
@@ -23,12 +29,19 @@ export function useEventRoute(eventId?: string): UseEventRouteState {
       return;
     }
 
+    if (!allowRequest) {
+      setRoute(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     const load = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        const value = await fetchEventRoute(eventId);
+        const value = await fetchEventRoute(eventId, { allowRequest });
         if (!isMounted) {
           return;
         }
@@ -59,7 +72,7 @@ export function useEventRoute(eventId?: string): UseEventRouteState {
     return () => {
       isMounted = false;
     };
-  }, [eventId]);
+  }, [allowRequest, eventId]);
 
   return {
     route,

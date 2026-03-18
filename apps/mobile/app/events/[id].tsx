@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteMap } from '@/components/RouteMap';
 import { useAuth } from '@/hooks/useAuth';
 import { DEV_MODE_LABEL, getDevJoinLabel, getDevModeMessage, getEffectiveRunner, isDevRunnerActive } from '@/services/devRunnerMode';
-import { fetchEventRoute } from '@/services/eventRoutes';
+import { canFetchProtectedEventRoute, fetchEventRoute } from '@/services/eventRoutes';
 import type { EventDetail } from '@/services/eventsService';
 import { fetchEventDetails, getEventErrorMessage, joinEvent } from '@/services/eventsService';
 import { getStoredRunSession } from '@/services/runSessionStore';
@@ -90,6 +90,7 @@ export default function EventDetailsScreen() {
 
     const routeRevealed = new Date(event.revealAt).getTime() <= Date.now();
     const joined = event.viewerParticipationStatus === 'registered';
+    const canRequestBackendRoute = canFetchProtectedEventRoute(event.viewerParticipationStatus);
 
     if ((!joined || !routeRevealed) && !devRunnerActive) {
       setRoute(null);
@@ -100,12 +101,27 @@ export default function EventDetailsScreen() {
       };
     }
 
+    if (!canRequestBackendRoute) {
+      setRoute(null);
+      setRouteLoading(false);
+      setRouteError(
+        devRunnerActive
+          ? 'Route preview stays unavailable in DEV runner mode. Sign in with a beta account to view the backend route.'
+          : null,
+      );
+      return () => {
+        active = false;
+      };
+    }
+
     const loadRoute = async () => {
       setRouteLoading(true);
       setRouteError(null);
 
       try {
-        const nextRoute = await fetchEventRoute(eventId);
+        const nextRoute = await fetchEventRoute(eventId, {
+          allowRequest: canRequestBackendRoute,
+        });
         if (!active) {
           return;
         }
