@@ -14,7 +14,7 @@ import type { EventRoute } from '@/utils/route';
 export default function EventDetailsScreen() {
   const { id, notice } = useLocalSearchParams<{ id: string; notice?: string }>();
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isAvailable } = useAuth();
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +112,7 @@ export default function EventDetailsScreen() {
 
         if (!nextRoute) {
           setRoute(null);
-          setRouteError('The route should be revealed now, but route details are not available yet.');
+          setRouteError('The route should be available now, but it has not been published yet.');
         } else {
           setRoute(nextRoute);
         }
@@ -122,7 +122,7 @@ export default function EventDetailsScreen() {
         }
 
         setRoute(null);
-        setRouteError(err instanceof Error ? err.message : 'Failed to load the route.');
+        setRouteError('We could not load this route right now.');
       } finally {
         if (active) {
           setRouteLoading(false);
@@ -222,6 +222,7 @@ export default function EventDetailsScreen() {
     canOpenRun: eventState.canOpenRun,
     devRunnerActive,
     isAuthenticated,
+    isAuthAvailable: isAvailable,
     joinLoading,
   });
 
@@ -298,8 +299,8 @@ export default function EventDetailsScreen() {
                 ? 'Your local run result is saved on this device for this event.'
                 : 'You are registered and ready for reveal/start timing updates.'
               : devRunnerActive
-                ? 'Join locally in DEV mode to test the full flow without backend auth.'
-                : 'Join this event to unlock the run flow once reveal and start timing allow it.'}
+                ? 'Join locally in DEV runner mode to test the full flow on this device.'
+                : 'Join with a beta account to unlock the run flow when reveal and start timing allow it.'}
           </Text>
           <MetaRow
             label="Status"
@@ -372,6 +373,7 @@ function getPrimaryAction({
   canOpenRun,
   devRunnerActive,
   isAuthenticated,
+  isAuthAvailable,
   joinLoading,
 }: {
   hasFinishedRun: boolean;
@@ -379,6 +381,7 @@ function getPrimaryAction({
   canOpenRun: boolean;
   devRunnerActive: boolean;
   isAuthenticated: boolean;
+  isAuthAvailable: boolean;
   joinLoading: boolean;
 }) {
   if (hasFinishedRun) {
@@ -386,7 +389,7 @@ function getPrimaryAction({
       kind: 'view_result' as const,
       label: 'View result',
       disabled: false,
-      hint: 'Open the saved result screen and upload state for this event.',
+      hint: 'Open the saved result for this event.',
     };
   }
 
@@ -404,7 +407,7 @@ function getPrimaryAction({
       kind: 'joined' as const,
       label: 'Already joined',
       disabled: true,
-      hint: 'This event is registered. Start Run unlocks after reveal and start timing, unless DEV mode bypass is active.',
+      hint: 'Start Run unlocks after reveal and start timing. DEV runner can bypass this locally.',
     };
   }
 
@@ -413,7 +416,16 @@ function getPrimaryAction({
       kind: 'join' as const,
       label: joinLoading ? 'Joining...' : getDevJoinLabel(),
       disabled: joinLoading,
-      hint: 'This joins locally only and keeps the backend auth system untouched.',
+      hint: 'This stays on this device and does not create beta-account participation.',
+    };
+  }
+
+  if (!isAuthenticated && !isAuthAvailable) {
+    return {
+      kind: 'auth_unavailable' as const,
+      label: 'Sign-in unavailable',
+      disabled: true,
+      hint: 'This local build is guest-only right now. Event joining opens once sign-in is connected.',
     };
   }
 
@@ -422,7 +434,7 @@ function getPrimaryAction({
       kind: 'login' as const,
       label: 'Sign in to join',
       disabled: false,
-      hint: 'Local auth is still unavailable in this environment, so this opens the signed-out auth shell.',
+      hint: 'Use a beta account to register for this event and unlock your synced beta features.',
     };
   }
 

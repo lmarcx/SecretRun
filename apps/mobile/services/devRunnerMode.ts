@@ -60,16 +60,16 @@ export function isDevRunnerActive(): boolean {
 export function getDevModeMessage(context: DevModeContext): string {
   switch (context) {
     case 'events':
-      return 'Local event participation can be tested without real authentication.';
+      return 'DEV runner keeps local event joins and run entry testable on this device without a beta account.';
     case 'event_detail':
-      return 'Join, reveal timing, and run entry remain testable locally without backend auth.';
+      return 'DEV runner keeps join, reveal timing, and run entry testable locally on this device.';
     case 'run':
-      return 'Reveal timing, event start timing, and start-zone validation are bypassed for local testing.';
+      return 'Reveal timing, start timing, and start-zone checks are relaxed so local run testing stays possible.';
     case 'profile':
-      return 'This device is browsing in local DEV runner mode. Backend-only profile and push actions still require real auth.';
+      return 'DEV runner is active on this device for local event and run testing. Profile sync, personal feed, team membership, and notifications still require a signed-in beta account.';
     case 'global':
     default:
-      return 'Closed beta build running with the local DEV runner fallback.';
+      return 'Local DEV runner is active for event and run testing on this device.';
   }
 }
 

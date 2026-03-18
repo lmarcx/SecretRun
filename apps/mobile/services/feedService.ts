@@ -81,7 +81,7 @@ export async function fetchFeed(limit = 20): Promise<FeedData> {
   if (!currentUserId) {
     return {
       requiresAuth: true,
-      message: 'Activity feed currently requires a signed-in profile because activities are private in the current backend schema.',
+      message: 'Your feed is personal in this beta. Sign in to see your own completed runs here.',
       items: [],
     };
   }
@@ -93,7 +93,7 @@ export async function fetchFeed(limit = 20): Promise<FeedData> {
 
   return {
     requiresAuth: false,
-    message: 'Showing your recent backend activities. Shared social feed will expand when broader feed permissions are ready.',
+    message: 'Showing your own run history for this beta. A broader community feed is not available yet.',
     items: response.activities.map((activity) => ({
       id: activity.id,
       createdAt: activity.created_at,
@@ -118,13 +118,16 @@ export function getFeedErrorMessage(error: unknown): string {
   if (error instanceof ClientError) {
     const firstMessage = error.response.errors?.[0]?.message;
     if (firstMessage) {
-      return firstMessage;
+      return 'We could not load the feed right now.';
     }
   }
 
   if (error instanceof Error) {
-    return error.message;
+    const lowerMessage = error.message.toLowerCase();
+    if (lowerMessage.includes('fetch failed') || lowerMessage.includes('network request failed')) {
+      return 'Feed is unavailable right now. Try again in a moment.';
+    }
   }
 
-  return 'Something went wrong while loading the activity feed.';
+  return 'We could not load the feed right now.';
 }

@@ -305,14 +305,12 @@ export function getEventErrorMessage(error: unknown): string {
       }
 
       if (lowerMessage.includes('event_participants_user_id_fkey')) {
-        return 'Your account is missing a profile record, so you cannot join events yet.';
+        return 'Finish setting up your runner profile before joining events.';
       }
 
       if (lowerMessage.includes("field 'events' not found")) {
-        return 'Events are not exposed by the backend yet. Check the local Hasura metadata.';
+        return 'Events are not ready in this build yet.';
       }
-
-      return firstMessage;
     }
   }
 
@@ -323,13 +321,15 @@ export function getEventErrorMessage(error: unknown): string {
     }
 
     if (message.includes('event_participants_user_id_fkey') || message.includes('foreign key constraint')) {
-      return 'Your account is missing a profile record, so you cannot join events yet.';
+      return 'Finish setting up your runner profile before joining events.';
     }
 
-    return error.message;
+    if (message.includes('fetch failed') || message.includes('network request failed')) {
+      return 'Events are unavailable right now. Try again in a moment.';
+    }
   }
 
-  return 'Something went wrong. Please try again.';
+  return 'We could not load this event right now.';
 }
 
 function isAlreadyJoinedError(error: unknown): boolean {

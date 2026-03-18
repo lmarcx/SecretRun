@@ -1,17 +1,21 @@
 import { useAuthenticationStatus, useSignInEmailPassword, useSignOut, useSignUpEmailPassword } from '@nhost/react';
+import { isDevRunnerActive } from '@/services/devRunnerMode';
 import { nhostConfig } from '@/services/nhostClient';
 
 export type AuthState = 'unconfigured' | 'loading' | 'signed in' | 'signed out';
+export type BetaAccessState = 'loading' | 'signed_in' | 'signed_out' | 'dev_runner' | 'auth_unavailable';
 
 export function useAuth() {
   const { isAuthenticated, isLoading: authLoading } = useAuthenticationStatus();
   const { signInEmailPassword, isLoading: signInLoading, error: signInError } = useSignInEmailPassword();
   const { signUpEmailPassword, isLoading: signUpLoading, error: signUpError } = useSignUpEmailPassword();
   const { signOut } = useSignOut();
+  const devRunnerActive = isDevRunnerActive();
+  const loading = authLoading || signInLoading || signUpLoading;
 
   const signIn = async (email: string, password: string) => {
     if (!nhostConfig.isAuthEnabled) {
-      throw new Error(nhostConfig.authDisabledMessage ?? 'Local auth is not available in this environment yet.');
+      throw new Error(nhostConfig.authDisabledMessage ?? 'Sign-in is not connected in this environment yet.');
     }
 
     const response = await signInEmailPassword(email, password);
@@ -23,7 +27,7 @@ export function useAuth() {
 
   const signUp = async (email: string, password: string) => {
     if (!nhostConfig.isAuthEnabled) {
-      throw new Error(nhostConfig.authDisabledMessage ?? 'Local auth is not available in this environment yet.');
+      throw new Error(nhostConfig.authDisabledMessage ?? 'Sign-in is not connected in this environment yet.');
     }
 
     const response = await signUpEmailPassword(email, password);
@@ -41,13 +45,27 @@ export function useAuth() {
         ? 'signed in'
         : 'signed out';
 
+  const betaAccessState: BetaAccessState =
+    loading
+      ? 'loading'
+      : isAuthenticated && nhostConfig.isAuthEnabled
+        ? 'signed_in'
+        : devRunnerActive
+          ? 'dev_runner'
+          : nhostConfig.isAuthEnabled
+            ? 'signed_out'
+            : 'auth_unavailable';
+
   return {
     isAuthenticated: nhostConfig.isAuthEnabled ? isAuthenticated : false,
+    hasBetaAccount: betaAccessState === 'signed_in',
     isConfigured: nhostConfig.isConfigured,
     isAvailable: nhostConfig.isAuthEnabled,
     disabledMessage: nhostConfig.authDisabledMessage,
     authState,
-    loading: authLoading || signInLoading || signUpLoading,
+    betaAccessState,
+    devRunnerActive,
+    loading,
     signIn,
     signUp,
     signOut,
@@ -68,15 +86,29 @@ export function getAuthErrorMessage(error: unknown): string {
       lowerMessage.includes('cors') ||
       lowerMessage.includes('local.auth.local.nhost.run')
     ) {
-      return 'Local auth is not available in this environment yet. Use signed-out mode for now.';
+      return 'Sign-in is not reachable right now. Try again in a moment or keep browsing in guest mode.';
     }
 
     if (lowerMessage.includes('invalid email or password') || lowerMessage.includes('invalid credentials')) {
-      return 'Invalid email or password.';
+      return 'Email or password did not match.';
     }
 
-    return message;
+    if (lowerMessage.includes('email needs verification') || lowerMessage.includes('email-not-verified')) {
+      return 'Check your inbox and verify your email before signing in.';
+    }
+
+    if (lowerMessage.includes('user already registered') || lowerMessage.includes('email-already-in-use')) {
+      return 'An account already exists for this email.';
+    }
+
+    if (lowerMessage.includes('multi-factor') || lowerMessage.includes('mfa')) {
+      return 'This beta does not support multi-factor sign-in yet.';
+    }
+
+    if (lowerMessage.includes('too many requests')) {
+      return 'Too many attempts. Wait a moment and try again.';
+    }
   }
 
-  return 'Authentication failed. Please try again.';
+  return 'We could not complete sign-in right now. Please try again.';
 }

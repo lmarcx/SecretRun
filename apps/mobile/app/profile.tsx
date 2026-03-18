@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '@/hooks/useAuth';
-import { DEV_MODE_LABEL, getDevModeMessage, isDevRunnerActive } from '@/services/devRunnerMode';
+import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import { DEV_MODE_LABEL, getDevModeMessage } from '@/services/devRunnerMode';
 import { nhost } from '@/services/nhostClient';
 import {
   enablePushNotifications,
@@ -12,28 +12,33 @@ import {
   type NotificationRegistrationState,
 } from '@/services/notificationsService';
 import type { CurrentProfile } from '@/services/profileService';
-import { fetchCurrentProfile, getProfileErrorMessage } from '@/services/profileService';
+import { createCurrentProfile, fetchCurrentProfile, getProfileErrorMessage } from '@/services/profileService';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { isAvailable, disabledMessage, loading: authLoading, signOut } = useAuth();
-  const userId = nhost.auth.getUser()?.id ?? null;
-  const devRunnerActive = isDevRunnerActive();
+  const { isAvailable, disabledMessage, loading: authLoading, signOut, betaAccessState } = useAuth();
+  const currentUser = nhost.auth.getUser();
+  const userId = currentUser?.id ?? null;
   const [profile, setProfile] = useState<CurrentProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [screenError, setScreenError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [notificationState, setNotificationState] = useState<NotificationRegistrationState | null>(null);
-  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsSubmitting, setNotificationsSubmitting] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [profileSubmitting, setProfileSubmitting] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     if (!userId) {
       setProfile(null);
-      setError(null);
+      setScreenError(null);
+      setFormError(null);
       setLoading(false);
       return () => {
         active = false;
@@ -42,7 +47,7 @@ export default function ProfileScreen() {
 
     const load = async () => {
       setLoading(true);
-      setError(null);
+      setScreenError(null);
 
       try {
         const nextProfile = await fetchCurrentProfile();
@@ -57,7 +62,7 @@ export default function ProfileScreen() {
         }
 
         setProfile(null);
-        setError(getProfileErrorMessage(err));
+        setScreenError(getProfileErrorMessage(err));
       } finally {
         if (active) {
           setLoading(false);
@@ -73,7 +78,29 @@ export default function ProfileScreen() {
   }, [reloadKey, userId]);
 
   useEffect(() => {
+    if (!userId) {
+      setUsernameDraft('');
+      setDisplayNameDraft('');
+      return;
+    }
+
+    const suggestedDisplayName = currentUser?.displayName?.trim() || currentUser?.email?.split('@')[0] || '';
+    const suggestedUsername = sanitizeUsername(currentUser?.displayName ?? currentUser?.email?.split('@')[0] ?? '');
+
+    setDisplayNameDraft((value) => value || suggestedDisplayName);
+    setUsernameDraft((value) => value || suggestedUsername);
+  }, [currentUser?.displayName, currentUser?.email, userId]);
+
+  useEffect(() => {
     let active = true;
+
+    if (!userId) {
+      setNotificationState(null);
+      setNotificationsLoading(false);
+      return () => {
+        active = false;
+      };
+    }
 
     const loadNotificationState = async () => {
       setNotificationsLoading(true);
@@ -101,16 +128,48 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     setLogoutLoading(true);
-    setError(null);
+    setScreenError(null);
 
     try {
       await signOut();
       setProfile(null);
       setLoading(false);
     } catch (err) {
-      setError(getProfileErrorMessage(err));
+      setScreenError(getProfileErrorMessage(err));
     } finally {
       setLogoutLoading(false);
+    }
+  };
+
+  const handleCreateProfile = async () => {
+    const normalizedUsername = sanitizeUsername(usernameDraft);
+    const trimmedDisplayName = displayNameDraft.trim();
+
+    if (!normalizedUsername.match(/^[a-z0-9_]{3,20}$/)) {
+      setFormError('Username must be 3-20 characters and use only letters, numbers, or underscores.');
+      return;
+    }
+
+    if (trimmedDisplayName.length < 2) {
+      setFormError('Display name must be at least 2 characters.');
+      return;
+    }
+
+    setProfileSubmitting(true);
+    setFormError(null);
+
+    try {
+      const nextProfile = await createCurrentProfile({
+        username: normalizedUsername,
+        displayName: trimmedDisplayName,
+      });
+      setProfile(nextProfile);
+      setUsernameDraft(normalizedUsername);
+      setDisplayNameDraft(trimmedDisplayName);
+    } catch (err) {
+      setFormError(getProfileErrorMessage(err));
+    } finally {
+      setProfileSubmitting(false);
     }
   };
 
@@ -131,20 +190,18 @@ export default function ProfileScreen() {
   }
 
   if (!userId) {
+    const guestCopy = getGuestProfileCopy(betaAccessState, disabledMessage);
+
     return (
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.heroCard}>
             <Text style={styles.title}>Profile</Text>
-            <Text style={styles.info}>You are currently browsing in signed-out mode.</Text>
-            <Text style={styles.info}>
-              {isAvailable
-                ? 'Sign in or create an account to sync your profile, activity feed, and push notifications.'
-                : disabledMessage ?? 'Local auth is not available in this environment yet. Use signed-out mode for now.'}
-            </Text>
+            <Text style={styles.cardText}>{guestCopy.title}</Text>
+            <Text style={styles.info}>{guestCopy.description}</Text>
           </View>
 
-          {devRunnerActive ? (
+          {betaAccessState === 'dev_runner' ? (
             <View style={styles.devModeCard}>
               <Text style={styles.devModeTitle}>{DEV_MODE_LABEL}</Text>
               <Text style={styles.devModeText}>{getDevModeMessage('profile')}</Text>
@@ -153,27 +210,31 @@ export default function ProfileScreen() {
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>What still works</Text>
-            <Text style={styles.cardText}>Events, event detail, local join flow, run tracking, leaderboard, and read-only team browsing remain available.</Text>
+            <Text style={styles.cardText}>
+              Events, event details, local run testing, and leaderboard browsing remain available without a signed-in beta
+              account.
+            </Text>
           </View>
 
-          <NotificationCard
-            state={notificationState}
-            loading={notificationsLoading}
-            submitting={notificationsSubmitting}
-            onEnable={handleEnableNotifications}
-          />
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Notifications</Text>
+            <Text style={styles.cardText}>
+              Notifications become available after sign-in on a supported mobile device. They stay off in guest mode and
+              DEV runner mode.
+            </Text>
+          </View>
 
           <View style={styles.actionColumn}>
             <Pressable style={styles.secondaryButton} onPress={() => router.push('/events')}>
               <Text style={styles.secondaryButtonText}>Browse events</Text>
             </Pressable>
-            <Pressable style={styles.secondaryButton} onPress={() => router.push('/feed')}>
-              <Text style={styles.secondaryButtonText}>Open feed status</Text>
+            <Pressable style={styles.secondaryButton} onPress={() => router.push('/leaderboard')}>
+              <Text style={styles.secondaryButtonText}>Open leaderboard</Text>
             </Pressable>
             {isAvailable ? (
               <>
                 <Pressable style={styles.primaryButton} onPress={() => router.push('/(auth)/login')}>
-                  <Text style={styles.primaryButtonText}>Go to login</Text>
+                  <Text style={styles.primaryButtonText}>Sign in</Text>
                 </Pressable>
                 <Pressable style={styles.secondaryButton} onPress={() => router.push('/(auth)/register')}>
                   <Text style={styles.secondaryButtonText}>Create account</Text>
@@ -195,11 +256,11 @@ export default function ProfileScreen() {
     );
   }
 
-  if (error) {
+  if (screenError) {
     return (
       <SafeAreaView style={styles.centered}>
         <Text style={styles.title}>Profile</Text>
-        <Text style={styles.error}>{error}</Text>
+        <Text style={styles.error}>{screenError}</Text>
         <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
           <Text style={styles.secondaryButtonText}>Retry</Text>
         </Pressable>
@@ -209,12 +270,55 @@ export default function ProfileScreen() {
 
   if (!profile) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.title}>Profile</Text>
-        <Text style={styles.info}>No profile record is available for this user yet.</Text>
-        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
-          <Text style={styles.secondaryButtonText}>Refresh</Text>
-        </Pressable>
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.container}>
+          <View style={styles.heroCard}>
+            <Text style={styles.title}>Finish your profile</Text>
+            <Text style={styles.info}>
+              Your beta account is signed in on this device, but the runner profile is not ready yet. Finish it here to
+              unlock the full beta path.
+            </Text>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Runner profile</Text>
+            <Text style={styles.cardText}>
+              This profile is used for your personal feed, team membership details, and leaderboard identity.
+            </Text>
+
+            <View style={styles.field}>
+              <Text style={styles.inputLabel}>Username</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={setUsernameDraft}
+                placeholder="runner_name"
+                style={styles.input}
+                value={usernameDraft}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.inputLabel}>Display name</Text>
+              <TextInput onChangeText={setDisplayNameDraft} placeholder="Runner Name" style={styles.input} value={displayNameDraft} />
+            </View>
+
+            {formError ? <Text style={styles.errorInline}>{formError}</Text> : null}
+
+            <View style={styles.actionColumn}>
+              <Pressable
+                style={[styles.primaryButton, profileSubmitting && styles.buttonDisabled]}
+                onPress={() => void handleCreateProfile()}
+                disabled={profileSubmitting}
+              >
+                <Text style={styles.primaryButtonText}>{profileSubmitting ? 'Saving profile...' : 'Finish profile'}</Text>
+              </Pressable>
+              <Pressable style={styles.secondaryButton} onPress={handleLogout} disabled={logoutLoading}>
+                <Text style={styles.secondaryButtonText}>{logoutLoading ? 'Signing out...' : 'Sign out'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -238,6 +342,14 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.cardTitle}>Beta account</Text>
+          <Text style={styles.cardText}>
+            Signed in and synced on this device. Your personal feed, team details, and supported notifications now use this
+            profile.
+          </Text>
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.cardTitle}>Profile details</Text>
           <MetaRow label="Display name" value={profile.displayName} />
           <MetaRow label="Username" value={`@${profile.username}`} />
@@ -248,8 +360,14 @@ export default function ProfileScreen() {
           <Pressable style={styles.secondaryButtonCompact} onPress={() => router.push('/feed')}>
             <Text style={styles.secondaryButtonText}>Open feed</Text>
           </Pressable>
+          <Pressable style={styles.secondaryButtonCompact} onPress={() => router.push('/teams')}>
+            <Text style={styles.secondaryButtonText}>Open teams</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.actionRow}>
           <Pressable style={styles.primaryButtonCompact} onPress={handleLogout} disabled={logoutLoading}>
-            <Text style={styles.primaryButtonText}>{logoutLoading ? 'Logging out...' : 'Logout'}</Text>
+            <Text style={styles.primaryButtonText}>{logoutLoading ? 'Signing out...' : 'Sign out'}</Text>
           </Pressable>
         </View>
 
@@ -275,12 +393,15 @@ function NotificationCard({
   submitting: boolean;
   onEnable: () => void;
 }) {
+  const buttonDisabled =
+    loading || submitting || !state || state.kind === 'unsupported' || state.kind === 'signed_out' || state.kind === 'registered';
+  const buttonLabel = state?.kind === 'registered' ? 'Notifications enabled' : submitting ? 'Turning on...' : 'Enable notifications';
+
   return (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>Notifications</Text>
       {loading ? <Text style={styles.cardText}>Checking device notification support...</Text> : null}
       {!loading && state ? <Text style={styles.cardText}>{state.message}</Text> : null}
-      {state?.pushToken ? <Text style={styles.cardText}>Device push token registered successfully.</Text> : null}
 
       <View style={styles.notificationList}>
         {notificationCapabilities.map((capability) => (
@@ -298,12 +419,8 @@ function NotificationCard({
         ))}
       </View>
 
-      <Pressable
-        style={[styles.secondaryButton, (loading || submitting || state?.kind === 'unsupported' || state?.kind === 'signed_out') && styles.buttonDisabled]}
-        onPress={onEnable}
-        disabled={loading || submitting || state?.kind === 'unsupported' || state?.kind === 'signed_out'}
-      >
-        <Text style={styles.secondaryButtonText}>{submitting ? 'Enabling...' : 'Enable push notifications'}</Text>
+      <Pressable style={[styles.secondaryButton, buttonDisabled && styles.buttonDisabled]} onPress={onEnable} disabled={buttonDisabled}>
+        <Text style={styles.secondaryButtonText}>{buttonLabel}</Text>
       </Pressable>
     </View>
   );
@@ -316,6 +433,39 @@ function MetaRow({ label, value }: { label: string; value: string }) {
       <Text style={styles.metaValue}>{value}</Text>
     </View>
   );
+}
+
+function getGuestProfileCopy(betaAccessState: BetaAccessState, disabledMessage: string | null | undefined) {
+  switch (betaAccessState) {
+    case 'dev_runner':
+      return {
+        title: 'DEV runner is active on this device.',
+        description:
+          'Sign in with a beta account when you want synced profile access. DEV runner remains local-only for events and runs.',
+      };
+    case 'auth_unavailable':
+      return {
+        title: 'Guest mode is active.',
+        description: disabledMessage ?? 'Sign-in is not connected in this environment yet.',
+      };
+    case 'signed_out':
+    case 'loading':
+    default:
+      return {
+        title: 'You are browsing in guest mode.',
+        description:
+          'Sign in or create an account to sync your runner profile, personal feed, team details, and supported notifications.',
+      };
+  }
+}
+
+function sanitizeUsername(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 20);
 }
 
 function formatDate(value: string): string {
@@ -407,6 +557,10 @@ const styles = StyleSheet.create({
     color: '#b91c1c',
     fontWeight: '600',
   },
+  errorInline: {
+    color: '#b91c1c',
+    fontWeight: '600',
+  },
   devModeCard: {
     borderRadius: 14,
     borderWidth: 1,
@@ -424,6 +578,24 @@ const styles = StyleSheet.create({
   devModeText: {
     color: '#92400e',
     lineHeight: 20,
+  },
+  field: {
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+    textTransform: 'uppercase',
+  },
+  input: {
+    minHeight: 52,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 16,
+    color: '#0f172a',
   },
   notificationList: {
     gap: 10,

@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getAuthErrorMessage, useAuth } from '@/hooks/useAuth';
+import { getAuthErrorMessage, useAuth, type BetaAccessState } from '@/hooks/useAuth';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { isAuthenticated, isAvailable, disabledMessage, signIn, loading } = useAuth();
+  const { isAuthenticated, isAvailable, disabledMessage, signIn, loading, betaAccessState } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +24,7 @@ export default function LoginScreen() {
     }
 
     if (!isAvailable) {
-      setError(disabledMessage ?? 'Local auth is not available in this environment yet. Use signed-out mode for now.');
+      setError(disabledMessage ?? 'Sign-in is not connected in this environment yet.');
       return;
     }
 
@@ -39,7 +39,7 @@ export default function LoginScreen() {
       }
 
       if (response.needsMfaOtp) {
-        setError('MFA is not supported in this MVP yet.');
+        setError('This beta does not support multi-factor sign-in yet.');
         return;
       }
 
@@ -49,14 +49,23 @@ export default function LoginScreen() {
     }
   };
 
+  const accessStateCopy = getAccessStateCopy(betaAccessState, disabledMessage);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
         <View style={styles.container}>
           <View style={styles.hero}>
             <Text style={styles.title}>Sign in</Text>
-            <Text style={styles.subtitle}>Use your email and password to join Secret Run events.</Text>
-            <Text style={styles.note}>{isAvailable ? 'Signed-out state is active until you authenticate.' : disabledMessage}</Text>
+            <Text style={styles.subtitle}>
+              Use your beta account to unlock profile sync, your personal feed, team details, and supported notifications.
+            </Text>
+          </View>
+
+          <View style={styles.stateCard}>
+            <Text style={styles.stateLabel}>Current device state</Text>
+            <Text style={styles.stateTitle}>{accessStateCopy.title}</Text>
+            <Text style={styles.note}>{accessStateCopy.description}</Text>
           </View>
 
           <View style={styles.form}>
@@ -99,15 +108,40 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Need an account?</Text>
+            <Pressable style={styles.secondaryButton} onPress={() => router.replace('/events')}>
+              <Text style={styles.secondaryButtonText}>Browse as guest</Text>
+            </Pressable>
             <Pressable onPress={() => router.push('/(auth)/register')}>
-              <Text style={styles.link}>Register</Text>
+              <Text style={styles.link}>Create account</Text>
             </Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+function getAccessStateCopy(betaAccessState: BetaAccessState, disabledMessage: string | null | undefined) {
+  switch (betaAccessState) {
+    case 'dev_runner':
+      return {
+        title: 'DEV runner also available',
+        description:
+          'You can still test events and runs locally without signing in, but the closed beta account path remains the preferred experience.',
+      };
+    case 'auth_unavailable':
+      return {
+        title: 'Sign-in not ready here',
+        description: disabledMessage ?? 'This local environment is still guest-only right now.',
+      };
+    case 'signed_out':
+    case 'loading':
+    default:
+      return {
+        title: 'Guest mode active',
+        description: 'Sign in to switch this device from guest browsing to a synced beta account.',
+      };
+  }
 }
 
 const styles = StyleSheet.create({
@@ -127,6 +161,14 @@ const styles = StyleSheet.create({
   hero: {
     gap: 10,
   },
+  stateCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 6,
+  },
   form: {
     gap: 16,
   },
@@ -145,6 +187,18 @@ const styles = StyleSheet.create({
   note: {
     fontSize: 14,
     color: '#475569',
+    lineHeight: 20,
+  },
+  stateLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  stateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   label: {
     fontSize: 13,
@@ -185,15 +239,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  footerText: {
-    color: '#475569',
+    gap: 12,
   },
   link: {
     color: '#2563eb',
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  secondaryButton: {
+    minHeight: 52,
+    borderRadius: 12,
+    backgroundColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryButtonText: {
+    color: '#0f172a',
+    fontWeight: '700',
+    fontSize: 16,
   },
 });

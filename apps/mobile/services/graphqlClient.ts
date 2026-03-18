@@ -22,7 +22,7 @@ export async function requestGraphql<TData>(
     if (error instanceof Error) {
       const message = error.message.toLowerCase();
       if (message.includes('network request failed') || message.includes('fetch failed')) {
-        throw new Error(`Unable to reach GraphQL at ${graphqlUrl}. Check EXPO_PUBLIC_HASURA_GRAPHQL_URL and backend connectivity.`);
+        throw new Error('Secret Run could not reach the service right now. Try again in a moment.');
       }
     }
 

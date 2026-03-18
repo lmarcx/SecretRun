@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import { isDevRunnerActive } from '@/services/devRunnerMode';
 import type { FeedActivityItem, FeedData } from '@/services/feedService';
 import { fetchFeed, getFeedErrorMessage } from '@/services/feedService';
 
 export default function FeedScreen() {
   const router = useRouter();
+  const { betaAccessState, isAvailable } = useAuth();
+  const devRunnerActive = isDevRunnerActive();
   const [data, setData] = useState<FeedData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,20 +80,29 @@ export default function FeedScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <Text style={styles.title}>Feed</Text>
-            <Text style={styles.subtitle}>Recent activity backed by the current activity model.</Text>
+            <Text style={styles.subtitle}>Your feed is personal in this beta. It shows your own runs after sign-in.</Text>
             {data?.message ? (
               <View style={styles.noticeCard}>
                 <Text style={styles.noticeText}>{data.message}</Text>
               </View>
             ) : null}
             {data?.requiresAuth ? (
-              <View style={styles.signedOutActions}>
-                <Pressable style={styles.secondaryButton} onPress={() => router.push('/events')}>
-                  <Text style={styles.secondaryButtonText}>Browse events</Text>
-                </Pressable>
-                <Pressable style={styles.secondaryButton} onPress={() => router.push('/profile')}>
-                  <Text style={styles.secondaryButtonText}>Profile status</Text>
-                </Pressable>
+              <View style={styles.lockedCard}>
+                <Text style={styles.noticeTitle}>Feed locked</Text>
+                <Text style={styles.noticeText}>{getFeedLockedMessage(betaAccessState, isAvailable, devRunnerActive)}</Text>
+                <View style={styles.signedOutActions}>
+                  <Pressable style={styles.secondaryButton} onPress={() => router.push('/events')}>
+                    <Text style={styles.secondaryButtonText}>Browse events</Text>
+                  </Pressable>
+                  <Pressable style={styles.secondaryButton} onPress={() => router.push('/profile')}>
+                    <Text style={styles.secondaryButtonText}>Profile</Text>
+                  </Pressable>
+                  {isAvailable ? (
+                    <Pressable style={styles.secondaryButton} onPress={() => router.push('/(auth)/login')}>
+                      <Text style={styles.secondaryButtonText}>Sign in</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
             ) : null}
           </View>
@@ -99,8 +112,8 @@ export default function FeedScreen() {
             <Text style={styles.emptyTitle}>{data?.requiresAuth ? 'Feed locked' : 'No recent activity yet'}</Text>
             <Text style={styles.info}>
               {data?.requiresAuth
-                ? 'This beta only exposes activity rows to the signed-in runner who created them. You can still browse events and test the run flow in DEV mode.'
-                : 'Complete a run and upload it to see your recent activity appear here.'}
+                ? getFeedLockedMessage(betaAccessState, isAvailable, devRunnerActive)
+                : 'Complete a run and it will appear here after review and scoring finish.'}
             </Text>
           </View>
         }
@@ -108,6 +121,18 @@ export default function FeedScreen() {
       />
     </SafeAreaView>
   );
+}
+
+function getFeedLockedMessage(betaAccessState: BetaAccessState, isAvailable: boolean, devRunnerActive: boolean) {
+  if (betaAccessState === 'dev_runner' || devRunnerActive) {
+    return 'DEV runner keeps event and run testing available, but this feed still needs a signed-in beta account. There is no public social feed yet.';
+  }
+
+  if (!isAvailable || betaAccessState === 'auth_unavailable') {
+    return 'This local environment is still guest-only, so the personal beta feed stays locked for now.';
+  }
+
+  return 'Sign in to unlock your private beta feed. This beta does not include a public social feed yet.';
 }
 
 function FeedCard({ item }: { item: FeedActivityItem }) {
@@ -130,7 +155,7 @@ function FeedCard({ item }: { item: FeedActivityItem }) {
         <Metric label="Duration" value={formatDuration(item.durationSeconds)} />
       </View>
       <Text style={styles.cardMeta}>
-        Points: {item.points} {item.status === 'pending' ? '· leaderboard update pending validation' : ''}
+        Points: {item.points} {item.status === 'pending' ? '· leaderboard update pending review' : ''}
       </Text>
     </View>
   );
@@ -228,12 +253,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     padding: 16,
   },
+  lockedCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 10,
+  },
+  noticeTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
   noticeText: {
     color: '#475569',
     lineHeight: 20,
   },
   signedOutActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   card: {
@@ -331,7 +370,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    flex: 1,
+    minWidth: 120,
   },
   secondaryButtonText: {
     color: '#0f172a',

@@ -41,9 +41,9 @@ export const nhostConfig = {
   region,
   isAuthEnabled: Boolean(derivedBaseUrl) && !isLocalPlaceholderAuthConfig,
   authDisabledMessage: !derivedBaseUrl
-    ? 'Local auth is not available in this environment yet.'
+    ? 'Sign-in is not connected in this environment yet.'
     : isLocalPlaceholderAuthConfig
-      ? 'Local auth is not available in this environment yet. Use signed-out mode for now.'
+      ? 'Sign-in is not connected in this local environment yet. You can keep browsing in guest mode.'
       : null,
 };
 

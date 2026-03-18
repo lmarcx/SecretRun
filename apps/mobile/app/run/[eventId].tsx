@@ -248,7 +248,7 @@ export default function RunScreen() {
 
         if (permission.status !== 'granted') {
           setPermissionState('denied');
-          setPermissionMessage('Foreground location permission is required to start a run.');
+          setPermissionMessage('Location access is required to start a run.');
           return;
         }
 
@@ -261,7 +261,7 @@ export default function RunScreen() {
         }
 
         if (isWeb) {
-          setPermissionMessage('Live GPS tracking is only enabled on mobile. Web uses a limited dev fallback.');
+          setPermissionMessage('Live GPS tracking is only available on mobile. Web stays in a limited beta preview.');
           return;
         }
 
@@ -338,10 +338,10 @@ export default function RunScreen() {
       ? 'Tracking is active on this device. Weak or impossible GPS points are filtered before upload.'
       : runPhase === 'completed'
         ? uploadError
-          ? 'Your local result is saved. Backend upload still needs attention.'
+          ? 'Your local result is saved. Sync still needs attention.'
           : uploadedActivity?.status === 'rejected'
-            ? 'Your run finished locally, but backend validation flagged it for review.'
-            : 'Your run is complete and the trusted backend flow has finished.'
+            ? 'Your run finished locally, but review flagged it for follow-up.'
+            : 'Your run is complete and has synced successfully.'
         : runPhase === 'abandoned'
           ? 'This run was abandoned and kept locally for review.'
           : runPhase === 'invalid'
@@ -453,8 +453,8 @@ export default function RunScreen() {
     setRunPhase('abandoned');
     setElapsedSeconds(durationSeconds);
     setResult(nextResult);
-    setFinishWarning('Abandoned runs stay local and are not uploaded to the backend.');
-    setUploadError('Abandoned runs are not persisted by the current MVP backend.');
+    setFinishWarning('Abandoned runs stay on this device and are not synced.');
+    setUploadError('Abandoned runs are not synced.');
 
     if (resolvedEventId) {
       setStoredRunSession(resolvedEventId, {
@@ -462,7 +462,7 @@ export default function RunScreen() {
         draft: null,
         result: nextResult,
         uploadedActivity: null,
-        uploadError: 'Abandoned runs are not persisted by the current MVP backend.',
+        uploadError: 'Abandoned runs are not synced.',
       });
     }
   }
@@ -604,7 +604,7 @@ export default function RunScreen() {
       setUploadedActivity(activity);
       setFinishWarning(
         activity.status === 'rejected'
-          ? 'This run was flagged during backend validation and was not scored.'
+          ? 'This run was flagged during review and was not scored.'
           : suspiciousWarningRef.current
             ? 'This run was uploaded, but some GPS samples looked suspicious and may still be reviewed.'
             : null,
@@ -620,7 +620,7 @@ export default function RunScreen() {
     } catch (err) {
       const nextUploadError = getActivityErrorMessage(err);
       setUploadError(nextUploadError);
-      setFinishWarning('Local result kept on device. Retry upload after the backend or network recovers.');
+      setFinishWarning('Your result is saved on this device. Retry sync when the service is available again.');
 
       if (err instanceof ActivityUploadError && err.activity) {
         uploadedActivityRef.current = err.activity;
@@ -744,8 +744,8 @@ export default function RunScreen() {
           {runPhase === 'running' ? (
             <Text style={styles.success}>Tracking active: accepted GPS samples are updating locally.</Text>
           ) : null}
-          {isWeb ? <Text style={styles.info}>Live GPS tracking is only enabled on mobile. Web uses a limited dev fallback.</Text> : null}
-          {devRunnerActive && !insideStartZone ? <Text style={styles.warning}>Dev mode: start zone validation bypassed</Text> : null}
+          {isWeb ? <Text style={styles.info}>Live GPS tracking is only available on mobile. Web stays in a limited beta preview.</Text> : null}
+          {devRunnerActive && !insideStartZone ? <Text style={styles.warning}>DEV runner: start zone check bypassed</Text> : null}
         </View>
 
         {runPhase === 'ready' ? (
@@ -783,13 +783,13 @@ export default function RunScreen() {
               <ResultMetric label="Average speed" value={`${result.avgSpeedKmh.toFixed(2)} km/h`} />
               <ResultMetric label="Activity points" value={uploadedActivity ? String(uploadedActivity.points) : 'Unavailable'} />
             </View>
-            <Text style={styles.info}>Season leaderboard totals update only when backend validation and scoring have completed.</Text>
+            <Text style={styles.info}>Season leaderboard totals update after review and scoring finish.</Text>
             {uploading ? <Text style={styles.info}>Uploading activity...</Text> : null}
             {!uploading && result.status === 'completed' && !uploadError && uploadedActivity?.status !== 'rejected' ? (
-              <Text style={styles.success}>Finish success. Activity upload completed.</Text>
+              <Text style={styles.success}>Run saved and synced.</Text>
             ) : null}
-            {uploadedActivity?.status === 'rejected' ? <Text style={styles.warning}>Backend validation flagged this run. It was not scored.</Text> : null}
-            {uploadError ? <Text style={styles.error}>Upload failed: {uploadError}</Text> : null}
+            {uploadedActivity?.status === 'rejected' ? <Text style={styles.warning}>Run review flagged this attempt. It was not scored.</Text> : null}
+            {uploadError ? <Text style={styles.error}>Sync issue: {uploadError}</Text> : null}
             {result.status === 'completed' && uploadError ? (
               <Pressable style={styles.secondaryButton} onPress={() => void persistResult(result, uploadedActivityRef.current)}>
                 <Text style={styles.secondaryButtonText}>Retry upload</Text>
@@ -910,7 +910,7 @@ function evaluateTrackpoint(previousPoint: LocalTrackpoint | null, nextPoint: Lo
       accept: false,
       distanceDeltaMeters: 0,
       message: 'Ignoring an impossible GPS jump. Keep the app open until the signal stabilizes.',
-      suspiciousWarning: 'Some GPS samples looked suspicious. Backend validation may review this run.',
+      suspiciousWarning: 'Some GPS samples looked suspicious. Run review may look at this attempt.',
     };
   }
 

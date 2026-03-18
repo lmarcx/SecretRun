@@ -155,12 +155,12 @@ export async function persistCompletedRun(payload: CompletedRunPayload): Promise
       };
     }
 
-    throw new ActivityUploadError('Sign in to upload this run. Local result is still available.');
+    throw new ActivityUploadError('Sign in to sync this run. The result stays saved on this device.');
   }
 
   const activity = payload.activity ?? payload.existingActivity ?? (await startRunActivity(payload.eventId, payload.startedAt));
   if (!activity) {
-    throw new ActivityUploadError('Could not start the trusted activity workflow.');
+    throw new ActivityUploadError('We could not start run sync right now.');
   }
 
   try {
@@ -225,18 +225,16 @@ export function getActivityErrorMessage(error: unknown): string {
   if (error instanceof ClientError) {
     const firstMessage = error.response.errors?.[0]?.message;
     if (firstMessage) {
-      return firstMessage;
+      return 'We could not finish syncing this run right now.';
     }
   }
 
   if (error instanceof Error) {
     const lowerMessage = error.message.toLowerCase();
     if (lowerMessage.includes('fetch failed') || lowerMessage.includes('network request failed')) {
-      return 'Activity upload failed because the backend is unreachable.';
+      return 'We could not sync this run right now. The result stays saved on this device.';
     }
-
-    return error.message;
   }
 
-  return 'Activity upload failed. Please try again.';
+  return 'We could not finish syncing this run right now.';
 }

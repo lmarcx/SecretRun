@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import { isDevRunnerActive } from '@/services/devRunnerMode';
 import type { TeamListItem, TeamsData } from '@/services/teamsService';
 import { fetchTeams, getTeamsErrorMessage } from '@/services/teamsService';
 
 export default function TeamsScreen() {
+  const { betaAccessState } = useAuth();
+  const devRunnerActive = isDevRunnerActive();
   const [data, setData] = useState<TeamsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,25 +80,45 @@ export default function TeamsScreen() {
             <Text style={styles.title}>Teams</Text>
             <Text style={styles.subtitle}>Browse the current squads in this closed beta.</Text>
             <View style={styles.noticeCard}>
-              <Text style={styles.noticeTitle}>Team access</Text>
-              <Text style={styles.info}>
-                {data?.supportsMembershipDetails
-                  ? 'Join-team actions are not exposed by the current backend permissions yet, so this screen stays read-only for now.'
-                  : 'Sign in to see membership counts. Team joining is not exposed by the current backend permissions yet.'}
-              </Text>
+              <Text style={styles.noticeTitle}>Read-only beta</Text>
+              <Text style={styles.info}>{getTeamsNotice(betaAccessState, devRunnerActive, Boolean(data?.supportsMembershipDetails))}</Text>
+            </View>
+            <View style={styles.noticeCard}>
+              <Text style={styles.noticeTitle}>Available now</Text>
+              <Text style={styles.info}>Browse squad names, season presence, and any membership details already visible to your account.</Text>
+            </View>
+            <View style={styles.noticeCard}>
+              <Text style={styles.noticeTitle}>Later in beta</Text>
+              <Text style={styles.info}>Join and create team actions stay disabled until the full workflow is ready.</Text>
             </View>
           </View>
         }
         ListEmptyComponent={
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No teams yet</Text>
-            <Text style={styles.info}>Teams will appear here as soon as the current backend seed exposes more squads.</Text>
+            <Text style={styles.info}>More squads will appear here as the closed beta roster expands.</Text>
           </View>
         }
         renderItem={({ item }) => <TeamCard item={item} supportsMembershipDetails={Boolean(data?.supportsMembershipDetails)} />}
       />
     </SafeAreaView>
   );
+}
+
+function getTeamsNotice(betaAccessState: BetaAccessState, devRunnerActive: boolean, supportsMembershipDetails: boolean) {
+  if (betaAccessState === 'dev_runner' || devRunnerActive) {
+    return 'DEV runner keeps events and runs testable, but teams stay browse-only and account-based in this beta.';
+  }
+
+  if (supportsMembershipDetails) {
+    return 'Your account can see current membership details where available. Team joining and creation still open later.';
+  }
+
+  if (betaAccessState === 'signed_out') {
+    return 'Sign in to see your memberships and member counts. Team joining and creation still open later.';
+  }
+
+  return 'Teams are browse-only for now. Joining and creation will open in a later beta update.';
 }
 
 function TeamCard({ item, supportsMembershipDetails }: { item: TeamListItem; supportsMembershipDetails: boolean }) {
@@ -113,12 +137,12 @@ function TeamCard({ item, supportsMembershipDetails }: { item: TeamListItem; sup
           </View>
         ) : null}
       </View>
-      <Text style={styles.cardDescription}>Current MVP team pages are read-only, but season rankings and memberships are already visible where permissions allow them.</Text>
+      <Text style={styles.cardDescription}>Browse-only beta team. Season rankings continue on the leaderboard.</Text>
       <Text style={styles.cardMeta}>Created {formatDate(item.createdAt)}</Text>
       <Text style={styles.cardMeta}>
         {supportsMembershipDetails && item.memberCount !== null
           ? `${item.memberCount} member${item.memberCount === 1 ? '' : 's'}`
-          : 'Member count available after sign-in'}
+          : 'Member counts appear after sign-in'}
       </Text>
     </View>
   );

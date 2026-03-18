@@ -2,20 +2,21 @@ import { useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getAuthErrorMessage, useAuth } from '@/hooks/useAuth';
+import { getAuthErrorMessage, useAuth, type BetaAccessState } from '@/hooks/useAuth';
 import { createCurrentProfile, getProfileErrorMessage } from '@/services/profileService';
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { isAuthenticated, isAvailable, disabledMessage, signUp, loading } = useAuth();
+  const { isAuthenticated, isAvailable, disabledMessage, signUp, loading, betaAccessState } = useAuth();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [accountReady, setAccountReady] = useState(false);
 
-  if (isAuthenticated) {
+  if (isAuthenticated && !accountReady) {
     return <Redirect href="/events" />;
   }
 
@@ -45,7 +46,7 @@ export default function RegisterScreen() {
     }
 
     if (!isAvailable) {
-      setError(disabledMessage ?? 'Local auth is not available in this environment yet. Use signed-out mode for now.');
+      setError(disabledMessage ?? 'Sign-in is not connected in this environment yet.');
       return;
     }
 
@@ -53,11 +54,16 @@ export default function RegisterScreen() {
     setSuccess(null);
 
     try {
-      const response = await signUp(normalizedEmail, password);
+      if (!isAuthenticated) {
+        const response = await signUp(normalizedEmail, password);
 
-      if (response.needsEmailVerification) {
-        setSuccess('Account created. Verify your email, then sign in.');
-        return;
+        if (response.needsEmailVerification) {
+          setAccountReady(false);
+          setSuccess('Account created. Verify your email, then sign in.');
+          return;
+        }
+
+        setAccountReady(true);
       }
 
       try {
@@ -66,28 +72,40 @@ export default function RegisterScreen() {
           displayName: trimmedDisplayName,
         });
       } catch (profileError) {
-        setError(getProfileErrorMessage(profileError));
+        setAccountReady(true);
+        setError(
+          `${getProfileErrorMessage(profileError)} Update the profile fields below and try again to finish beta setup.`,
+        );
         return;
       }
 
       router.replace('/events');
     } catch (err) {
+      setAccountReady(false);
       setError(getAuthErrorMessage(err));
     }
   };
+
+  const accessStateCopy = getRegisterAccessStateCopy(betaAccessState, disabledMessage);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
         <View style={styles.container}>
           <View style={styles.hero}>
-            <Text style={styles.title}>Register</Text>
-            <Text style={styles.subtitle}>Create a simple account and profile for Sprint 1.</Text>
-            <Text style={styles.note}>
-              {isAvailable
-                ? 'This creates auth credentials first, then attempts to create the matching profile row.'
-                : disabledMessage}
+            <Text style={styles.title}>Create account</Text>
+            <Text style={styles.subtitle}>
+              Beta accounts are the preferred path for profile sync, private feed access, team details, and supported notifications.
             </Text>
+          </View>
+
+          <View style={styles.stateCard}>
+            <Text style={styles.stateLabel}>Current device state</Text>
+            <Text style={styles.stateTitle}>{accessStateCopy.title}</Text>
+            <Text style={styles.note}>{accessStateCopy.description}</Text>
+            {accountReady && isAuthenticated ? (
+              <Text style={styles.success}>Your account is signed in on this device. Finish the runner profile below.</Text>
+            ) : null}
           </View>
 
           <View style={styles.form}>
@@ -148,7 +166,9 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Already have an account?</Text>
+            <Pressable style={styles.secondaryButton} onPress={() => router.replace('/events')}>
+              <Text style={styles.secondaryButtonText}>Browse as guest</Text>
+            </Pressable>
             <Pressable onPress={() => router.replace('/(auth)/login')}>
               <Text style={styles.link}>Sign in</Text>
             </Pressable>
@@ -157,6 +177,29 @@ export default function RegisterScreen() {
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+function getRegisterAccessStateCopy(betaAccessState: BetaAccessState, disabledMessage: string | null | undefined) {
+  switch (betaAccessState) {
+    case 'dev_runner':
+      return {
+        title: 'DEV runner stays local only',
+        description:
+          'DEV runner can still test event and run flows on this device, but it does not create a synced beta profile.',
+      };
+    case 'auth_unavailable':
+      return {
+        title: 'Account setup not ready here',
+        description: disabledMessage ?? 'This local environment is still guest-only right now.',
+      };
+    case 'signed_out':
+    case 'loading':
+    default:
+      return {
+        title: 'Create your beta path',
+        description: 'This creates your sign-in first, then your runner profile for the closed beta.',
+      };
+  }
 }
 
 const styles = StyleSheet.create({
@@ -176,6 +219,14 @@ const styles = StyleSheet.create({
   hero: {
     gap: 10,
   },
+  stateCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 6,
+  },
   form: {
     gap: 16,
   },
@@ -194,6 +245,18 @@ const styles = StyleSheet.create({
   note: {
     fontSize: 14,
     color: '#475569',
+    lineHeight: 20,
+  },
+  stateLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  stateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   label: {
     fontSize: 13,
@@ -238,15 +301,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  footerText: {
-    color: '#475569',
+    gap: 12,
   },
   link: {
     color: '#2563eb',
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  secondaryButton: {
+    minHeight: 52,
+    borderRadius: 12,
+    backgroundColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryButtonText: {
+    color: '#0f172a',
+    fontWeight: '700',
+    fontSize: 16,
   },
 });

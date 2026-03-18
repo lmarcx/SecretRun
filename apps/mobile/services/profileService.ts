@@ -122,7 +122,7 @@ export function getProfileErrorMessage(error: unknown): string {
         return 'This username is already taken.';
       }
 
-      return firstMessage;
+      return 'We could not finish your profile right now.';
     }
   }
 
@@ -132,8 +132,10 @@ export function getProfileErrorMessage(error: unknown): string {
       return 'This username is already taken.';
     }
 
-    return error.message;
+    if (lowerMessage.includes('fetch failed') || lowerMessage.includes('network request failed')) {
+      return 'Profile details are unavailable right now. Try again in a moment.';
+    }
   }
 
-  return 'Something went wrong while loading your profile.';
+  return 'We could not finish your profile right now.';
 }

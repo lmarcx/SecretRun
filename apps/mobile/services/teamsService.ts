@@ -103,13 +103,16 @@ export function getTeamsErrorMessage(error: unknown): string {
   if (error instanceof ClientError) {
     const firstMessage = error.response.errors?.[0]?.message;
     if (firstMessage) {
-      return firstMessage;
+      return 'We could not load teams right now.';
     }
   }
 
   if (error instanceof Error) {
-    return error.message;
+    const lowerMessage = error.message.toLowerCase();
+    if (lowerMessage.includes('fetch failed') || lowerMessage.includes('network request failed')) {
+      return 'Teams are unavailable right now. Try again in a moment.';
+    }
   }
 
-  return 'Something went wrong while loading teams.';
+  return 'We could not load teams right now.';
 }
