@@ -203,6 +203,9 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const payload = req.body;
   if (!payload?.activity_id) {
+    logEvent('rejected', {
+      reason: 'missing_activity_id',
+    });
     return {
       success: false,
       error: 'activity_id is required',
@@ -213,6 +216,10 @@ export default async function handler(req: AuthenticatedRequest) {
   try {
     normalizedTrackpoints = normalizeTrackpoints(payload);
   } catch (error) {
+    logEvent('rejected', {
+      activity_id: payload.activity_id ?? null,
+      reason: 'invalid_payload',
+    });
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Trackpoint payload is invalid.',
@@ -229,6 +236,10 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const currentUserId = getAuthenticatedUserId(req);
   if (!currentUserId) {
+    logEvent('denied', {
+      activity_id: payload.activity_id,
+      reason: 'missing_auth',
+    });
     return {
       success: false,
       error: 'Missing authenticated user context.',
@@ -250,6 +261,11 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const activity = stateResponse.activities_by_pk;
   if (!activity) {
+    logEvent('denied', {
+      activity_id: payload.activity_id,
+      user_id: currentUserId,
+      reason: 'activity_not_found',
+    });
     return {
       success: false,
       error: 'Activity not found.',
@@ -257,6 +273,11 @@ export default async function handler(req: AuthenticatedRequest) {
   }
 
   if (activity.user_id !== currentUserId) {
+    logEvent('denied', {
+      activity_id: payload.activity_id,
+      user_id: currentUserId,
+      reason: 'activity_owner_mismatch',
+    });
     return {
       success: false,
       error: 'You cannot add trackpoints to another runner activity.',
@@ -271,6 +292,11 @@ export default async function handler(req: AuthenticatedRequest) {
   });
 
   if (participationResponse.event_participants.length === 0) {
+    logEvent('denied', {
+      activity_id: payload.activity_id,
+      user_id: currentUserId,
+      reason: 'participant_not_registered',
+    });
     return {
       success: false,
       error: 'Only registered participants can upload trackpoints for this event.',
@@ -278,6 +304,12 @@ export default async function handler(req: AuthenticatedRequest) {
   }
 
   if (activity.finished_at || activity.status !== 'pending') {
+    logEvent('denied', {
+      activity_id: payload.activity_id,
+      user_id: currentUserId,
+      reason: 'activity_closed',
+      status: activity.status,
+    });
     return {
       success: false,
       error: 'Trackpoints cannot be added after the activity is finished.',

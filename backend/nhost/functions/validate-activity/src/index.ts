@@ -419,6 +419,9 @@ export default async function handler(req: AuthenticatedRequest) {
   }
 
   if (!requireInternalRequest(req, adminSecret)) {
+    logEvent('denied', {
+      reason: 'forbidden',
+    });
     return {
       success: false,
       error: 'Forbidden.',
@@ -427,6 +430,9 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const activityId = req.body?.activity_id;
   if (!activityId) {
+    logEvent('rejected', {
+      reason: 'missing_activity_id',
+    });
     return {
       success: false,
       error: 'activity_id is required',
@@ -445,6 +451,10 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const activity = activityResponse.activities_by_pk;
   if (!activity) {
+    logEvent('denied', {
+      activity_id: activityId,
+      reason: 'activity_not_found',
+    });
     return {
       success: false,
       error: 'Activity not found.',
@@ -542,7 +552,7 @@ export default async function handler(req: AuthenticatedRequest) {
   const totalPoints = Math.round(BASE_POINTS + bonus);
   const teamBonusPoints = Number(process.env.TEAM_EVENT_BONUS_POINTS ?? '5');
 
-  const finalizeResponse = await client.request<{
+  let finalizeResponse: {
     finalize_validated_activity: Array<{
       activity_id: string;
       season_id: string;
@@ -552,15 +562,39 @@ export default async function handler(req: AuthenticatedRequest) {
       team_points: number;
       created_at: string;
     }>;
-  }>(finalizeValidatedActivityMutation, {
-    activityId: activity.id,
-    finishedAt: summary.finishedAt,
-    distanceKm,
-    durationSeconds: summary.durationSeconds,
-    avgSpeedKmh: summary.avgSpeedKmh,
-    points: totalPoints,
-    teamBonusPoints,
-  });
+  };
+
+  try {
+    finalizeResponse = await client.request<{
+      finalize_validated_activity: Array<{
+        activity_id: string;
+        season_id: string;
+        user_id: string;
+        team_id: string | null;
+        user_points: number;
+        team_points: number;
+        created_at: string;
+      }>;
+    }>(finalizeValidatedActivityMutation, {
+      activityId: activity.id,
+      finishedAt: summary.finishedAt,
+      distanceKm,
+      durationSeconds: summary.durationSeconds,
+      avgSpeedKmh: summary.avgSpeedKmh,
+      points: totalPoints,
+      teamBonusPoints,
+    });
+  } catch (error) {
+    logEvent('finalize_failed', {
+      activity_id: activity.id,
+      user_id: activity.user_id,
+      message: error instanceof Error ? error.message : 'unknown',
+    });
+    return {
+      success: false,
+      error: 'Could not finalize this validated activity right now.',
+    };
+  }
 
   const scoring = finalizeResponse.finalize_validated_activity[0] ?? null;
 
@@ -576,6 +610,7 @@ export default async function handler(req: AuthenticatedRequest) {
     success: true,
     activity_id: activity.id,
     status: 'validated',
+    reason: null,
     distance_km: distanceKm,
     duration_seconds: summary.durationSeconds,
     estimated_duration_seconds: estimatedSeconds,

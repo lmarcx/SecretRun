@@ -124,6 +124,9 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const payload = req.body;
   if (!payload?.event_id) {
+    logEvent('rejected', {
+      reason: 'missing_event_id',
+    });
     return {
       success: false,
       error: 'event_id is required',
@@ -132,6 +135,10 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const currentUserId = getAuthenticatedUserId(req);
   if (!currentUserId) {
+    logEvent('denied', {
+      event_id: payload.event_id,
+      reason: 'missing_auth',
+    });
     return {
       success: false,
       error: 'Missing authenticated user context.',
@@ -142,6 +149,11 @@ export default async function handler(req: AuthenticatedRequest) {
   try {
     startedAt = normalizeStartedAt(payload.started_at);
   } catch (error) {
+    logEvent('rejected', {
+      event_id: payload.event_id,
+      user_id: currentUserId,
+      reason: 'invalid_started_at',
+    });
     return {
       success: false,
       error: error instanceof Error ? error.message : 'started_at is invalid.',
@@ -163,6 +175,11 @@ export default async function handler(req: AuthenticatedRequest) {
   });
 
   if (participation.event_participants.length === 0) {
+    logEvent('denied', {
+      event_id: payload.event_id,
+      user_id: currentUserId,
+      reason: 'participant_not_registered',
+    });
     return {
       success: false,
       error: 'Only registered participants can start an activity.',

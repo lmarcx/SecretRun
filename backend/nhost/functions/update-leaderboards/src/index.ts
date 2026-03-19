@@ -38,6 +38,9 @@ export default async function handler(req: { body?: Input }) {
 
   const activityId = req.body?.activity_id;
   if (!activityId) {
+    logEvent('rejected', {
+      reason: 'missing_activity_id',
+    });
     return {
       success: false,
       error: 'activity_id is required',
@@ -67,6 +70,10 @@ export default async function handler(req: { body?: Input }) {
 
   const activity = activityResponse.activities_by_pk;
   if (!activity) {
+    logEvent('denied', {
+      activity_id: activityId,
+      reason: 'activity_not_found',
+    });
     return {
       success: false,
       error: 'Activity not found.',
@@ -74,6 +81,12 @@ export default async function handler(req: { body?: Input }) {
   }
 
   if (activity.status !== 'validated') {
+    logEvent('blocked', {
+      activity_id: activity.id,
+      user_id: activity.user_id,
+      reason: 'activity_not_validated',
+      status: activity.status,
+    });
     return {
       success: false,
       error: 'Only validated activities can appear on leaderboards.',
@@ -82,6 +95,11 @@ export default async function handler(req: { body?: Input }) {
 
   const application = activityResponse.activity_score_applications[0] ?? null;
   if (!application) {
+    logEvent('blocked', {
+      activity_id: activity.id,
+      user_id: activity.user_id,
+      reason: 'missing_score_application',
+    });
     return {
       success: false,
       error: 'No finalized leaderboard application exists for this activity.',

@@ -98,6 +98,9 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const payload = req.body;
   if (!payload?.activity_id) {
+    logEvent('rejected', {
+      reason: 'missing_activity_id',
+    });
     return {
       success: false,
       error: 'activity_id is required',
@@ -106,6 +109,10 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const currentUserId = getAuthenticatedUserId(req);
   if (!currentUserId) {
+    logEvent('denied', {
+      activity_id: payload.activity_id,
+      reason: 'missing_auth',
+    });
     return {
       success: false,
       error: 'Missing authenticated user context.',
@@ -122,6 +129,11 @@ export default async function handler(req: AuthenticatedRequest) {
   const activity = currentActivity.activities_by_pk;
 
   if (!activity) {
+    logEvent('denied', {
+      activity_id: payload.activity_id,
+      user_id: currentUserId,
+      reason: 'activity_not_found',
+    });
     return {
       success: false,
       error: 'Activity not found.',
@@ -129,6 +141,11 @@ export default async function handler(req: AuthenticatedRequest) {
   }
 
   if (activity.user_id !== currentUserId) {
+    logEvent('denied', {
+      activity_id: payload.activity_id,
+      user_id: currentUserId,
+      reason: 'activity_owner_mismatch',
+    });
     return {
       success: false,
       error: 'You cannot finish another runner activity.',
@@ -143,6 +160,11 @@ export default async function handler(req: AuthenticatedRequest) {
   });
 
   if (participation.event_participants.length === 0) {
+    logEvent('denied', {
+      activity_id: payload.activity_id,
+      user_id: currentUserId,
+      reason: 'participant_not_registered',
+    });
     return {
       success: false,
       error: 'Only registered participants can finish this activity.',
@@ -179,10 +201,16 @@ export default async function handler(req: AuthenticatedRequest) {
   });
 
   const validateResult = (await validateResponse.json().catch(() => null)) as
-    | { success?: boolean; error?: string; status?: string }
+    | { success?: boolean; error?: string; status?: string; reason?: string | null; reused?: boolean }
     | null;
 
   if (!validateResponse.ok || !validateResult?.success) {
+    logEvent('validation_failed', {
+      activity_id: activity.id,
+      user_id: currentUserId,
+      status_code: validateResponse.status,
+      reason: validateResult?.error ?? 'unknown',
+    });
     return {
       success: false,
       error: validateResult?.error ?? `validate-activity failed with status ${validateResponse.status}.`,
@@ -206,5 +234,7 @@ export default async function handler(req: AuthenticatedRequest) {
   return {
     success: true,
     activity: finalizedActivity.activities_by_pk,
+    reason: validateResult?.reason ?? null,
+    reused: Boolean(validateResult?.reused),
   };
 }
