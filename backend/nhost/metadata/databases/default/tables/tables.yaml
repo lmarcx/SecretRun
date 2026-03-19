@@ -6,6 +6,7 @@
 - "!include public_event_routes.yaml"
 - "!include public_activities.yaml"
 - "!include public_activity_trackpoints.yaml"
+- "!include public_activity_score_applications.yaml"
 - "!include public_wallets.yaml"
 - "!include public_wallet_ledger.yaml"
 - "!include public_seasons.yaml"

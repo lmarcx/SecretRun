@@ -1,0 +1,5 @@
+- function:
+    schema: public
+    name: finalize_validated_activity
+  configuration:
+    exposed_as: mutation

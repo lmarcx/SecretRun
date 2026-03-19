@@ -9,11 +9,26 @@ interface AuthenticatedRequest {
   headers?: Record<string, string | string[] | undefined>;
 }
 
-const activityQuery = gql`
+interface ActivityPayload {
+  id: string;
+  user_id: string;
+  event_id: string;
+  status: string;
+  points: number | null;
+  distance_km: number | string;
+  duration_seconds: number;
+  avg_speed_kmh: number | string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  suspected_vehicle: boolean;
+}
+
+const getActivityQuery = gql`
   query GetActivity($activityId: uuid!) {
     activities_by_pk(id: $activityId) {
       id
       user_id
+      event_id
       status
       points
       distance_km
@@ -21,17 +36,22 @@ const activityQuery = gql`
       avg_speed_kmh
       started_at
       finished_at
+      suspected_vehicle
     }
   }
 `;
 
-const mutation = gql`
-  mutation FinishActivity($activityId: uuid!, $finishedAt: timestamptz!) {
-    update_activities_by_pk(
-      pk_columns: { id: $activityId }
-      _set: { finished_at: $finishedAt }
+const getParticipationQuery = gql`
+  query GetParticipation($eventId: uuid!, $userId: uuid!) {
+    event_participants(
+      where: {
+        event_id: { _eq: $eventId }
+        user_id: { _eq: $userId }
+        status: { _eq: "registered" }
+      }
+      limit: 1
     ) {
-      id
+      event_id
     }
   }
 `;
@@ -49,29 +69,21 @@ function getHeaderValue(
     return null;
   }
 
-  return Array.isArray(direct) ? direct[0] : direct;
+  return Array.isArray(direct) ? direct[0] ?? null : direct;
 }
 
 function getAuthenticatedUserId(req: AuthenticatedRequest): string | null {
-  return (
-    getHeaderValue(req.headers, 'x-hasura-user-id') ?? getHeaderValue(req.headers, 'X-Hasura-User-Id')
-  );
+  return getHeaderValue(req.headers, 'x-hasura-user-id') ?? getHeaderValue(req.headers, 'X-Hasura-User-Id');
+}
+
+function logEvent(event: string, payload: Record<string, unknown>) {
+  console.log(JSON.stringify({ scope: 'activity.finish', event, ...payload }));
 }
 
 async function fetchActivity(client: GraphQLClient, activityId: string) {
   return client.request<{
-    activities_by_pk: {
-      id: string;
-      user_id: string;
-      status: string;
-      points: number | null;
-      distance_km: number | string;
-      duration_seconds: number;
-      avg_speed_kmh: number | string | null;
-      started_at: string | null;
-      finished_at: string | null;
-    } | null;
-  }>(activityQuery, {
+    activities_by_pk: ActivityPayload | null;
+  }>(getActivityQuery, {
     activityId,
   });
 }
@@ -107,75 +119,55 @@ export default async function handler(req: AuthenticatedRequest) {
   });
 
   const currentActivity = await fetchActivity(client, payload.activity_id);
-
   const activity = currentActivity.activities_by_pk;
+
   if (!activity) {
     return {
       success: false,
-      error: 'Activity not found',
+      error: 'Activity not found.',
     };
   }
 
   if (activity.user_id !== currentUserId) {
     return {
       success: false,
-      error: 'You cannot finish another runner\'s activity.',
+      error: 'You cannot finish another runner activity.',
     };
   }
 
-  if (!activity.finished_at) {
-    await client.request<{
-      update_activities_by_pk: { id: string } | null;
-    }>(mutation, {
-      activityId: payload.activity_id,
-      finishedAt: new Date().toISOString(),
-    });
+  const participation = await client.request<{
+    event_participants: Array<{ event_id: string }>;
+  }>(getParticipationQuery, {
+    eventId: activity.event_id,
+    userId: currentUserId,
+  });
+
+  if (participation.event_participants.length === 0) {
+    return {
+      success: false,
+      error: 'Only registered participants can finish this activity.',
+    };
   }
 
   if (activity.status === 'validated' || activity.status === 'rejected') {
-    const finalized = await fetchActivity(client, payload.activity_id);
+    logEvent('reused', {
+      activity_id: activity.id,
+      user_id: currentUserId,
+      status: activity.status,
+    });
 
     return {
       success: true,
-      activity: (finalized as typeof currentActivity).activities_by_pk,
+      activity,
+      reused: true,
     };
   }
 
-  const detectResponse = await fetch(`${getFunctionsBaseUrl()}/detect-cheating`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-hasura-admin-secret': adminSecret,
-    },
-    body: JSON.stringify({ activity_id: payload.activity_id }),
+  logEvent('started', {
+    activity_id: activity.id,
+    user_id: currentUserId,
+    status: activity.status,
   });
-
-  if (!detectResponse.ok) {
-    const body = await detectResponse.text();
-    return {
-      success: false,
-      error: `detect-cheating failed: ${detectResponse.status} ${body}`,
-    };
-  }
-
-  const detectResult = (await detectResponse.json().catch(() => null)) as
-    | { success?: boolean; status?: string; error?: string }
-    | null;
-  if (!detectResult?.success) {
-    return {
-      success: false,
-      error: detectResult?.error ?? 'detect-cheating returned an invalid response.',
-    };
-  }
-
-  if (detectResult.status === 'rejected') {
-    const rejectedActivity = await fetchActivity(client, payload.activity_id);
-
-    return {
-      success: true,
-      activity: (rejectedActivity as typeof currentActivity).activities_by_pk,
-    };
-  }
 
   const validateResponse = await fetch(`${getFunctionsBaseUrl()}/validate-activity`, {
     method: 'POST',
@@ -186,32 +178,30 @@ export default async function handler(req: AuthenticatedRequest) {
     body: JSON.stringify({ activity_id: payload.activity_id }),
   });
 
-  if (!validateResponse.ok) {
-    const body = await validateResponse.text();
-    return {
-      success: false,
-      error: `validate-activity failed: ${validateResponse.status} ${body}`,
-    };
-  }
-
   const validateResult = (await validateResponse.json().catch(() => null)) as
-    | { success?: boolean; error?: string }
+    | { success?: boolean; error?: string; status?: string }
     | null;
-  if (!validateResult?.success) {
+
+  if (!validateResponse.ok || !validateResult?.success) {
     return {
       success: false,
-      error: validateResult?.error ?? 'validate-activity returned an invalid response.',
+      error: validateResult?.error ?? `validate-activity failed with status ${validateResponse.status}.`,
     };
   }
 
   const finalizedActivity = await fetchActivity(client, payload.activity_id);
-
   if (!finalizedActivity.activities_by_pk) {
     return {
       success: false,
       error: 'Activity disappeared during finalization.',
     };
   }
+
+  logEvent('completed', {
+    activity_id: finalizedActivity.activities_by_pk.id,
+    user_id: currentUserId,
+    status: finalizedActivity.activities_by_pk.status,
+  });
 
   return {
     success: true,

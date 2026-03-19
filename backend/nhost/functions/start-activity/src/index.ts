@@ -3,12 +3,22 @@ import { GraphQLClient, gql } from 'graphql-request';
 interface Input {
   event_id: string;
   started_at?: string;
-  user_id?: string;
 }
 
 interface AuthenticatedRequest {
   body?: Input;
   headers?: Record<string, string | string[] | undefined>;
+}
+
+interface ActivityPayload {
+  id: string;
+  status: string;
+  points: number | null;
+  distance_km: number | string;
+  duration_seconds: number;
+  avg_speed_kmh: number | string | null;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 const getParticipationQuery = gql`
@@ -44,7 +54,7 @@ const getParticipationQuery = gql`
   }
 `;
 
-const mutation = gql`
+const startActivityMutation = gql`
   mutation StartActivity(
     $eventId: uuid!
     $userId: uuid!
@@ -80,23 +90,11 @@ function getHeaderValue(
     return null;
   }
 
-  return Array.isArray(direct) ? direct[0] : direct;
+  return Array.isArray(direct) ? direct[0] ?? null : direct;
 }
 
 function getAuthenticatedUserId(req: AuthenticatedRequest): string | null {
-  const headerUserId =
-    getHeaderValue(req.headers, 'x-hasura-user-id') ?? getHeaderValue(req.headers, 'X-Hasura-User-Id');
-  const bodyUserId = req.body?.user_id;
-
-  if (!headerUserId) {
-    return null;
-  }
-
-  if (bodyUserId && bodyUserId !== headerUserId) {
-    throw new Error('Body user_id does not match authenticated user.');
-  }
-
-  return headerUserId;
+  return getHeaderValue(req.headers, 'x-hasura-user-id') ?? getHeaderValue(req.headers, 'X-Hasura-User-Id');
 }
 
 function normalizeStartedAt(value?: string): string {
@@ -110,6 +108,10 @@ function normalizeStartedAt(value?: string): string {
   }
 
   return startedAt.toISOString();
+}
+
+function logEvent(event: string, payload: Record<string, unknown>) {
+  console.log(JSON.stringify({ scope: 'activity.start', event, ...payload }));
 }
 
 export default async function handler(req: AuthenticatedRequest) {
@@ -128,16 +130,7 @@ export default async function handler(req: AuthenticatedRequest) {
     };
   }
 
-  let currentUserId: string | null;
-  try {
-    currentUserId = getAuthenticatedUserId(req);
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Could not verify user identity.',
-    };
-  }
-
+  const currentUserId = getAuthenticatedUserId(req);
   if (!currentUserId) {
     return {
       success: false,
@@ -145,7 +138,15 @@ export default async function handler(req: AuthenticatedRequest) {
     };
   }
 
-  const startedAt = normalizeStartedAt(payload.started_at);
+  let startedAt: string;
+  try {
+    startedAt = normalizeStartedAt(payload.started_at);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'started_at is invalid.',
+    };
+  }
 
   const client = new GraphQLClient(url, {
     headers: {
@@ -155,16 +156,7 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const participation = await client.request<{
     event_participants: Array<{ event_id: string }>;
-    pending_activities: Array<{
-      id: string;
-      status: string;
-      points: number | null;
-      distance_km: number | string;
-      duration_seconds: number;
-      avg_speed_kmh: number | string | null;
-      started_at: string | null;
-      finished_at: string | null;
-    }>;
+    pending_activities: ActivityPayload[];
   }>(getParticipationQuery, {
     eventId: payload.event_id,
     userId: currentUserId,
@@ -179,6 +171,12 @@ export default async function handler(req: AuthenticatedRequest) {
 
   const existingActivity = participation.pending_activities[0];
   if (existingActivity) {
+    logEvent('reused', {
+      activity_id: existingActivity.id,
+      event_id: payload.event_id,
+      user_id: currentUserId,
+    });
+
     return {
       success: true,
       activity: existingActivity,
@@ -187,21 +185,18 @@ export default async function handler(req: AuthenticatedRequest) {
   }
 
   const response = await client.request<{
-    insert_activities_one: {
-      id: string;
-      status: string;
-      points: number | null;
-      distance_km: number | string;
-      duration_seconds: number;
-      avg_speed_kmh: number | string | null;
-      started_at: string | null;
-      finished_at: string | null;
-    };
-  }>(mutation, {
+    insert_activities_one: ActivityPayload;
+  }>(startActivityMutation, {
     eventId: payload.event_id,
     userId: currentUserId,
     startedAt,
     status: 'pending',
+  });
+
+  logEvent('created', {
+    activity_id: response.insert_activities_one.id,
+    event_id: payload.event_id,
+    user_id: currentUserId,
   });
 
   return {

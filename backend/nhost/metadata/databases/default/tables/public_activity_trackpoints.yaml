@@ -16,11 +16,3 @@ select_permissions:
       allow_aggregations: true
       query_root_fields: [select, select_by_pk, select_aggregate]
       subscription_root_fields: [select, select_by_pk, select_aggregate]
-insert_permissions:
-  - role: user
-    permission:
-      check:
-        activity:
-          user_id:
-            _eq: X-Hasura-User-Id
-      columns: [activity_id, point, recorded_at, speed_kmh]

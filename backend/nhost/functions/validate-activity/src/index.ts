@@ -1,7 +1,12 @@
-﻿import { GraphQLClient, gql } from 'graphql-request';
+import { GraphQLClient, gql } from 'graphql-request';
 
 interface Input {
   activity_id: string;
+}
+
+interface AuthenticatedRequest {
+  body?: Input;
+  headers?: Record<string, string | string[] | undefined>;
 }
 
 interface PointGeoJson {
@@ -9,8 +14,11 @@ interface PointGeoJson {
 }
 
 interface Trackpoint {
+  seq: number;
   point: PointGeoJson | string | null;
   recorded_at: string;
+  speed_mps: number | null;
+  speed_kmh: number | null;
 }
 
 interface ActivityInfo {
@@ -18,6 +26,163 @@ interface ActivityInfo {
   user_id: string;
   event_id: string;
   status: 'pending' | 'validated' | 'rejected';
+  distance_km: number | string;
+  duration_seconds: number;
+  avg_speed_kmh: number | string | null;
+  points: number;
+  finished_at: string | null;
+  suspected_vehicle: boolean;
+}
+
+interface ValidationSummary {
+  distanceMeters: number;
+  durationSeconds: number;
+  avgSpeedKmh: number;
+  finishedAt: string;
+  suspectedVehicle: boolean;
+  reason: string | null;
+}
+
+const MAX_JUMP_METERS = 250;
+const MAX_JUMP_WINDOW_SECONDS = 10;
+const MAX_SPEED_MPS = 8.5;
+const DUPLICATE_DISTANCE_METERS = 2;
+const DUPLICATE_WINDOW_MS = 1500;
+const MIN_RUN_DURATION_SECONDS = 60;
+const MIN_RUN_DISTANCE_METERS = 250;
+const BASE_POINTS = 10;
+
+const getActivityQuery = gql`
+  query GetActivity($activityId: uuid!) {
+    activities_by_pk(id: $activityId) {
+      id
+      user_id
+      event_id
+      status
+      distance_km
+      duration_seconds
+      avg_speed_kmh
+      points
+      finished_at
+      suspected_vehicle
+    }
+  }
+`;
+
+const getParticipationQuery = gql`
+  query GetParticipation($eventId: uuid!, $userId: uuid!) {
+    event_participants(
+      where: {
+        event_id: { _eq: $eventId }
+        user_id: { _eq: $userId }
+        status: { _eq: "registered" }
+      }
+      limit: 1
+    ) {
+      event_id
+    }
+  }
+`;
+
+const getTrackpointsQuery = gql`
+  query GetTrackpoints($activityId: uuid!) {
+    activity_trackpoints(
+      where: { activity_id: { _eq: $activityId } }
+      order_by: [{ recorded_at: asc }, { seq: asc }]
+    ) {
+      seq
+      point
+      recorded_at
+      speed_mps
+      speed_kmh
+    }
+  }
+`;
+
+const getEventEstimateQuery = gql`
+  query GetEventEstimate($eventId: uuid!) {
+    event_routes(where: { event_id: { _eq: $eventId } }, limit: 1) {
+      duration_sec
+    }
+  }
+`;
+
+const rejectActivityMutation = gql`
+  mutation RejectActivity(
+    $activityId: uuid!
+    $finishedAt: timestamptz!
+    $distanceKm: numeric!
+    $durationSeconds: Int!
+    $avgSpeedKmh: numeric!
+    $reasonIsVehicle: Boolean!
+  ) {
+    update_activities_by_pk(
+      pk_columns: { id: $activityId }
+      _set: {
+        status: rejected
+        finished_at: $finishedAt
+        distance_km: $distanceKm
+        duration_seconds: $durationSeconds
+        avg_speed_kmh: $avgSpeedKmh
+        points: 0
+        suspected_vehicle: $reasonIsVehicle
+      }
+    ) {
+      id
+      status
+    }
+  }
+`;
+
+const finalizeValidatedActivityMutation = gql`
+  mutation FinalizeValidatedActivity(
+    $activityId: uuid!
+    $finishedAt: timestamptz!
+    $distanceKm: numeric!
+    $durationSeconds: Int!
+    $avgSpeedKmh: numeric!
+    $points: Int!
+    $teamBonusPoints: Int!
+  ) {
+    finalize_validated_activity(
+      args: {
+        _activity_id: $activityId
+        _finished_at: $finishedAt
+        _distance_km: $distanceKm
+        _duration_seconds: $durationSeconds
+        _avg_speed_kmh: $avgSpeedKmh
+        _points: $points
+        _team_bonus_points: $teamBonusPoints
+      }
+    ) {
+      activity_id
+      season_id
+      user_id
+      team_id
+      user_points
+      team_points
+      created_at
+    }
+  }
+`;
+
+function getHeaderValue(
+  headers: Record<string, string | string[] | undefined> | undefined,
+  name: string,
+): string | null {
+  const direct = headers?.[name] ?? headers?.[name.toLowerCase()] ?? headers?.[name.toUpperCase()];
+  if (!direct) {
+    return null;
+  }
+
+  return Array.isArray(direct) ? direct[0] ?? null : direct;
+}
+
+function requireInternalRequest(req: AuthenticatedRequest, adminSecret: string): boolean {
+  const providedSecret =
+    getHeaderValue(req.headers, 'x-hasura-admin-secret') ?? getHeaderValue(req.headers, 'X-Hasura-Admin-Secret');
+
+  return providedSecret === adminSecret;
 }
 
 function toRadians(value: number): number {
@@ -67,152 +232,197 @@ function parsePoint(point: PointGeoJson | string | null): { lat: number; lng: nu
   };
 }
 
-function computeDistanceMeters(trackpoints: Trackpoint[]): number {
-  let total = 0;
+function buildFallbackFinishedAt(trackpoints: Trackpoint[]): string {
+  const lastRecordedAt = trackpoints[trackpoints.length - 1]?.recorded_at;
+  const finishedAt = lastRecordedAt ? new Date(lastRecordedAt) : new Date();
+  return Number.isNaN(finishedAt.getTime()) ? new Date().toISOString() : finishedAt.toISOString();
+}
 
-  for (let i = 1; i < trackpoints.length; i += 1) {
-    const prev = parsePoint(trackpoints[i - 1].point);
-    const current = parsePoint(trackpoints[i].point);
+function validateTrackpoints(trackpoints: Trackpoint[]): ValidationSummary {
+  if (trackpoints.length < 2) {
+    return {
+      distanceMeters: 0,
+      durationSeconds: 0,
+      avgSpeedKmh: 0,
+      finishedAt: buildFallbackFinishedAt(trackpoints),
+      suspectedVehicle: false,
+      reason: 'insufficient_trackpoints',
+    };
+  }
 
-    if (!prev || !current) {
+  const firstTrackpoint = trackpoints[0];
+  const lastTrackpoint = trackpoints[trackpoints.length - 1];
+
+  if (!firstTrackpoint || !lastTrackpoint) {
+    return {
+      distanceMeters: 0,
+      durationSeconds: 0,
+      avgSpeedKmh: 0,
+      finishedAt: buildFallbackFinishedAt(trackpoints),
+      suspectedVehicle: false,
+      reason: 'insufficient_trackpoints',
+    };
+  }
+
+  const firstTimestampMs = new Date(firstTrackpoint.recorded_at).getTime();
+  const lastTimestampMs = new Date(lastTrackpoint.recorded_at).getTime();
+
+  if (Number.isNaN(firstTimestampMs) || Number.isNaN(lastTimestampMs) || lastTimestampMs <= firstTimestampMs) {
+    return {
+      distanceMeters: 0,
+      durationSeconds: 0,
+      avgSpeedKmh: 0,
+      finishedAt: buildFallbackFinishedAt(trackpoints),
+      suspectedVehicle: false,
+      reason: 'invalid_timestamps',
+    };
+  }
+
+  let totalDistanceMeters = 0;
+
+  for (let index = 1; index < trackpoints.length; index += 1) {
+    const previous = trackpoints[index - 1];
+    const current = trackpoints[index];
+
+    if (!previous || !current) {
       continue;
     }
 
-    total += haversineDistanceMeters(prev.lat, prev.lng, current.lat, current.lng);
+    const previousPoint = parsePoint(previous.point);
+    const currentPoint = parsePoint(current.point);
+
+    if (!previousPoint || !currentPoint) {
+      return {
+        distanceMeters: totalDistanceMeters,
+        durationSeconds: Math.max(0, Math.round((lastTimestampMs - firstTimestampMs) / 1000)),
+        avgSpeedKmh: 0,
+        finishedAt: new Date(lastTimestampMs).toISOString(),
+        suspectedVehicle: false,
+        reason: 'malformed_trackpoint',
+      };
+    }
+
+    const previousTimestampMs = new Date(previous.recorded_at).getTime();
+    const currentTimestampMs = new Date(current.recorded_at).getTime();
+    const deltaMs = currentTimestampMs - previousTimestampMs;
+
+    if (Number.isNaN(previousTimestampMs) || Number.isNaN(currentTimestampMs) || deltaMs <= 0) {
+      return {
+        distanceMeters: totalDistanceMeters,
+        durationSeconds: Math.max(0, Math.round((lastTimestampMs - firstTimestampMs) / 1000)),
+        avgSpeedKmh: 0,
+        finishedAt: new Date(lastTimestampMs).toISOString(),
+        suspectedVehicle: false,
+        reason: 'out_of_order_timestamps',
+      };
+    }
+
+    const distanceMeters = haversineDistanceMeters(
+      previousPoint.lat,
+      previousPoint.lng,
+      currentPoint.lat,
+      currentPoint.lng,
+    );
+
+    if (distanceMeters < DUPLICATE_DISTANCE_METERS && deltaMs < DUPLICATE_WINDOW_MS) {
+      continue;
+    }
+
+    const deltaSeconds = deltaMs / 1000;
+    const computedSpeedMps = distanceMeters / deltaSeconds;
+    const reportedSpeedMps = current.speed_mps ?? computedSpeedMps;
+
+    if (distanceMeters > MAX_JUMP_METERS && deltaSeconds <= MAX_JUMP_WINDOW_SECONDS) {
+      return {
+        distanceMeters: totalDistanceMeters,
+        durationSeconds: Math.max(0, Math.round((lastTimestampMs - firstTimestampMs) / 1000)),
+        avgSpeedKmh: 0,
+        finishedAt: new Date(lastTimestampMs).toISOString(),
+        suspectedVehicle: true,
+        reason: 'impossible_jump',
+      };
+    }
+
+    if (computedSpeedMps > MAX_SPEED_MPS || reportedSpeedMps > MAX_SPEED_MPS) {
+      return {
+        distanceMeters: totalDistanceMeters,
+        durationSeconds: Math.max(0, Math.round((lastTimestampMs - firstTimestampMs) / 1000)),
+        avgSpeedKmh: 0,
+        finishedAt: new Date(lastTimestampMs).toISOString(),
+        suspectedVehicle: true,
+        reason: 'speed_limit_exceeded',
+      };
+    }
+
+    totalDistanceMeters += distanceMeters;
   }
 
-  return total;
+  const durationSeconds = Math.max(0, Math.round((lastTimestampMs - firstTimestampMs) / 1000));
+
+  if (durationSeconds < MIN_RUN_DURATION_SECONDS) {
+    return {
+      distanceMeters: totalDistanceMeters,
+      durationSeconds,
+      avgSpeedKmh: durationSeconds > 0 ? Number((((totalDistanceMeters / 1000) / durationSeconds) * 3600).toFixed(2)) : 0,
+      finishedAt: new Date(lastTimestampMs).toISOString(),
+      suspectedVehicle: false,
+      reason: 'too_short_duration',
+    };
+  }
+
+  if (totalDistanceMeters < MIN_RUN_DISTANCE_METERS) {
+    return {
+      distanceMeters: totalDistanceMeters,
+      durationSeconds,
+      avgSpeedKmh: durationSeconds > 0 ? Number((((totalDistanceMeters / 1000) / durationSeconds) * 3600).toFixed(2)) : 0,
+      finishedAt: new Date(lastTimestampMs).toISOString(),
+      suspectedVehicle: false,
+      reason: 'too_short_distance',
+    };
+  }
+
+  return {
+    distanceMeters: totalDistanceMeters,
+    durationSeconds,
+    avgSpeedKmh: Number((((totalDistanceMeters / 1000) / durationSeconds) * 3600).toFixed(2)),
+    finishedAt: new Date(lastTimestampMs).toISOString(),
+    suspectedVehicle: false,
+    reason: null,
+  };
 }
 
-const getActivityQuery = gql`
-  query GetActivity($activityId: uuid!) {
-    activities_by_pk(id: $activityId) {
-      id
-      user_id
-      event_id
-      status
-    }
-  }
-`;
-
-const getTrackpointsQuery = gql`
-  query GetTrackpoints($activityId: uuid!) {
-    activity_trackpoints(
-      where: { activity_id: { _eq: $activityId } }
-      order_by: [{ recorded_at: asc }, { seq: asc }]
-    ) {
-      point
-      recorded_at
-    }
-  }
-`;
-
-const getEventEstimateQuery = gql`
-  query GetEventEstimate($eventId: uuid!) {
-    event_routes(where: { event_id: { _eq: $eventId } }, limit: 1) {
-      duration_sec
-    }
-  }
-`;
-
-const getLedgerByReferenceQuery = gql`
-  query GetLedgerByReference($referenceKey: String!) {
-    wallet_ledger(where: { reference_key: { _eq: $referenceKey } }, limit: 1) {
-      id
-    }
-  }
-`;
-
-const ensureWalletMutation = gql`
-  mutation EnsureWallet($userId: uuid!) {
-    insert_wallets_one(
-      object: { user_id: $userId, balance: 0 }
-      on_conflict: { constraint: wallets_user_id_key, update_columns: [updated_at] }
-    ) {
-      id
-      balance
-    }
-  }
-`;
-
-const updateWalletMutation = gql`
-  mutation UpdateWallet($userId: uuid!, $delta: Int!, $now: timestamptz!) {
-    update_wallets(
-      where: { user_id: { _eq: $userId } }
-      _inc: { balance: $delta }
-      _set: { updated_at: $now }
-    ) {
-      returning {
-        id
-        balance
-      }
-    }
-  }
-`;
-
-const insertLedgerMutation = gql`
-  mutation InsertLedger(
-    $walletId: uuid!
-    $delta: Int!
-    $reason: String!
-    $transactionType: wallet_transaction_type!
-    $referenceKey: String!
-    $metadata: jsonb!
-  ) {
-    insert_wallet_ledger_one(
-      object: {
-        wallet_id: $walletId
-        delta: $delta
-        reason: $reason
-        transaction_type: $transactionType
-        reference_key: $referenceKey
-        metadata: $metadata
-      }
-    ) {
-      id
-    }
-  }
-`;
-
-const updateActivityMutation = gql`
-  mutation UpdateActivity(
-    $activityId: uuid!
-    $distanceKm: numeric!
-    $durationSeconds: Int!
-    $points: Int!
-    $avgSpeedKmh: numeric!
-    $finishedAt: timestamptz!
-  ) {
-    update_activities_by_pk(
-      pk_columns: { id: $activityId }
-      _set: {
-        status: validated
-        distance_km: $distanceKm
-        duration_seconds: $durationSeconds
-        points: $points
-        avg_speed_kmh: $avgSpeedKmh
-        finished_at: $finishedAt
-      }
-    ) {
-      id
-      status
-      points
-      distance_km
-      duration_seconds
-    }
-  }
-`;
-
-function getFunctionsBaseUrl(): string {
-  return process.env.NHOST_FUNCTIONS_BASE_URL ?? 'http://127.0.0.1:1337/v1/functions';
+function logEvent(event: string, payload: Record<string, unknown>) {
+  console.log(JSON.stringify({ scope: 'activity.validation', event, ...payload }));
 }
 
-export default async function handler(req: { body?: Input }) {
+async function rejectActivity(
+  client: GraphQLClient,
+  activityId: string,
+  summary: ValidationSummary,
+): Promise<void> {
+  await client.request(rejectActivityMutation, {
+    activityId,
+    finishedAt: summary.finishedAt,
+    distanceKm: Number((summary.distanceMeters / 1000).toFixed(3)),
+    durationSeconds: summary.durationSeconds,
+    avgSpeedKmh: summary.avgSpeedKmh,
+    reasonIsVehicle: summary.suspectedVehicle,
+  });
+}
+
+export default async function handler(req: AuthenticatedRequest) {
   const url = process.env.NHOST_GRAPHQL_URL;
   const adminSecret = process.env.NHOST_ADMIN_SECRET;
 
   if (!url || !adminSecret) {
     throw new Error('NHOST_GRAPHQL_URL and NHOST_ADMIN_SECRET are required');
+  }
+
+  if (!requireInternalRequest(req, adminSecret)) {
+    return {
+      success: false,
+      error: 'Forbidden.',
+    };
   }
 
   const activityId = req.body?.activity_id;
@@ -237,14 +447,54 @@ export default async function handler(req: { body?: Input }) {
   if (!activity) {
     return {
       success: false,
-      error: 'Activity not found',
+      error: 'Activity not found.',
     };
   }
 
-  if (activity.status === 'rejected') {
+  if (activity.status === 'validated' || activity.status === 'rejected') {
+    logEvent('reused', {
+      activity_id: activity.id,
+      user_id: activity.user_id,
+      status: activity.status,
+    });
+
     return {
-      success: false,
-      error: 'Activity rejected, cannot validate',
+      success: true,
+      activity_id: activity.id,
+      status: activity.status,
+      reused: true,
+    };
+  }
+
+  const participationResponse = await client.request<{
+    event_participants: Array<{ event_id: string }>;
+  }>(getParticipationQuery, {
+    eventId: activity.event_id,
+    userId: activity.user_id,
+  });
+
+  if (participationResponse.event_participants.length === 0) {
+    const rejectedSummary: ValidationSummary = {
+      distanceMeters: 0,
+      durationSeconds: 0,
+      avgSpeedKmh: 0,
+      finishedAt: new Date().toISOString(),
+      suspectedVehicle: false,
+      reason: 'participant_not_registered',
+    };
+
+    await rejectActivity(client, activity.id, rejectedSummary);
+    logEvent('rejected', {
+      activity_id: activity.id,
+      user_id: activity.user_id,
+      reason: rejectedSummary.reason,
+    });
+
+    return {
+      success: true,
+      activity_id: activity.id,
+      status: 'rejected',
+      reason: rejectedSummary.reason,
     };
   }
 
@@ -252,127 +502,89 @@ export default async function handler(req: { body?: Input }) {
     activityId,
   });
 
-  const trackpoints = trackpointsResponse.activity_trackpoints;
-  if (trackpoints.length < 2) {
+  logEvent('started', {
+    activity_id: activity.id,
+    user_id: activity.user_id,
+    trackpoint_count: trackpointsResponse.activity_trackpoints.length,
+  });
+
+  const summary = validateTrackpoints(trackpointsResponse.activity_trackpoints);
+  if (summary.reason) {
+    await rejectActivity(client, activity.id, summary);
+    logEvent('rejected', {
+      activity_id: activity.id,
+      user_id: activity.user_id,
+      reason: summary.reason,
+      duration_seconds: summary.durationSeconds,
+      distance_meters: Number(summary.distanceMeters.toFixed(2)),
+    });
+
     return {
-      success: false,
-      error: 'At least 2 trackpoints are required',
+      success: true,
+      activity_id: activity.id,
+      status: 'rejected',
+      reason: summary.reason,
+      distance_km: Number((summary.distanceMeters / 1000).toFixed(3)),
+      duration_seconds: summary.durationSeconds,
     };
   }
 
-  const distanceMeters = computeDistanceMeters(trackpoints);
-  const distanceKm = Number((distanceMeters / 1000).toFixed(3));
-
-  const startedAtMs = new Date(trackpoints[0].recorded_at).getTime();
-  const finishedAtMs = new Date(trackpoints[trackpoints.length - 1].recorded_at).getTime();
-  const durationSeconds = Math.max(0, Math.round((finishedAtMs - startedAtMs) / 1000));
-
+  const distanceKm = Number((summary.distanceMeters / 1000).toFixed(3));
   const estimateResponse = await client.request<{
     event_routes: Array<{ duration_sec: number | null }>;
   }>(getEventEstimateQuery, {
     eventId: activity.event_id,
   });
 
-  const estimatedSeconds = estimateResponse.event_routes[0]?.duration_sec ?? durationSeconds;
-
-  const basePoints = 10;
-  const delta = Math.abs(estimatedSeconds - durationSeconds);
+  const estimatedSeconds = estimateResponse.event_routes[0]?.duration_sec ?? summary.durationSeconds;
+  const delta = Math.abs(estimatedSeconds - summary.durationSeconds);
   const bonus = Math.max(0, 10 - delta);
-  const totalPoints = Math.round(basePoints + bonus);
-  const referenceKey = `run_validation:${activity.id}`;
-  const ledgerExistsResponse = await client.request<{ wallet_ledger: Array<{ id: string }> }>(
-    getLedgerByReferenceQuery,
-    { referenceKey },
-  );
-  const alreadyRewarded = ledgerExistsResponse.wallet_ledger.length > 0;
+  const totalPoints = Math.round(BASE_POINTS + bonus);
+  const teamBonusPoints = Number(process.env.TEAM_EVENT_BONUS_POINTS ?? '5');
 
-  if (!alreadyRewarded) {
-    await client.request(ensureWalletMutation, {
-      userId: activity.user_id,
-    });
-
-    const now = new Date().toISOString();
-    const walletResponse = await client.request<{
-      update_wallets: { returning: Array<{ id: string; balance: number }> };
-    }>(updateWalletMutation, {
-      userId: activity.user_id,
-      delta: totalPoints,
-      now,
-    });
-
-    const wallet = walletResponse.update_wallets.returning[0];
-    if (!wallet) {
-      return {
-        success: false,
-        error: 'Wallet update failed',
-      };
-    }
-
-    await client.request(insertLedgerMutation, {
-      walletId: wallet.id,
-      delta: totalPoints,
-      reason: `activity:${activity.id}:validation`,
-      transactionType: 'run_validation_reward',
-      referenceKey,
-      metadata: {
-        activity_id: activity.id,
-        event_id: activity.event_id,
-        estimated_seconds: estimatedSeconds,
-        actual_seconds: durationSeconds,
-      },
-    });
-  }
-
-  const avgSpeedKmh =
-    durationSeconds > 0 ? Number(((distanceKm / durationSeconds) * 3600).toFixed(2)) : 0;
-
-  await client.request(updateActivityMutation, {
+  const finalizeResponse = await client.request<{
+    finalize_validated_activity: Array<{
+      activity_id: string;
+      season_id: string;
+      user_id: string;
+      team_id: string | null;
+      user_points: number;
+      team_points: number;
+      created_at: string;
+    }>;
+  }>(finalizeValidatedActivityMutation, {
     activityId: activity.id,
+    finishedAt: summary.finishedAt,
     distanceKm,
-    durationSeconds,
+    durationSeconds: summary.durationSeconds,
+    avgSpeedKmh: summary.avgSpeedKmh,
     points: totalPoints,
-    avgSpeedKmh,
-    finishedAt: new Date(finishedAtMs).toISOString(),
+    teamBonusPoints,
   });
 
-  const leaderboardResponse = await fetch(`${getFunctionsBaseUrl()}/update-leaderboards`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-hasura-admin-secret': adminSecret,
-    },
-    body: JSON.stringify({ activity_id: activity.id }),
+  const scoring = finalizeResponse.finalize_validated_activity[0] ?? null;
+
+  logEvent('validated', {
+    activity_id: activity.id,
+    user_id: activity.user_id,
+    duration_seconds: summary.durationSeconds,
+    distance_meters: Number(summary.distanceMeters.toFixed(2)),
+    points: totalPoints,
   });
-
-  if (!leaderboardResponse.ok) {
-    const body = await leaderboardResponse.text();
-    return {
-      success: false,
-      error: `update-leaderboards failed: ${leaderboardResponse.status} ${body}`,
-      activity_id: activity.id,
-    };
-  }
-
-  let leaderboardResult: unknown = null;
-  try {
-    leaderboardResult = await leaderboardResponse.json();
-  } catch {
-    leaderboardResult = { success: false, error: 'Invalid update-leaderboards response' };
-  }
 
   return {
     success: true,
     activity_id: activity.id,
+    status: 'validated',
     distance_km: distanceKm,
-    duration_seconds: durationSeconds,
+    duration_seconds: summary.durationSeconds,
     estimated_duration_seconds: estimatedSeconds,
     points: {
-      base_points: basePoints,
+      base_points: BASE_POINTS,
       delta,
       bonus,
       total_points: totalPoints,
     },
-    already_rewarded: alreadyRewarded,
-    leaderboard: leaderboardResult,
+    scoring,
   };
 }
