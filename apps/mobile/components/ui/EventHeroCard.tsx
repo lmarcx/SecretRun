@@ -74,8 +74,8 @@ const styles = StyleSheet.create({
     borderWidth: borderWidth.regular,
     borderColor: colors.borderStrong,
     backgroundColor: colors.surfaceElevated,
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: spacing.xl,
+    gap: spacing.lg,
   },
   header: {
     flexDirection: 'row',
@@ -92,17 +92,17 @@ const styles = StyleSheet.create({
   title: {
     ...typography.heroTitle,
     color: colors.textPrimary,
-    maxWidth: '70%',
+    maxWidth: '68%',
   },
   description: {
     ...typography.bodySm,
     color: colors.textSecondary,
-    maxWidth: '66%',
+    maxWidth: '62%',
   },
   actions: {
     flexDirection: 'row',
     gap: spacing.sm,
-    paddingTop: spacing.xs,
+    paddingTop: spacing.sm,
   },
   primaryButton: {
     flex: 1,

@@ -8,7 +8,6 @@ import { EventHeroCard } from '@/components/ui/EventHeroCard';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import type { StatusBadgeTone } from '@/components/ui/StatusBadge';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { isDevRunnerActive } from '@/services/devRunnerMode';
 import type { EventListItem } from '@/services/eventsService';
 import { fetchPublicEvents, getEventErrorMessage } from '@/services/eventsService';
@@ -109,12 +108,12 @@ export default function EventsScreen() {
       <AppScreen contentContainerStyle={styles.content}>
         <View style={styles.intro}>
           <View style={styles.systemRow}>
-            <StatusBadge compact label="Night" muted tone="accent" />
+            <Text style={styles.systemText}>Night</Text>
           </View>
-          <Text style={styles.screenTitle}>Events</Text>
+          <Text style={styles.screenTitle}>Tonight</Text>
           <Text style={styles.screenSubtitle}>Hidden starts. Clear timing.</Text>
         </View>
-        <EmptyStateCard title="Nothing live yet" />
+        <EmptyStateCard minimal title="Nothing live yet" />
         <PrimaryButton label="Refresh" onPress={() => setReloadKey((value) => value + 1)} />
       </AppScreen>
     );
@@ -124,10 +123,11 @@ export default function EventsScreen() {
     <AppScreen contentContainerStyle={styles.content}>
       <View style={styles.intro}>
         <View style={styles.systemRow}>
-          <StatusBadge compact label="Night" muted tone="accent" />
-          {devRunnerActive ? <StatusBadge compact label="DEV local" muted tone="warning" /> : null}
+          <Text style={styles.systemText}>Night</Text>
+          {devRunnerActive ? <Text style={styles.systemDivider}>/</Text> : null}
+          {devRunnerActive ? <Text style={styles.systemText}>Dev local</Text> : null}
         </View>
-        <Text style={styles.screenTitle}>Events</Text>
+        <Text style={styles.screenTitle}>Tonight</Text>
         <Text style={styles.screenSubtitle}>Hidden starts. Clear timing.</Text>
       </View>
 
@@ -148,7 +148,7 @@ export default function EventsScreen() {
           <SectionHeader {...(section.subtitle ? { subtitle: section.subtitle } : {})} title={section.title} />
 
           {section.items.length === 0 ? (
-            <EmptyStateCard title={section.emptyTitle} description={section.emptyDescription} />
+            <EmptyStateCard minimal title={section.emptyTitle} description={section.emptyDescription} />
           ) : (
             section.items.map((item) => (
               <EventCard
@@ -233,11 +233,11 @@ function buildEventPresentation(event: EventListItem, devRunnerActive: boolean):
   const readyNow = joined && !finished && (devRunnerActive || (revealed && started && !past));
 
   const section: EventPresentationModel['section'] = readyNow ? 'ready' : finished || past ? 'completed' : 'coming';
-  const statusLabel = finished ? 'Done' : !revealed ? 'Route locked' : 'Secret';
+  const statusLabel = finished ? 'Done' : readyNow ? 'Ready' : 'Secret';
 
   let eyebrow = 'Tonight';
   if (section === 'ready') {
-    eyebrow = 'Ready now';
+    eyebrow = 'Now';
   } else if (section === 'completed') {
     eyebrow = 'Saved';
   }
@@ -249,7 +249,7 @@ function buildEventPresentation(event: EventListItem, devRunnerActive: boolean):
       : section === 'completed'
         ? 'Run saved for review.'
         : !revealed
-          ? 'Route stays sealed until reveal.'
+          ? 'Route stays sealed.'
           : 'Hidden route. Clean brief.',
   );
 
@@ -281,8 +281,8 @@ function buildEventPresentation(event: EventListItem, devRunnerActive: boolean):
     primaryTone,
     statusBadge: { label: statusLabel, tone: getBadgeTone(statusLabel) },
     meta: [
-      { label: 'Reveal', value: formatDateTime(event.revealAt), icon: 'reveal' },
-      { label: 'Start', value: formatDateTime(event.startsAt), icon: 'start' },
+      { label: 'Rev', value: formatDateTime(event.revealAt), icon: 'reveal' },
+      { label: 'Run', value: formatDateTime(event.startsAt), icon: 'start' },
       { label: 'Zone', value: `${event.startAreaRadiusKm} km`, icon: 'zone' },
     ],
   };
@@ -290,12 +290,12 @@ function buildEventPresentation(event: EventListItem, devRunnerActive: boolean):
 
 function getBadgeTone(label: string): StatusBadgeTone {
   switch (label) {
+    case 'Ready':
+      return 'success';
     case 'Secret':
       return 'accent';
     case 'Done':
       return 'info';
-    case 'Route locked':
-      return 'warning';
     default:
       return 'neutral';
   }
@@ -308,11 +308,11 @@ function getSignalDescription(source: string | null, fallback: string): string {
   }
 
   const words = normalized.split(' ');
-  if (words.length <= 6) {
+  if (words.length <= 4 && normalized.length <= 23) {
     return normalized;
   }
 
-  return `${words.slice(0, 6).join(' ')}...`;
+  return fallback;
 }
 
 function formatDateTime(value: string): string {
@@ -340,6 +340,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xxs,
     alignItems: 'center',
+  },
+  systemText: {
+    ...typography.eyebrow,
+    color: colors.textMuted,
+    opacity: 0.72,
+  },
+  systemDivider: {
+    color: colors.textMuted,
+    opacity: 0.48,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
   },
   screenTitle: {
     ...typography.heroTitle,

@@ -20,6 +20,7 @@ export function EventMetaRow({ dense = false, items, withRail = false }: EventMe
       {items.map((item) => (
         <View key={`${item.label}-${item.value}`} style={[styles.item, dense && styles.itemDense]}>
           <MetaGlyph compact={dense} icon={item.icon} />
+          <Text style={[styles.inlineLabel, dense && styles.inlineLabelDense]}>{item.label}</Text>
           <Text accessibilityLabel={`${item.label} ${item.value}`} numberOfLines={1} style={[styles.value, dense && styles.valueDense]}>
             {item.value}
           </Text>
@@ -93,6 +94,17 @@ const styles = StyleSheet.create({
   value: {
     ...typography.bodySm,
     color: colors.textPrimary,
+  },
+  inlineLabel: {
+    ...typography.eyebrow,
+    color: colors.textMuted,
+    fontSize: 9,
+    lineHeight: 11,
+    letterSpacing: 0.7,
+  },
+  inlineLabelDense: {
+    fontSize: 8,
+    lineHeight: 10,
   },
   valueDense: {
     fontSize: 11,

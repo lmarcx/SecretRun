@@ -4,12 +4,13 @@ import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens
 interface EmptyStateCardProps {
   title: string;
   description?: string;
+  minimal?: boolean;
 }
 
-export function EmptyStateCard({ description, title }: EmptyStateCardProps) {
+export function EmptyStateCard({ description, minimal = false, title }: EmptyStateCardProps) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>{title}</Text>
+    <View style={[styles.card, minimal && styles.cardMinimal]}>
+      <Text style={[styles.title, minimal && styles.titleMinimal]}>{title}</Text>
       {description ? <Text style={styles.description}>{description}</Text> : null}
     </View>
   );
@@ -24,9 +25,20 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
+  cardMinimal: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+  },
   title: {
     ...typography.cardTitle,
     color: colors.textPrimary,
+  },
+  titleMinimal: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   description: {
     ...typography.body,
