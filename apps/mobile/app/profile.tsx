@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import {
+  buildBetaIssueMailto,
+  formatBetaTimestamp,
+  formatValidationReason,
+  getBetaBuildLabel,
+  useBetaDiagnostics,
+} from '@/services/betaDiagnostics';
 import { DEV_MODE_LABEL, getDevModeMessage } from '@/services/devRunnerMode';
 import { nhost } from '@/services/nhostClient';
 import {
@@ -31,6 +38,7 @@ export default function ProfileScreen() {
   const [usernameDraft, setUsernameDraft] = useState('');
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [profileSubmitting, setProfileSubmitting] = useState(false);
+  const diagnostics = useBetaDiagnostics();
 
   useEffect(() => {
     let active = true;
@@ -180,6 +188,14 @@ export default function ProfileScreen() {
     setNotificationsSubmitting(false);
   };
 
+  const handleReportIssue = async () => {
+    try {
+      await Linking.openURL(buildBetaIssueMailto(diagnostics));
+    } catch {
+      setScreenError('This device could not open the beta issue draft.');
+    }
+  };
+
   if (authLoading) {
     return (
       <SafeAreaView style={styles.centered}>
@@ -223,6 +239,8 @@ export default function ProfileScreen() {
               DEV runner mode.
             </Text>
           </View>
+
+          <BetaSupportCard diagnostics={diagnostics} onReportIssue={handleReportIssue} />
 
           <View style={styles.actionColumn}>
             <Pressable style={styles.secondaryButton} onPress={() => router.push('/events')}>
@@ -305,9 +323,9 @@ export default function ProfileScreen() {
 
             {formError ? <Text style={styles.errorInline}>{formError}</Text> : null}
 
-            <View style={styles.actionColumn}>
-              <Pressable
-                style={[styles.primaryButton, profileSubmitting && styles.buttonDisabled]}
+          <View style={styles.actionColumn}>
+            <Pressable
+              style={[styles.primaryButton, profileSubmitting && styles.buttonDisabled]}
                 onPress={() => void handleCreateProfile()}
                 disabled={profileSubmitting}
               >
@@ -318,6 +336,8 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           </View>
+
+          <BetaSupportCard diagnostics={diagnostics} onReportIssue={handleReportIssue} />
         </ScrollView>
       </SafeAreaView>
     );
@@ -377,6 +397,8 @@ export default function ProfileScreen() {
           submitting={notificationsSubmitting}
           onEnable={handleEnableNotifications}
         />
+
+        <BetaSupportCard diagnostics={diagnostics} onReportIssue={handleReportIssue} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -394,8 +416,21 @@ function NotificationCard({
   onEnable: () => void;
 }) {
   const buttonDisabled =
-    loading || submitting || !state || state.kind === 'unsupported' || state.kind === 'signed_out' || state.kind === 'registered';
-  const buttonLabel = state?.kind === 'registered' ? 'Notifications enabled' : submitting ? 'Turning on...' : 'Enable notifications';
+    loading ||
+    submitting ||
+    !state ||
+    state.kind === 'unsupported' ||
+    state.kind === 'signed_out' ||
+    state.kind === 'registered' ||
+    state.kind === 'not_ready';
+  const buttonLabel =
+    state?.kind === 'registered'
+      ? 'Notifications enabled'
+      : state?.kind === 'not_ready'
+        ? 'Build not ready'
+        : submitting
+          ? 'Turning on...'
+          : 'Enable notifications';
 
   return (
     <View style={styles.card}>
@@ -421,6 +456,46 @@ function NotificationCard({
 
       <Pressable style={[styles.secondaryButton, buttonDisabled && styles.buttonDisabled]} onPress={onEnable} disabled={buttonDisabled}>
         <Text style={styles.secondaryButtonText}>{buttonLabel}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function BetaSupportCard({
+  diagnostics,
+  onReportIssue,
+}: {
+  diagnostics: ReturnType<typeof useBetaDiagnostics>;
+  onReportIssue: () => void;
+}) {
+  const validationMessage = formatValidationReason(diagnostics.activity.validationReason);
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>Beta support</Text>
+      <MetaRow label="Build" value={getBetaBuildLabel()} />
+      <MetaRow label="Current screen" value={diagnostics.currentScreen ?? '/profile'} />
+      <MetaRow label="Last run sync" value={formatActivityDiagnostic(diagnostics.activity)} />
+      <MetaRow label="Run update" value={formatBetaTimestamp(diagnostics.activity.updatedAt)} />
+      {diagnostics.activity.eventId ? <MetaRow label="Event ID" value={diagnostics.activity.eventId} /> : null}
+      {diagnostics.activity.activityId ? <MetaRow label="Activity ID" value={diagnostics.activity.activityId} /> : null}
+      {diagnostics.activity.acceptedTrackpoints !== null || diagnostics.activity.rejectedTrackpoints !== null ? (
+        <MetaRow
+          label="Trackpoints"
+          value={`${diagnostics.activity.acceptedTrackpoints ?? 0} accepted / ${diagnostics.activity.rejectedTrackpoints ?? 0} rejected`}
+        />
+      ) : null}
+      <Text style={styles.cardText}>
+        Notification state: {formatNotificationDiagnostic(diagnostics.notification)}. Last update:{' '}
+        {formatBetaTimestamp(diagnostics.notification.updatedAt)}.
+      </Text>
+      {validationMessage ? <Text style={styles.cardText}>Validation note: {validationMessage}</Text> : null}
+      {diagnostics.activity.message ? <Text style={styles.cardText}>Recent beta note: {diagnostics.activity.message}</Text> : null}
+      <Text style={styles.cardText}>
+        Use this card when reporting beta issues so the team can match your screen, build, and last sync state quickly.
+      </Text>
+      <Pressable style={styles.secondaryButton} onPress={onReportIssue}>
+        <Text style={styles.secondaryButtonText}>Report beta issue</Text>
       </Pressable>
     </View>
   );
@@ -470,6 +545,46 @@ function sanitizeUsername(value: string): string {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString();
+}
+
+function formatActivityDiagnostic(diagnostic: ReturnType<typeof useBetaDiagnostics>['activity']): string {
+  switch (diagnostic.phase) {
+    case 'start_requested':
+      return 'Starting run sync';
+    case 'started':
+      return 'Activity started on backend';
+    case 'ingesting':
+      return 'Trackpoints uploaded';
+    case 'finish_requested':
+      return 'Finishing run on backend';
+    case 'synced':
+      return diagnostic.idempotent ? 'Synced from an existing backend result' : 'Run synced successfully';
+    case 'rejected':
+      return 'Run rejected during backend review';
+    case 'sync_failed':
+      return 'Run sync needs attention';
+    case 'idle':
+    default:
+      return 'No recent run sync';
+  }
+}
+
+function formatNotificationDiagnostic(diagnostic: ReturnType<typeof useBetaDiagnostics>['notification']): string {
+  switch (diagnostic.state) {
+    case 'ready':
+      return 'Device ready';
+    case 'registered':
+      return 'Device registered';
+    case 'unsupported':
+      return 'Not supported on this device';
+    case 'not_ready':
+      return 'Not ready in this build';
+    case 'failed':
+      return 'Needs attention';
+    case 'idle':
+    default:
+      return 'No recent notification action';
+  }
 }
 
 const styles = StyleSheet.create({

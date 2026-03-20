@@ -1,6 +1,7 @@
 import { Link, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens';
 
 const navigationItems = [
   {
@@ -57,35 +58,34 @@ export function AppNavigationShell() {
 const styles = StyleSheet.create({
   shell: {
     flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#cbd5e1',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    gap: 6,
+    borderTopWidth: borderWidth.regular,
+    borderTopColor: colors.border,
+    backgroundColor: colors.backgroundRaised,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.xs,
+    gap: spacing.xs,
   },
   item: {
     flex: 1,
     minHeight: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderRadius: radius.md,
+    borderWidth: borderWidth.regular,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceMuted,
     paddingHorizontal: 6,
   },
   itemActive: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
+    backgroundColor: colors.accentSoft,
+    borderColor: 'rgba(120, 86, 255, 0.38)',
   },
   label: {
-    color: '#334155',
-    fontSize: 13,
-    fontWeight: '700',
+    ...typography.bodySm,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   labelActive: {
-    color: '#ffffff',
+    color: colors.textPrimary,
   },
 });

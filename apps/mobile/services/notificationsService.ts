@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { recordNotificationDiagnostic } from './betaDiagnostics';
 import { getFunctionsBaseUrl, nhost } from './nhostClient';
 
 export interface NotificationCapability {
@@ -11,7 +12,7 @@ export interface NotificationCapability {
 }
 
 export interface NotificationRegistrationState {
-  kind: 'unsupported' | 'signed_out' | 'ready' | 'registered' | 'error';
+  kind: 'unsupported' | 'signed_out' | 'ready' | 'registered' | 'not_ready' | 'error';
   message: string;
   pushToken: string | null;
 }
@@ -68,76 +69,114 @@ export function configureNotificationHandling() {
 
 export async function getNotificationRegistrationState(): Promise<NotificationRegistrationState> {
   if (Platform.OS === 'web') {
-    return {
+    const state: NotificationRegistrationState = {
       kind: 'unsupported',
       message: 'Push notifications are available only on mobile devices in this beta.',
       pushToken: null,
     };
+    recordNotificationDiagnostic({ state: 'unsupported', message: state.message });
+    return state;
   }
 
   if (Constants.isDevice === false) {
-    return {
+    const state: NotificationRegistrationState = {
       kind: 'unsupported',
       message: 'Push notifications are available only on a physical iOS or Android device in this beta.',
       pushToken: null,
     };
+    recordNotificationDiagnostic({ state: 'unsupported', message: state.message });
+    return state;
   }
 
   if (!nhost.auth.getUser()) {
-    return {
+    const state: NotificationRegistrationState = {
       kind: 'signed_out',
       message: 'Sign in with a beta account before enabling notifications on this device.',
       pushToken: null,
     };
+    recordNotificationDiagnostic({ state: 'idle', message: state.message });
+    return state;
+  }
+
+  const projectId = getExpoProjectId();
+  if (!projectId) {
+    const state: NotificationRegistrationState = {
+      kind: 'not_ready',
+      message: 'Notification setup is not ready for this build yet.',
+      pushToken: null,
+    };
+    recordNotificationDiagnostic({ state: 'not_ready', message: state.message });
+    return state;
   }
 
   const permissions = await Notifications.getPermissionsAsync();
   const permissionsGranted =
     permissions.granted || permissions.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
-  return {
+  const state: NotificationRegistrationState = {
     kind: 'ready',
     message: permissionsGranted
       ? 'This device is ready for route reveal alerts.'
       : 'Notifications are off for this device. Enable them when you are ready.',
     pushToken: null,
   };
+  recordNotificationDiagnostic({ state: 'ready', message: state.message });
+  return state;
 }
 
 export async function enablePushNotifications(): Promise<NotificationRegistrationState> {
   if (Platform.OS === 'web') {
-    return {
+    const state: NotificationRegistrationState = {
       kind: 'unsupported',
       message: 'Push notifications are available only on mobile devices in this beta.',
       pushToken: null,
     };
+    recordNotificationDiagnostic({ state: 'unsupported', message: state.message });
+    return state;
   }
 
   if (Constants.isDevice === false) {
-    return {
+    const state: NotificationRegistrationState = {
       kind: 'unsupported',
       message: 'Push notifications are available only on a physical iOS or Android device in this beta.',
       pushToken: null,
     };
+    recordNotificationDiagnostic({ state: 'unsupported', message: state.message });
+    return state;
   }
 
   const user = nhost.auth.getUser();
   if (!user) {
-    return {
+    const state: NotificationRegistrationState = {
       kind: 'signed_out',
       message: 'Sign in with a beta account before enabling notifications on this device.',
       pushToken: null,
     };
+    recordNotificationDiagnostic({ state: 'idle', message: state.message });
+    return state;
+  }
+
+  const projectId = getExpoProjectId();
+  if (!projectId) {
+    const state: NotificationRegistrationState = {
+      kind: 'not_ready',
+      message: 'Notification setup is not ready for this build yet.',
+      pushToken: null,
+    };
+    recordNotificationDiagnostic({ state: 'not_ready', message: state.message });
+    return state;
   }
 
   const currentPermissions = await Notifications.getPermissionsAsync();
   const permissionResult = currentPermissions.granted ? currentPermissions : await Notifications.requestPermissionsAsync();
 
   if (!permissionResult.granted && permissionResult.ios?.status !== Notifications.IosAuthorizationStatus.PROVISIONAL) {
-    return {
+    const state: NotificationRegistrationState = {
       kind: 'error',
       message: 'Notifications stay off until you allow them in device settings.',
       pushToken: null,
     };
+    recordNotificationDiagnostic({ state: 'failed', message: state.message });
+    return state;
   }
 
   try {
@@ -148,23 +187,25 @@ export async function enablePushNotifications(): Promise<NotificationRegistratio
       });
     }
 
-    const extra = (Constants.expoConfig?.extra ?? {}) as { eas?: { projectId?: string } };
-    const projectId = Constants.easConfig?.projectId ?? extra.eas?.projectId ?? process.env.EXPO_PUBLIC_EXPO_PROJECT_ID ?? undefined;
     const pushToken = (await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : {})).data;
 
     await registerDeviceToken(pushToken);
 
-    return {
+    const state: NotificationRegistrationState = {
       kind: 'registered',
       message: 'Route reveal alerts are enabled on this device.',
       pushToken,
     };
+    recordNotificationDiagnostic({ state: 'registered', message: state.message });
+    return state;
   } catch (error) {
-    return {
+    const state: NotificationRegistrationState = {
       kind: 'error',
       message: getNotificationErrorMessage(error),
       pushToken: null,
     };
+    recordNotificationDiagnostic({ state: 'failed', message: state.message });
+    return state;
   }
 }
 
@@ -215,6 +256,11 @@ async function registerDeviceToken(pushToken: string) {
   if (!response.ok || !payload?.success) {
     throw new Error(payload?.error ?? 'We could not save this device for notifications right now.');
   }
+}
+
+function getExpoProjectId(): string | null {
+  const extra = (Constants.expoConfig?.extra ?? {}) as { eas?: { projectId?: string } };
+  return Constants.easConfig?.projectId ?? extra.eas?.projectId ?? process.env.EXPO_PUBLIC_EXPO_PROJECT_ID ?? null;
 }
 
 function getNotificationErrorMessage(error: unknown): string {

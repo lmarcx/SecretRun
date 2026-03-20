@@ -1,4 +1,5 @@
 import { ClientError } from 'graphql-request';
+import { recordActivityDiagnostic } from './betaDiagnostics';
 import { getEffectiveRunner } from './devRunnerMode';
 import { getFunctionsBaseUrl, nhost } from './nhostClient';
 
@@ -31,6 +32,7 @@ export interface UploadedActivity {
   avgSpeedKmh: number | null;
   startedAt: string | null;
   finishedAt: string | null;
+  validationReason?: string | null;
 }
 
 export interface TrackpointBatchResult {
@@ -44,6 +46,8 @@ interface WorkflowResponse<TPayload> {
   success?: boolean;
   error?: string;
   activity?: TPayload;
+  reason?: string | null;
+  reused?: boolean;
 }
 
 interface TrackpointsWorkflowResponse {
@@ -81,12 +85,40 @@ export async function startRunActivity(eventId: string, startedAt: string): Prom
   }
 
   try {
+    recordActivityDiagnostic({
+      phase: 'start_requested',
+      eventId,
+      activityId: null,
+      message: 'Starting run sync on the beta backend.',
+      validationReason: null,
+      acceptedTrackpoints: null,
+      rejectedTrackpoints: null,
+      idempotent: false,
+    });
+
     const response = await callActivityWorkflow('start-activity', {
       event_id: eventId,
       started_at: startedAt,
     });
-    return mapWorkflowActivity(response);
+    const activity = mapWorkflowActivity(response.activity, response.reason ?? null);
+
+    recordActivityDiagnostic({
+      phase: 'started',
+      eventId,
+      activityId: activity.id,
+      message: response.reused ? 'Recovered an open beta activity for this event.' : 'Activity started on the beta backend.',
+      validationReason: null,
+      idempotent: Boolean(response.reused),
+    });
+
+    return activity;
   } catch (error) {
+    recordActivityDiagnostic({
+      phase: 'sync_failed',
+      eventId,
+      activityId: null,
+      message: getActivityErrorMessage(error),
+    });
     throw new ActivityUploadError(getActivityErrorMessage(error));
   }
 }
@@ -105,6 +137,12 @@ export async function ingestTrackpoints(
   }
 
   const accessToken = nhost.auth.getAccessToken();
+  recordActivityDiagnostic({
+    phase: 'ingesting',
+    activityId,
+    message: 'Uploading filtered trackpoints to the beta backend.',
+  });
+
   const response = await fetch(`${getFunctionsBaseUrl()}/ingest-trackpoints`, {
     method: 'POST',
     headers: {
@@ -124,15 +162,30 @@ export async function ingestTrackpoints(
 
   const payload = (await response.json().catch(() => null)) as TrackpointsWorkflowResponse | null;
   if (!response.ok || !payload?.success) {
+    recordActivityDiagnostic({
+      phase: 'sync_failed',
+      activityId,
+      message: getActivityErrorMessage(payload?.error ?? `trackpoints failed with status ${response.status}.`),
+    });
     throw new Error(payload?.error ?? `trackpoints failed with status ${response.status}.`);
   }
 
-  return {
+  const result = {
     insertedCount: payload.accepted ?? 0,
     skippedCount: payload.rejected ?? 0,
     suspiciousPoints: 0,
     warning: null,
   };
+
+  recordActivityDiagnostic({
+    phase: 'ingesting',
+    activityId,
+    message: 'Trackpoints uploaded for backend validation.',
+    acceptedTrackpoints: result.insertedCount,
+    rejectedTrackpoints: result.skippedCount,
+  });
+
+  return result;
 }
 
 export async function persistCompletedRun(payload: CompletedRunPayload): Promise<UploadedActivity> {
@@ -141,6 +194,13 @@ export async function persistCompletedRun(payload: CompletedRunPayload): Promise
 
   if (!realUser) {
     if (effectiveRunner?.isDev) {
+      recordActivityDiagnostic({
+        phase: 'synced',
+        eventId: payload.eventId,
+        activityId: null,
+        message: 'DEV runner kept this run local on the device.',
+      });
+
       return {
         id: `dev-activity-${Date.now()}`,
         status: 'completed',
@@ -165,17 +225,49 @@ export async function persistCompletedRun(payload: CompletedRunPayload): Promise
     await ingestTrackpoints(activity.id, payload.trackpoints);
     return await finishActivityWorkflow(activity.id);
   } catch (error) {
+    recordActivityDiagnostic({
+      phase: 'sync_failed',
+      eventId: payload.eventId,
+      activityId: error instanceof ActivityUploadError && error.activity ? error.activity.id : activity.id,
+      message: getActivityErrorMessage(error),
+    });
     throw new ActivityUploadError(getActivityErrorMessage(error), activity);
   }
 }
 
 async function finishActivityWorkflow(activityId: string): Promise<UploadedActivity> {
   try {
+    recordActivityDiagnostic({
+      phase: 'finish_requested',
+      activityId,
+      message: 'Finishing this run on the beta backend.',
+    });
+
     const response = await callActivityWorkflow('finish-activity', {
       activity_id: activityId,
     });
-    return mapWorkflowActivity(response);
+    const activity = mapWorkflowActivity(response.activity, response.reason ?? null);
+
+    recordActivityDiagnostic({
+      phase: activity.status === 'rejected' ? 'rejected' : 'synced',
+      activityId: activity.id,
+      message:
+        activity.status === 'rejected'
+          ? getRejectedRunMessage(activity.validationReason)
+          : response.reused
+            ? 'Finish reused the existing backend result for this activity.'
+            : 'Run synced successfully and leaderboard scoring completed.',
+      validationReason: activity.validationReason ?? null,
+      idempotent: Boolean(response.reused),
+    });
+
+    return activity;
   } catch (error) {
+    recordActivityDiagnostic({
+      phase: 'sync_failed',
+      activityId,
+      message: getActivityErrorMessage(error),
+    });
     throw new ActivityUploadError(getActivityErrorMessage(error));
   }
 }
@@ -183,7 +275,7 @@ async function finishActivityWorkflow(activityId: string): Promise<UploadedActiv
 async function callActivityWorkflow(
   name: 'start-activity' | 'finish-activity',
   body: Record<string, unknown>,
-): Promise<WorkflowActivityPayload> {
+): Promise<WorkflowResponse<WorkflowActivityPayload> & { activity: WorkflowActivityPayload }> {
   const accessToken = nhost.auth.getAccessToken();
   const response = await fetch(`${getFunctionsBaseUrl()}/${name}`, {
     method: 'POST',
@@ -199,10 +291,10 @@ async function callActivityWorkflow(
     throw new Error(payload?.error ?? `${name} failed with status ${response.status}.`);
   }
 
-  return payload.activity;
+  return payload as WorkflowResponse<WorkflowActivityPayload> & { activity: WorkflowActivityPayload };
 }
 
-function mapWorkflowActivity(activity: WorkflowActivityPayload): UploadedActivity {
+function mapWorkflowActivity(activity: WorkflowActivityPayload, validationReason: string | null): UploadedActivity {
   return {
     id: activity.id,
     status: activity.status,
@@ -212,6 +304,7 @@ function mapWorkflowActivity(activity: WorkflowActivityPayload): UploadedActivit
     avgSpeedKmh: activity.avg_speed_kmh === null ? null : Number(activity.avg_speed_kmh),
     startedAt: activity.started_at,
     finishedAt: activity.finished_at,
+    validationReason,
   };
 }
 
@@ -229,10 +322,59 @@ export function getActivityErrorMessage(error: unknown): string {
 
   if (error instanceof Error) {
     const lowerMessage = error.message.toLowerCase();
+
+    if (lowerMessage.includes('only registered participants')) {
+      return 'This beta account is not registered for that event yet.';
+    }
+
+    if (lowerMessage.includes('activity not found')) {
+      return 'We could not find this run on the beta backend.';
+    }
+
+    if (lowerMessage.includes('missing authenticated user context')) {
+      return 'Sign in again before retrying run sync on this device.';
+    }
+
+    if (lowerMessage.includes('trackpoints cannot be added after')) {
+      return 'This run is already closed on the beta backend. Retry sync to refresh the latest result.';
+    }
+
+    if (lowerMessage.includes('forbidden')) {
+      return 'This beta action is not available in the current app state.';
+    }
+
     if (lowerMessage.includes('fetch failed') || lowerMessage.includes('network request failed')) {
       return 'We could not sync this run right now. The result stays saved on this device.';
+    }
+
+    if (lowerMessage.includes('status 5') || lowerMessage.includes('failed with status 5')) {
+      return 'The beta backend is unavailable right now. Your result stays saved on this device.';
     }
   }
 
   return 'We could not finish syncing this run right now.';
+}
+
+function getRejectedRunMessage(reason: string | null | undefined): string {
+  switch (reason) {
+    case 'participant_not_registered':
+      return 'This run was rejected because the beta account was not registered for the event.';
+    case 'insufficient_trackpoints':
+      return 'This run was rejected because the backend did not receive enough stable GPS points.';
+    case 'invalid_timestamps':
+    case 'out_of_order_timestamps':
+      return 'This run was rejected because the recorded GPS timestamps were inconsistent.';
+    case 'malformed_trackpoint':
+      return 'This run was rejected because some GPS samples were incomplete.';
+    case 'impossible_jump':
+      return 'This run was rejected because the backend detected an impossible GPS jump.';
+    case 'speed_limit_exceeded':
+      return 'This run was rejected because the backend detected unrealistic speed.';
+    case 'too_short_duration':
+      return 'This run was rejected because it finished below the beta duration requirement.';
+    case 'too_short_distance':
+      return 'This run was rejected because it finished below the beta distance requirement.';
+    default:
+      return 'This run was flagged during backend review and was not scored.';
+  }
 }

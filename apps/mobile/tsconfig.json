@@ -17,6 +17,9 @@
       "@/services/*": [
         "services/*"
       ],
+      "@/theme/*": [
+        "theme/*"
+      ],
       "@/utils/*": [
         "utils/*"
       ]

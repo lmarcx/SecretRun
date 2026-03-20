@@ -1,5 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { getBetaBuildLabel } from '@/services/betaDiagnostics';
 import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import { borderWidth, colors, spacing, typography } from '@/theme/tokens';
 
 export function DebugAuthBanner() {
   const { betaAccessState } = useAuth();
@@ -12,6 +14,7 @@ export function DebugAuthBanner() {
         <View style={[styles.stateBadge, bannerContent.badgeStyle]}>
           <Text style={[styles.stateBadgeText, bannerContent.badgeTextStyle]}>{bannerContent.badge}</Text>
         </View>
+        <Text style={styles.buildLabel}>{getBetaBuildLabel()}</Text>
       </View>
       <Text style={styles.text}>{bannerContent.message}</Text>
     </View>
@@ -65,53 +68,58 @@ function getBannerContent(betaAccessState: BetaAccessState) {
 
 const styles = StyleSheet.create({
   banner: {
-    backgroundColor: '#f8fafc',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    gap: 6,
+    backgroundColor: colors.backgroundRaised,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: borderWidth.regular,
+    borderBottomColor: colors.border,
+    gap: spacing.xs,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.xs,
     flexWrap: 'wrap',
   },
   betaLabel: {
-    color: '#0f172a',
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    ...typography.eyebrow,
+    color: colors.textMuted,
   },
   text: {
-    color: '#475569',
-    fontSize: 12,
-    lineHeight: 18,
+    ...typography.bodySm,
+    color: colors.textSecondary,
+  },
+  buildLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
   },
   stateBadge: {
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 2,
+    borderWidth: borderWidth.regular,
   },
   stateBadgeSignedIn: {
-    backgroundColor: '#dcfce7',
+    backgroundColor: colors.successSoft,
+    borderColor: 'rgba(83, 215, 166, 0.24)',
   },
   stateBadgeSignedInText: {
-    color: '#166534',
+    color: colors.success,
   },
   stateBadgeDev: {
-    backgroundColor: '#92400e',
+    backgroundColor: colors.warningSoft,
+    borderColor: 'rgba(242, 181, 93, 0.24)',
   },
   stateBadgeDevText: {
-    color: '#ffffff',
+    color: colors.warning,
   },
   stateBadgeGuest: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.borderStrong,
   },
   stateBadgeGuestText: {
-    color: '#334155',
+    color: colors.textSecondary,
   },
   stateBadgeText: {
     fontSize: 11,

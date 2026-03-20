@@ -6,6 +6,7 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, V
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LatLng } from 'react-native-maps';
 import { RouteMap } from '@/components/RouteMap';
+import { formatValidationReason } from '@/services/betaDiagnostics';
 import {
   ActivityUploadError,
   getActivityErrorMessage,
@@ -609,7 +610,7 @@ export default function RunScreen() {
       setUploadedActivity(activity);
       setFinishWarning(
         activity.status === 'rejected'
-          ? 'This run was flagged during review and was not scored.'
+          ? formatValidationReason(activity.validationReason) ?? 'This run was flagged during review and was not scored.'
           : suspiciousWarningRef.current
             ? 'This run was uploaded, but some GPS samples looked suspicious and may still be reviewed.'
             : null,
@@ -793,7 +794,11 @@ export default function RunScreen() {
             {!uploading && result.status === 'completed' && !uploadError && uploadedActivity?.status !== 'rejected' ? (
               <Text style={styles.success}>Run saved and synced.</Text>
             ) : null}
-            {uploadedActivity?.status === 'rejected' ? <Text style={styles.warning}>Run review flagged this attempt. It was not scored.</Text> : null}
+            {uploadedActivity?.status === 'rejected' ? (
+              <Text style={styles.warning}>
+                {formatValidationReason(uploadedActivity.validationReason) ?? 'Run review flagged this attempt. It was not scored.'}
+              </Text>
+            ) : null}
             {uploadError ? <Text style={styles.error}>Sync issue: {uploadError}</Text> : null}
             {result.status === 'completed' && uploadError ? (
               <Pressable style={styles.secondaryButton} onPress={() => void persistResult(result, uploadedActivityRef.current)}>
