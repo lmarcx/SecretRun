@@ -1,15 +1,40 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { AppScreen } from '@/components/ui/AppScreen';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { LeaderboardRankCard } from '@/components/ui/LeaderboardRankCard';
+import { LeaderboardRow } from '@/components/ui/LeaderboardRow';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { SecondaryButton } from '@/components/ui/SecondaryButton';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { SegmentedTabs } from '@/components/ui/SegmentedTabs';
+import { StatusStrip } from '@/components/ui/StatusStrip';
 import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
-import type { LeaderboardData, TeamLeaderboardEntry, UserLeaderboardEntry } from '@/services/leaderboardService';
+import type { LeaderboardData } from '@/services/leaderboardService';
 import { fetchLeaderboard, getLeaderboardErrorMessage } from '@/services/leaderboardService';
+import { colors, spacing, typography } from '@/theme/tokens';
 
-type LeaderboardTab = 'solo' | 'team';
+type LeaderboardBoard = 'runners' | 'teams';
+type LeaderboardScope = 'season' | 'weekly' | 'global';
+
+interface LeaderboardListItem {
+  id: string;
+  rank: number;
+  points: number;
+  title: string;
+  subtitle?: string;
+  variant: 'user' | 'team';
+  avatarUrl?: string | null;
+  highlighted: boolean;
+  badgeLabel?: string;
+}
 
 export default function LeaderboardScreen() {
+  const router = useRouter();
   const { betaAccessState } = useAuth();
-  const [tab, setTab] = useState<LeaderboardTab>('solo');
+  const [board, setBoard] = useState<LeaderboardBoard>('runners');
+  const [scope, setScope] = useState<LeaderboardScope>('season');
   const [data, setData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,402 +74,260 @@ export default function LeaderboardScreen() {
     };
   }, [reloadKey]);
 
+  const rows = useMemo<LeaderboardListItem[]>(() => {
+    if (!data || scope !== 'season') {
+      return [];
+    }
+
+    if (board === 'runners') {
+      return data.users.map((entry, index) => {
+        const profileMissing = !entry.displayName && !entry.username;
+        const title = profileMissing ? 'Hidden runner' : entry.displayName || entry.username || 'Hidden runner';
+
+        return {
+          id: entry.id,
+          rank: entry.rank ?? index + 1,
+          points: entry.points,
+          title,
+          subtitle: profileMissing ? 'Profile hidden' : entry.username ? `@${entry.username}` : 'Runner',
+          variant: 'user' as const,
+          avatarUrl: entry.avatarUrl,
+          highlighted: data.currentUserId === entry.id,
+          ...(data.currentUserId === entry.id ? { badgeLabel: 'You' } : {}),
+        };
+      });
+    }
+
+    return data.teams.map((entry, index) => ({
+      id: entry.id,
+      rank: entry.rank ?? index + 1,
+      points: entry.points,
+      title: entry.name ?? 'Unknown team',
+      subtitle: 'Season standing',
+      variant: 'team' as const,
+      highlighted: data.currentTeamIds.includes(entry.id),
+      ...(data.currentTeamIds.includes(entry.id) ? { badgeLabel: 'Your team' } : {}),
+    }));
+  }, [board, data, scope]);
+
+  const currentEntry = useMemo(() => rows.find((item) => item.highlighted) ?? null, [rows]);
+  const scopeSupported = scope === 'season';
+  const scopeLabel = getScopeLabel(scope);
+  const headerItems = getHeaderItems({ betaAccessState, seasonName: data?.seasonName ?? null, scope });
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" />
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
+        <ActivityIndicator color={colors.accent} size="large" />
         <Text style={styles.info}>Loading leaderboard...</Text>
-      </SafeAreaView>
+      </AppScreen>
     );
   }
 
   if (error) {
     return (
-      <SafeAreaView style={styles.centered}>
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
         <Text style={styles.title}>Leaderboard</Text>
         <Text style={styles.error}>{error}</Text>
-        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
-          <Text style={styles.secondaryButtonText}>Retry</Text>
-        </Pressable>
-      </SafeAreaView>
+        <SecondaryButton label="Retry" onPress={() => setReloadKey((value) => value + 1)} style={styles.stateButton} />
+      </AppScreen>
     );
   }
 
   if (!data) {
     return (
-      <SafeAreaView style={styles.centered}>
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
         <Text style={styles.title}>Leaderboard</Text>
-        <Text style={styles.info}>No active season is available yet.</Text>
-      </SafeAreaView>
+        <EmptyState title="No active season yet" />
+      </AppScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {tab === 'solo' ? (
-        <FlatList
-          data={data.users}
-          key="solo"
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          ListHeaderComponent={<Header seasonName={data.seasonName} tab={tab} onChangeTab={setTab} betaAccessState={betaAccessState} />}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.info}>No solo rankings are available yet.</Text>
-            </View>
-          }
-          renderItem={({ item, index }) => (
-            <UserRow entry={item} fallbackRank={index + 1} isCurrentUser={data.currentUserId === item.id} />
-          )}
-        />
-      ) : (
-        <FlatList
-          data={data.teams}
-          key="team"
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          ListHeaderComponent={<Header seasonName={data.seasonName} tab={tab} onChangeTab={setTab} betaAccessState={betaAccessState} />}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.info}>No team rankings are available yet.</Text>
-            </View>
-          }
-          renderItem={({ item, index }) => (
-            <TeamRow entry={item} fallbackRank={index + 1} isCurrentTeam={data.currentTeamIds.includes(item.id)} />
-          )}
-        />
-      )}
-    </SafeAreaView>
-  );
-}
-
-function Header({
-  seasonName,
-  tab,
-  onChangeTab,
-  betaAccessState,
-}: {
-  seasonName: string;
-  tab: LeaderboardTab;
-  onChangeTab: (nextTab: LeaderboardTab) => void;
-  betaAccessState: BetaAccessState;
-}) {
-  return (
-    <View style={styles.header}>
-      <Text style={styles.title}>Leaderboard</Text>
-      <Text style={styles.subtitle}>{seasonName}</Text>
-      <Text style={styles.caption}>Season totals update after completed runs finish review and scoring.</Text>
-      {betaAccessState !== 'signed_in' ? (
-        <View style={styles.noticeCard}>
-          <Text style={styles.noticeText}>
-            {betaAccessState === 'dev_runner'
-              ? 'DEV runner can test events and runs locally, but personal rank and team highlighting still use a signed-in beta account.'
-              : 'Sign in to highlight your own position and team. The leaderboard itself stays visible in guest mode.'}
-          </Text>
-        </View>
-      ) : null}
-      <View style={styles.toggleRow}>
-        <Pressable style={[styles.toggleButton, tab === 'solo' && styles.toggleButtonActive]} onPress={() => onChangeTab('solo')}>
-          <Text style={[styles.toggleText, tab === 'solo' && styles.toggleTextActive]}>Solo</Text>
-        </Pressable>
-        <Pressable style={[styles.toggleButton, tab === 'team' && styles.toggleButtonActive]} onPress={() => onChangeTab('team')}>
-          <Text style={[styles.toggleText, tab === 'team' && styles.toggleTextActive]}>Teams</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function UserRow({
-  entry,
-  fallbackRank,
-  isCurrentUser,
-}: {
-  entry: UserLeaderboardEntry;
-  fallbackRank: number;
-  isCurrentUser: boolean;
-}) {
-  const profileMissing = !entry.displayName && !entry.username;
-  const label = profileMissing ? 'Hidden runner' : entry.displayName || entry.username || 'Hidden runner';
-  const secondary = profileMissing ? 'Profile unavailable' : entry.username ? `@${entry.username}` : 'Public profile';
-
-  return (
-    <View style={[styles.card, isCurrentUser && styles.cardHighlighted]}>
-      <View style={styles.rankBadge}>
-        <Text style={styles.rankText}>{entry.rank ?? fallbackRank}</Text>
-      </View>
-      <View style={styles.identity}>
-        <Avatar avatarUrl={entry.avatarUrl} fallbackLabel={label} />
-        <View style={styles.identityText}>
-          <View style={styles.titleRow}>
-            <Text style={styles.name}>{label}</Text>
-            {isCurrentUser ? (
-              <View style={styles.inlineBadge}>
-                <Text style={styles.inlineBadgeText}>You</Text>
-              </View>
-            ) : null}
+    <AppScreen scrollable={false} contentContainerStyle={styles.screen}>
+      <FlatList
+        data={scopeSupported ? rows : []}
+        key={`${scope}-${board}`}
+        keyExtractor={(item) => item.id}
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <ScreenHeader title="Leaderboard" subtitle={getHeaderSubtitle(scope, board)} />
+            {headerItems.length > 0 ? <StatusStrip compact muted items={headerItems} /> : null}
+            <SegmentedTabs
+              items={[
+                { key: 'season', label: 'Season' },
+                { key: 'weekly', label: 'Weekly' },
+                { key: 'global', label: 'Global' },
+              ]}
+              onChange={(nextValue) => setScope(nextValue as LeaderboardScope)}
+              value={scope}
+            />
+            <SegmentedTabs
+              compact
+              items={[
+                { key: 'runners', label: 'Runners' },
+                { key: 'teams', label: 'Teams' },
+              ]}
+              onChange={(nextValue) => setBoard(nextValue as LeaderboardBoard)}
+              value={board}
+            />
+            <LeaderboardRankCard
+              actionLabel={betaAccessState === 'signed_out' ? 'Sign in' : undefined}
+              avatarUrl={currentEntry?.avatarUrl}
+              contextLabel={scopeLabel}
+              emptyMessage={getRankEmptyMessage({ betaAccessState, board, scopeSupported })}
+              identity={currentEntry?.title}
+              label={board === 'runners' ? 'Your rank' : 'Your team'}
+              onAction={betaAccessState === 'signed_out' ? () => router.push('/(auth)/login') : undefined}
+              points={currentEntry?.points}
+              rank={currentEntry?.rank}
+              subtitle={currentEntry?.subtitle}
+              variant={board === 'runners' ? 'user' : 'team'}
+            />
+            <SectionHeader
+              {...(scopeSupported ? { subtitle: board === 'runners' ? 'Season points' : 'Season team points' } : {})}
+              title={scopeSupported ? (board === 'runners' ? 'Standings' : 'Team standings') : scopeLabel}
+            />
           </View>
-          <Text style={styles.secondary}>{secondary}</Text>
-        </View>
-      </View>
-      <View style={styles.pointsBlock}>
-        <Text style={styles.points}>{entry.points}</Text>
-        <Text style={styles.pointsLabel}>pts</Text>
-      </View>
-    </View>
+        }
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListEmptyComponent={<EmptyState title={getEmptyTitle({ board, scope, scopeSupported })} />}
+        renderItem={({ item }) => (
+          <LeaderboardRow
+            avatarUrl={item.avatarUrl}
+            badgeLabel={item.badgeLabel}
+            highlighted={item.highlighted}
+            points={item.points}
+            rank={item.rank}
+            subtitle={item.subtitle}
+            title={item.title}
+            variant={item.variant}
+          />
+        )}
+      />
+    </AppScreen>
   );
 }
 
-function TeamRow({
-  entry,
-  fallbackRank,
-  isCurrentTeam,
-}: {
-  entry: TeamLeaderboardEntry;
-  fallbackRank: number;
-  isCurrentTeam: boolean;
-}) {
-  return (
-    <View style={[styles.card, isCurrentTeam && styles.cardHighlighted]}>
-      <View style={styles.rankBadge}>
-        <Text style={styles.rankText}>{entry.rank ?? fallbackRank}</Text>
-      </View>
-      <View style={styles.identity}>
-        <View style={styles.teamBadge}>
-          <Text style={styles.teamBadgeText}>{(entry.name ?? '?').slice(0, 1).toUpperCase()}</Text>
-        </View>
-        <View style={styles.identityText}>
-          <View style={styles.titleRow}>
-            <Text style={styles.name}>{entry.name ?? 'Unknown team'}</Text>
-            {isCurrentTeam ? (
-              <View style={styles.inlineBadge}>
-                <Text style={styles.inlineBadgeText}>Your team</Text>
-              </View>
-            ) : null}
-          </View>
-          <Text style={styles.secondary}>Season team ranking</Text>
-        </View>
-      </View>
-      <View style={styles.pointsBlock}>
-        <Text style={styles.points}>{entry.points}</Text>
-        <Text style={styles.pointsLabel}>pts</Text>
-      </View>
-    </View>
-  );
-}
-
-function Avatar({ avatarUrl, fallbackLabel }: { avatarUrl: string | null; fallbackLabel: string }) {
-  const initial = fallbackLabel.trim().charAt(0).toUpperCase() || '?';
-
-  if (avatarUrl) {
-    return <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />;
+function getHeaderSubtitle(scope: LeaderboardScope, board: LeaderboardBoard) {
+  if (scope === 'season') {
+    return board === 'runners' ? 'Season standings' : 'Season team standings';
   }
 
-  return (
-    <View style={styles.avatarFallback}>
-      <Text style={styles.avatarFallbackText}>{initial}</Text>
-    </View>
-  );
+  return `${getScopeLabel(scope)} ranking`;
+}
+
+function getScopeLabel(scope: LeaderboardScope) {
+  switch (scope) {
+    case 'weekly':
+      return 'Weekly';
+    case 'global':
+      return 'Global';
+    default:
+      return 'Season';
+  }
+}
+
+function getHeaderItems({
+  betaAccessState,
+  seasonName,
+  scope,
+}: {
+  betaAccessState: BetaAccessState;
+  seasonName: string | null;
+  scope: LeaderboardScope;
+}) {
+  return [
+    ...(scope === 'season' && seasonName ? [{ label: seasonName, tone: 'accent' as const }] : []),
+    ...(betaAccessState === 'dev_runner' ? [{ label: 'DEV local', tone: 'warning' as const }] : []),
+    ...(betaAccessState === 'signed_out' ? [{ label: 'Guest view', tone: 'neutral' as const }] : []),
+  ];
+}
+
+function getRankEmptyMessage({
+  betaAccessState,
+  board,
+  scopeSupported,
+}: {
+  betaAccessState: BetaAccessState;
+  board: LeaderboardBoard;
+  scopeSupported: boolean;
+}) {
+  if (!scopeSupported) {
+    return 'This scope is not live yet.';
+  }
+
+  if (board === 'teams') {
+    return betaAccessState === 'signed_out' ? 'Sign in to pin your team.' : 'No linked team yet.';
+  }
+
+  return betaAccessState === 'signed_out' ? 'Sign in to pin your rank.' : 'No personal rank yet.';
+}
+
+function getEmptyTitle({
+  board,
+  scope,
+  scopeSupported,
+}: {
+  board: LeaderboardBoard;
+  scope: LeaderboardScope;
+  scopeSupported: boolean;
+}) {
+  if (!scopeSupported) {
+    return `${getScopeLabel(scope)} ranking soon`;
+  }
+
+  return board === 'runners' ? 'No runners ranked yet' : 'No teams ranked yet';
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
+  screen: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-    gap: 12,
-    backgroundColor: '#f8fafc',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
+    gap: spacing.sm,
   },
   list: {
-    padding: 16,
-    gap: 12,
+    flex: 1,
+  },
+  listContent: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   header: {
-    gap: 8,
-    marginBottom: 8,
+    gap: spacing.md,
+    paddingBottom: spacing.lg,
   },
   title: {
-    fontSize: 30,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#475569',
-  },
-  caption: {
-    color: '#64748b',
-    lineHeight: 20,
-  },
-  noticeCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 14,
-  },
-  noticeText: {
-    color: '#475569',
-    lineHeight: 20,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
-  },
-  toggleButton: {
-    minHeight: 42,
-    minWidth: 110,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#e2e8f0',
-    paddingHorizontal: 14,
-  },
-  toggleButtonActive: {
-    backgroundColor: '#0f172a',
-  },
-  toggleText: {
-    color: '#0f172a',
-    fontWeight: '600',
-  },
-  toggleTextActive: {
-    color: '#ffffff',
-  },
-  empty: {
-    paddingVertical: 24,
+    ...typography.heroTitle,
+    color: colors.textPrimary,
   },
   info: {
+    ...typography.body,
     textAlign: 'center',
-    color: '#475569',
+    color: colors.textSecondary,
   },
   error: {
+    ...typography.body,
     textAlign: 'center',
-    color: '#b91c1c',
-    fontWeight: '600',
+    color: colors.danger,
+    maxWidth: 320,
   },
-  secondaryButton: {
-    minHeight: 48,
+  stateButton: {
     minWidth: 180,
-    borderRadius: 12,
-    backgroundColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
   },
-  secondaryButtonText: {
-    color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderRadius: 14,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 14,
-  },
-  cardHighlighted: {
-    borderColor: '#0f172a',
-    backgroundColor: '#f1f5f9',
-  },
-  rankBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rankText: {
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  identity: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  identityText: {
-    flex: 1,
-    gap: 2,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  secondary: {
-    color: '#64748b',
-    fontSize: 13,
-  },
-  inlineBadge: {
-    borderRadius: 999,
-    backgroundColor: '#dbeafe',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  inlineBadgeText: {
-    color: '#1d4ed8',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  pointsBlock: {
-    alignItems: 'flex-end',
-  },
-  points: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  pointsLabel: {
-    color: '#64748b',
-    fontSize: 12,
-    textTransform: 'uppercase',
-  },
-  avatarFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#0f172a',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarFallbackText: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  avatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#cbd5e1',
-  },
-  teamBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#1e293b',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  teamBadgeText: {
-    color: '#ffffff',
-    fontWeight: '700',
+  separator: {
+    height: spacing.sm,
   },
 });
