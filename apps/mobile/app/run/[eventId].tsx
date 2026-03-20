@@ -2,10 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import type { LocationObject } from 'expo-location';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import type { LatLng } from 'react-native-maps';
 import { RouteMap } from '@/components/RouteMap';
+import { ActionBar } from '@/components/ui/ActionBar';
+import { AppScreen } from '@/components/ui/AppScreen';
+import { InfoRow } from '@/components/ui/InfoRow';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { SecondaryButton } from '@/components/ui/SecondaryButton';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { StatCard } from '@/components/ui/StatCard';
+import { StatusBadge, type StatusBadgeTone } from '@/components/ui/StatusBadge';
+import { StatusStrip } from '@/components/ui/StatusStrip';
 import { formatValidationReason } from '@/services/betaDiagnostics';
 import {
   ActivityUploadError,
@@ -14,10 +23,11 @@ import {
   type LocalTrackpoint,
   type UploadedActivity,
 } from '@/services/activitiesService';
-import { DEV_MODE_LABEL, getDevModeMessage, isDevRunnerActive } from '@/services/devRunnerMode';
+import { DEV_MODE_LABEL, isDevRunnerActive } from '@/services/devRunnerMode';
 import { canFetchProtectedEventRoute, fetchEventRoute } from '@/services/eventRoutes';
 import { fetchEventDetails, type EventDetail } from '@/services/eventsService';
 import { getStoredRunSession, setStoredRunSession } from '@/services/runSessionStore';
+import { colors, spacing, typography } from '@/theme/tokens';
 import type { EventRoute } from '@/utils/route';
 import { haversineDistanceMeters, isWithinRadiusKm } from '@/utils/route';
 
@@ -645,70 +655,90 @@ export default function RunScreen() {
     }
   }
 
+  const runPresentation = getRunPresentation({
+    runPhase,
+    canStart,
+    insideStartZone,
+    permissionState,
+    uploading,
+    uploadError,
+    uploadedActivity,
+  });
+
+  const zonePresentation = getZonePresentation({
+    canStart,
+    currentLatLng,
+    distanceToStartMeters,
+    insideStartZone,
+    permissionState,
+    runPhase,
+  });
+
+  const systemItems = buildSystemItems({
+    devRunnerActive,
+    isWeb,
+    uploading,
+    uploadError,
+    uploadedActivity,
+  });
+
+  const trackingRows = buildTrackingRows({
+    currentLatLng,
+    distanceToStartMeters,
+    finishWarning,
+    gpsQualityMessage,
+    insideStartZone,
+    isWeb,
+    permissionMessage,
+    permissionState,
+    runPhase,
+    suspiciousWarning,
+    trackpointCount: trackpoints.length,
+    uploadError,
+    uploadedActivity,
+  });
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.info}>Loading run...</Text>
-      </SafeAreaView>
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
+        <ActivityIndicator color={colors.accent} size="large" />
+        <Text style={styles.stateText}>Loading run brief...</Text>
+      </AppScreen>
     );
   }
 
   if (accessDeniedMessage) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.title}>Run</Text>
-        <Text style={styles.warning}>{accessDeniedMessage}</Text>
-        <Text style={styles.info}>Redirecting you back to the event details.</Text>
-      </SafeAreaView>
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
+        <Text style={styles.stateTitle}>Run</Text>
+        <Text style={styles.warningText}>{accessDeniedMessage}</Text>
+        <Text style={styles.stateText}>Redirecting to the brief.</Text>
+      </AppScreen>
     );
   }
 
   if (error || !event || !route) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.title}>Run</Text>
-        <Text style={styles.error}>{error ?? 'No route available.'}</Text>
-        <Pressable style={styles.secondaryButton} onPress={() => router.replace(`/events/${resolvedEventId ?? ''}`)}>
-          <Text style={styles.secondaryButtonText}>Back to event</Text>
-        </Pressable>
-      </SafeAreaView>
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
+        <Text style={styles.stateTitle}>Run</Text>
+        <Text style={styles.errorText}>{error ?? 'No route available.'}</Text>
+        <SecondaryButton label="Back to event" onPress={() => router.replace(`/events/${resolvedEventId ?? ''}`)} />
+      </AppScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Run</Text>
-          <Text style={styles.subtitle}>{event.title}</Text>
-        </View>
+    <AppScreen contentContainerStyle={styles.content}>
+      <ScreenHeader
+        eyebrow="Run brief"
+        title={event.title}
+        subtitle={runPresentation.line}
+        accessory={<StatusBadge label={runPresentation.label} tone={runPresentation.tone} />}
+      />
 
-        {devRunnerActive ? (
-          <View style={styles.devModeCard}>
-            <Text style={styles.devModeTitle}>{DEV_MODE_LABEL}</Text>
-            <Text style={styles.info}>{getDevModeMessage('run')}</Text>
-          </View>
-        ) : null}
+      {systemItems.length > 0 ? <StatusStrip compact muted items={systemItems} /> : null}
 
-        <View style={styles.statusCard}>
-          <Text style={styles.statusLabel}>Run status</Text>
-          <Text style={styles.statusValue}>{formatRunPhase(runPhase)}</Text>
-          <Text style={styles.info}>{runStatusText}</Text>
-        </View>
-
-        <View style={styles.mapWrapper}>
-          <RouteMap
-            routePolyline={route.polyline}
-            userPolyline={trackpoints.map((point) => ({ latitude: point.latitude, longitude: point.longitude }))}
-            startPoint={route.startPoint}
-            endPoint={route.endPoint}
-            startZoneCenter={event.startAreaCenter}
-            startZoneRadiusKm={event.startAreaRadiusKm}
-            currentLocation={currentLatLng}
-          />
-        </View>
-
+      <SectionCard accessory={<StatusBadge compact label={zonePresentation.label} tone={zonePresentation.tone} />} tone="accent">
         <View style={styles.statsGrid}>
           <StatCard
             label="Timer"
@@ -723,114 +753,324 @@ export default function RunScreen() {
             value={`${(runPhase === 'running' ? liveStats.avgSpeedKmh : result?.avgSpeedKmh ?? liveStats.avgSpeedKmh).toFixed(2)} km/h`}
           />
         </View>
+        <InfoRow label="Zone" tone={zonePresentation.tone === 'success' ? 'success' : zonePresentation.tone === 'warning' ? 'warning' : 'muted'} value={zonePresentation.line} />
+        <InfoRow label="GPS" tone={permissionState === 'granted' ? 'success' : permissionState === 'loading' ? 'muted' : 'warning'} value={getPermissionLine(permissionState, permissionMessage)} />
+      </SectionCard>
 
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Location and tracking</Text>
-          {permissionState === 'loading' ? <Text style={styles.info}>Requesting location permission...</Text> : null}
-          {permissionMessage ? <Text style={styles.warning}>{permissionMessage}</Text> : null}
-          {gpsQualityMessage ? <Text style={styles.warning}>{gpsQualityMessage}</Text> : null}
-          {suspiciousWarning ? <Text style={styles.warning}>{suspiciousWarning}</Text> : null}
-          {finishWarning ? <Text style={styles.info}>{finishWarning}</Text> : null}
-          {currentLatLng ? (
-            <Text style={styles.info}>
-              Current location: {currentLatLng.latitude.toFixed(5)}, {currentLatLng.longitude.toFixed(5)}
-            </Text>
-          ) : (
-            <Text style={styles.info}>Current location is not available yet.</Text>
-          )}
-          {distanceToStartMeters !== null ? (
-            <Text style={insideStartZone ? styles.success : styles.warning}>
-              {insideStartZone
-                ? 'You are inside the start zone and can begin.'
-                : `You are ${Math.round(distanceToStartMeters)} m away from the start zone.`}
-            </Text>
-          ) : (
-            <Text style={styles.info}>Move near the start zone to unlock the run.</Text>
-          )}
-          {runPhase === 'running' ? (
-            <Text style={styles.success}>Tracking active: accepted GPS samples are updating locally.</Text>
-          ) : null}
-          {isWeb ? <Text style={styles.info}>Live GPS tracking is only available on mobile. Web stays in a limited beta preview.</Text> : null}
-          {devRunnerActive && !insideStartZone ? <Text style={styles.warning}>DEV runner: start zone check bypassed</Text> : null}
+      <SectionCard
+        title="Route"
+        subtitle="Live route, start zone, and your trace."
+        accessory={<StatusBadge compact label={runPhase === 'running' ? 'Live' : 'Ready'} tone={runPhase === 'running' ? 'success' : 'accent'} />}
+      >
+        <View style={styles.mapCard}>
+          <RouteMap
+            routePolyline={route.polyline}
+            userPolyline={trackpoints.map((point) => ({ latitude: point.latitude, longitude: point.longitude }))}
+            startPoint={route.startPoint}
+            endPoint={route.endPoint}
+            startZoneCenter={event.startAreaCenter}
+            startZoneRadiusKm={event.startAreaRadiusKm}
+            currentLocation={currentLatLng}
+          />
         </View>
+      </SectionCard>
 
-        {runPhase === 'ready' ? (
-          <Pressable style={[styles.primaryButton, !canStart && styles.buttonDisabled]} onPress={handleStartRun} disabled={!canStart}>
-            <Text style={styles.primaryButtonText}>Start Run</Text>
-          </Pressable>
-        ) : null}
+      <SectionCard title="Tracking" subtitle="Quality, review, and local state.">
+        {trackingRows.map((row) => (
+          <InfoRow key={`${row.label}-${row.value}`} label={row.label} tone={row.tone} value={row.value} />
+        ))}
+      </SectionCard>
 
-        {runPhase === 'running' ? (
-          <View style={styles.controlsCard}>
-            <Text style={styles.controlsTitle}>Active run controls</Text>
-            <Text style={styles.info}>
-              Finish when you are done. Runs shorter than {(MIN_RUN_DISTANCE_METERS / 1000).toFixed(2)} km or under {MIN_RUN_DURATION_SECONDS} seconds stay invalid and local only.
-            </Text>
-            <View style={styles.actionRow}>
-              <Pressable style={styles.secondaryButton} onPress={handleAbandonRun}>
-                <Text style={styles.secondaryButtonText}>Abandon Run</Text>
-              </Pressable>
-              <Pressable style={styles.primaryButton} onPress={() => void handleFinishRun()}>
-                <Text style={styles.primaryButtonText}>Finish Run</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
+      {runPhase === 'ready' ? (
+        <ActionBar
+          secondary={<SecondaryButton label="Back" onPress={() => router.replace(`/events/${event.id}`)} />}
+          primary={<PrimaryButton label="Start" onPress={handleStartRun} disabled={!canStart} />}
+        />
+      ) : null}
 
-        {result ? (
-          <View style={styles.resultCard}>
-            <Text style={styles.resultTitle}>Run result</Text>
-            <Text style={result.status === 'completed' ? styles.success : result.status === 'invalid' ? styles.error : styles.warning}>
-              Status: {formatResultStatus(result.status)}
-            </Text>
-            <View style={styles.resultStats}>
-              <ResultMetric label="Duration" value={formatDuration(result.durationSeconds)} />
-              <ResultMetric label="Distance" value={`${result.distanceKm.toFixed(3)} km`} />
-              <ResultMetric label="Average speed" value={`${result.avgSpeedKmh.toFixed(2)} km/h`} />
-              <ResultMetric label="Activity points" value={uploadedActivity ? String(uploadedActivity.points) : 'Unavailable'} />
-            </View>
-            <Text style={styles.info}>Season leaderboard totals update after review and scoring finish.</Text>
-            {uploading ? <Text style={styles.info}>Uploading activity...</Text> : null}
-            {!uploading && result.status === 'completed' && !uploadError && uploadedActivity?.status !== 'rejected' ? (
-              <Text style={styles.success}>Run saved and synced.</Text>
-            ) : null}
-            {uploadedActivity?.status === 'rejected' ? (
-              <Text style={styles.warning}>
-                {formatValidationReason(uploadedActivity.validationReason) ?? 'Run review flagged this attempt. It was not scored.'}
-              </Text>
-            ) : null}
-            {uploadError ? <Text style={styles.error}>Sync issue: {uploadError}</Text> : null}
-            {result.status === 'completed' && uploadError ? (
-              <Pressable style={styles.secondaryButton} onPress={() => void persistResult(result, uploadedActivityRef.current)}>
-                <Text style={styles.secondaryButtonText}>Retry upload</Text>
-              </Pressable>
-            ) : null}
-            <Pressable style={styles.secondaryButton} onPress={() => router.replace(`/events/${event.id}`)}>
-              <Text style={styles.secondaryButtonText}>Back to event</Text>
-            </Pressable>
-          </View>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
+      {runPhase === 'running' ? (
+        <SectionCard title="Controls" subtitle={`Minimum ${(MIN_RUN_DISTANCE_METERS / 1000).toFixed(2)} km and ${MIN_RUN_DURATION_SECONDS}s.`} tone="muted">
+          <ActionBar
+            secondary={<SecondaryButton label="Abandon" onPress={handleAbandonRun} />}
+            primary={<PrimaryButton label="Finish" onPress={() => void handleFinishRun()} />}
+          />
+        </SectionCard>
+      ) : null}
+
+      {result ? (
+        <SectionCard
+          title="Result"
+          subtitle={getResultLine({ result, uploadedActivity, uploadError, uploading })}
+          accessory={<StatusBadge label={formatResultStatus(result.status)} tone={getResultTone(result.status, uploadedActivity)} />}
+        >
+          <InfoRow label="Duration" value={formatDuration(result.durationSeconds)} />
+          <InfoRow label="Distance" value={`${result.distanceKm.toFixed(3)} km`} />
+          <InfoRow label="Avg speed" value={`${result.avgSpeedKmh.toFixed(2)} km/h`} />
+          <InfoRow label="Points" value={uploadedActivity ? String(uploadedActivity.points) : 'Pending'} />
+          <ActionBar
+            secondary={<SecondaryButton label="Event" onPress={() => router.replace(`/events/${event.id}`)} />}
+            primary={
+              result.status === 'completed' && uploadError ? (
+                <PrimaryButton label="Retry upload" onPress={() => void persistResult(result, uploadedActivityRef.current)} />
+              ) : undefined
+            }
+          />
+        </SectionCard>
+      ) : null}
+    </AppScreen>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-    </View>
-  );
+function getRunPresentation({
+  runPhase,
+  canStart,
+  insideStartZone,
+  permissionState,
+  uploading,
+  uploadError,
+  uploadedActivity,
+}: {
+  runPhase: RunPhase;
+  canStart: boolean;
+  insideStartZone: boolean;
+  permissionState: PermissionState;
+  uploading: boolean;
+  uploadError: string | null;
+  uploadedActivity: UploadedActivity | null;
+}) {
+  if (uploading) {
+    return { label: 'Uploading', tone: 'warning' as const, line: 'Run saved locally. Sync in progress.' };
+  }
+
+  if (uploadedActivity?.status === 'rejected') {
+    return { label: 'Flagged', tone: 'warning' as const, line: 'Run flagged for review.' };
+  }
+
+  if (runPhase === 'completed') {
+    return {
+      label: uploadError ? 'Saved local' : 'Validated',
+      tone: uploadError ? ('info' as const) : ('success' as const),
+      line: uploadError ? 'Result saved. Sync pending.' : 'Run complete and synced.',
+    };
+  }
+
+  if (runPhase === 'running') {
+    return { label: 'Running', tone: 'success' as const, line: 'Tracking active on this device.' };
+  }
+
+  if (runPhase === 'abandoned') {
+    return { label: 'Abandoned', tone: 'warning' as const, line: 'Run stopped before finish.' };
+  }
+
+  if (runPhase === 'invalid') {
+    return { label: 'Invalid', tone: 'danger' as const, line: 'Run did not pass minimum checks.' };
+  }
+
+  if (permissionState !== 'granted') {
+    return { label: 'GPS needed', tone: 'warning' as const, line: 'Grant location to arm the run.' };
+  }
+
+  if (!insideStartZone && !canStart) {
+    return { label: 'Move to zone', tone: 'warning' as const, line: 'Enter the start zone to arm the run.' };
+  }
+
+  return { label: 'Ready', tone: 'accent' as const, line: 'Route armed. Start when ready.' };
 }
 
-function ResultMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.resultMetric}>
-      <Text style={styles.resultMetricLabel}>{label}</Text>
-      <Text style={styles.resultMetricValue}>{value}</Text>
-    </View>
-  );
+function getZonePresentation({
+  canStart,
+  currentLatLng,
+  distanceToStartMeters,
+  insideStartZone,
+  permissionState,
+  runPhase,
+}: {
+  canStart: boolean;
+  currentLatLng: LatLng | null;
+  distanceToStartMeters: number | null;
+  insideStartZone: boolean;
+  permissionState: PermissionState;
+  runPhase: RunPhase;
+}) {
+  if (runPhase === 'running') {
+    return { label: 'Tracking', tone: 'success' as const, line: 'Run is live.' };
+  }
+
+  if (permissionState !== 'granted') {
+    return { label: 'Zone', tone: 'neutral' as const, line: 'Waiting for location.' };
+  }
+
+  if (!currentLatLng || distanceToStartMeters === null) {
+    return { label: 'Zone', tone: 'neutral' as const, line: 'Position not locked yet.' };
+  }
+
+  if (insideStartZone || canStart) {
+    return { label: 'In zone', tone: 'success' as const, line: 'Start zone confirmed.' };
+  }
+
+  return { label: `${Math.round(distanceToStartMeters)} m`, tone: 'warning' as const, line: 'Move closer to start.' };
+}
+
+function getPermissionLine(permissionState: PermissionState, permissionMessage: string | null): string {
+  if (permissionMessage) {
+    return permissionMessage;
+  }
+
+  switch (permissionState) {
+    case 'granted':
+      return 'Location active.';
+    case 'loading':
+      return 'Requesting location.';
+    case 'denied':
+      return 'Location denied.';
+    case 'error':
+      return 'Location unavailable.';
+    default:
+      return 'Waiting for location.';
+  }
+}
+
+function buildSystemItems({
+  devRunnerActive,
+  isWeb,
+  uploading,
+  uploadError,
+  uploadedActivity,
+}: {
+  devRunnerActive: boolean;
+  isWeb: boolean;
+  uploading: boolean;
+  uploadError: string | null;
+  uploadedActivity: UploadedActivity | null;
+}) {
+  return [
+    ...(devRunnerActive ? [{ label: DEV_MODE_LABEL, tone: 'warning' as const }] : []),
+    ...(isWeb ? [{ label: 'Web preview', tone: 'info' as const }] : []),
+    ...(uploading ? [{ label: 'Syncing', tone: 'warning' as const }] : []),
+    ...(uploadError ? [{ label: 'Sync pending', tone: 'warning' as const }] : []),
+    ...(uploadedActivity?.status === 'rejected' ? [{ label: 'Review flag', tone: 'warning' as const }] : []),
+  ];
+}
+
+function buildTrackingRows({
+  currentLatLng,
+  distanceToStartMeters,
+  finishWarning,
+  gpsQualityMessage,
+  insideStartZone,
+  isWeb,
+  permissionMessage,
+  permissionState,
+  runPhase,
+  suspiciousWarning,
+  trackpointCount,
+  uploadError,
+  uploadedActivity,
+}: {
+  currentLatLng: LatLng | null;
+  distanceToStartMeters: number | null;
+  finishWarning: string | null;
+  gpsQualityMessage: string | null;
+  insideStartZone: boolean;
+  isWeb: boolean;
+  permissionMessage: string | null;
+  permissionState: PermissionState;
+  runPhase: RunPhase;
+  suspiciousWarning: string | null;
+  trackpointCount: number;
+  uploadError: string | null;
+  uploadedActivity: UploadedActivity | null;
+}) {
+  return [
+    {
+      label: 'Location',
+      value:
+        permissionState === 'granted'
+          ? currentLatLng
+            ? 'Locked'
+            : 'Waiting for first fix'
+          : permissionMessage ?? 'Location blocked',
+      tone: permissionState === 'granted' ? ('success' as const) : ('warning' as const),
+    },
+    {
+      label: 'Start zone',
+      value:
+        distanceToStartMeters === null
+          ? 'Unknown'
+          : insideStartZone
+            ? 'Inside'
+            : `${Math.round(distanceToStartMeters)} m out`,
+      tone: insideStartZone ? ('success' as const) : ('warning' as const),
+    },
+    {
+      label: 'Trace',
+      value: `${trackpointCount} fixes stored`,
+      tone: runPhase === 'running' ? ('success' as const) : ('muted' as const),
+    },
+    {
+      label: 'Review',
+      value:
+        uploadedActivity?.status === 'rejected'
+          ? formatValidationReason(uploadedActivity.validationReason) ?? 'Flagged for review'
+          : suspiciousWarning ?? finishWarning ?? 'Clear',
+      tone: uploadedActivity?.status === 'rejected' || suspiciousWarning ? ('warning' as const) : ('muted' as const),
+    },
+    {
+      label: 'Sync',
+      value: uploadError ?? (isWeb ? 'Mobile only' : uploadedActivity ? 'Saved' : 'Pending'),
+      tone: uploadError ? ('warning' as const) : uploadedActivity ? ('success' as const) : ('muted' as const),
+    },
+    ...(gpsQualityMessage ? [{ label: 'GPS', value: gpsQualityMessage, tone: 'warning' as const }] : []),
+  ];
+}
+
+function getResultTone(resultStatus: ResultStatus, uploadedActivity: UploadedActivity | null): StatusBadgeTone {
+  if (uploadedActivity?.status === 'rejected') {
+    return 'warning';
+  }
+
+  switch (resultStatus) {
+    case 'completed':
+      return 'success';
+    case 'abandoned':
+      return 'warning';
+    default:
+      return 'danger';
+  }
+}
+
+function getResultLine({
+  result,
+  uploadedActivity,
+  uploadError,
+  uploading,
+}: {
+  result: RunResult;
+  uploadedActivity: UploadedActivity | null;
+  uploadError: string | null;
+  uploading: boolean;
+}) {
+  if (uploading) {
+    return 'Uploading result.';
+  }
+
+  if (uploadedActivity?.status === 'rejected') {
+    return 'Run flagged during review.';
+  }
+
+  if (uploadError) {
+    return 'Saved locally. Retry sync when ready.';
+  }
+
+  if (result.status === 'completed') {
+    return 'Run stored and scored.';
+  }
+
+  if (result.status === 'abandoned') {
+    return 'Run kept locally only.';
+  }
+
+  return 'Run did not validate.';
 }
 
 function mapLocationToTrackpoint(location: LocationObject): LocalTrackpoint {
@@ -986,42 +1226,46 @@ function formatResultStatus(value: ResultStatus): string {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f8fafc' },
-  content: { padding: 16, gap: 14 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc', padding: 16, gap: 8 },
-  header: { gap: 4 },
-  title: { fontSize: 28, fontWeight: '700', color: '#0f172a' },
-  subtitle: { fontSize: 16, color: '#475569' },
-  info: { color: '#334155', lineHeight: 20 },
-  warning: { color: '#9a3412', fontWeight: '600' },
-  success: { color: '#166534', fontWeight: '600' },
-  error: { color: '#b91c1c', fontWeight: '600', textAlign: 'center' },
-  mapWrapper: { height: 280, borderRadius: 14, overflow: 'hidden' },
-  statusCard: { borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 16, gap: 6 },
-  statusLabel: { fontSize: 12, color: '#64748b', fontWeight: '700', textTransform: 'uppercase' },
-  statusValue: { fontSize: 20, color: '#0f172a', fontWeight: '700' },
-  statsGrid: { flexDirection: 'row', gap: 10 },
-  statCard: { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 16, gap: 6 },
-  statLabel: { fontSize: 12, color: '#64748b', textTransform: 'uppercase', fontWeight: '700' },
-  statValue: { fontSize: 22, color: '#0f172a', fontWeight: '700' },
-  infoCard: { borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 16, gap: 8 },
-  infoTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
-  primaryButton: { minHeight: 52, borderRadius: 12, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, flex: 1 },
-  primaryButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
-  secondaryButton: { minHeight: 52, borderRadius: 12, backgroundColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
-  secondaryButtonText: { color: '#0f172a', fontSize: 16, fontWeight: '700' },
-  actionRow: { flexDirection: 'row', gap: 12 },
-  controlsCard: { borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 16, gap: 10 },
-  controlsTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a' },
-  buttonDisabled: { backgroundColor: '#94a3b8' },
-  resultCard: { borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#ffffff', padding: 16, gap: 10 },
-  resultTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
-  resultStats: { gap: 10 },
-  resultMetric: { gap: 2 },
-  resultMetricLabel: { fontSize: 12, color: '#64748b', fontWeight: '700', textTransform: 'uppercase' },
-  resultMetricValue: { fontSize: 17, color: '#0f172a', fontWeight: '700' },
-  devModeCard: { borderRadius: 14, borderWidth: 1, borderColor: '#f59e0b', backgroundColor: '#fffbeb', padding: 16, gap: 6 },
-  devModeTitle: { fontSize: 13, fontWeight: '800', color: '#92400e', textTransform: 'uppercase' },
+  content: {
+    gap: spacing.lg,
+  },
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingBottom: spacing.xxl,
+  },
+  stateTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+  },
+  stateText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    maxWidth: 300,
+  },
+  errorText: {
+    ...typography.body,
+    color: colors.danger,
+    textAlign: 'center',
+    maxWidth: 320,
+  },
+  warningText: {
+    ...typography.body,
+    color: colors.warning,
+    textAlign: 'center',
+    maxWidth: 320,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  mapCard: {
+    height: 320,
+    overflow: 'hidden',
+    borderRadius: 16,
+  },
 });
 
 function createDevRoute(center: LatLng): EventRoute {

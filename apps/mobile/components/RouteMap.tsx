@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import MapView, { Circle, Marker, Polyline, type LatLng, type Region } from 'react-native-maps';
 import { StyleSheet, View } from 'react-native';
+import { borderWidth, colors, radius } from '@/theme/tokens';
 
 interface RouteMapProps {
   routePolyline?: LatLng[];
@@ -65,16 +66,16 @@ export function RouteMap({
           <Circle
             center={startZoneCenter}
             radius={startZoneRadiusKm * 1000}
-            fillColor="rgba(37,99,235,0.12)"
-            strokeColor="rgba(37,99,235,0.45)"
-            strokeWidth={2}
+            fillColor="rgba(120, 86, 255, 0.12)"
+            strokeColor="rgba(120, 86, 255, 0.38)"
+            strokeWidth={1.5}
           />
         ) : null}
-        {routePolyline.length > 1 ? <Polyline coordinates={routePolyline} strokeColor="#2563eb" strokeWidth={4} /> : null}
-        {userPolyline.length > 1 ? <Polyline coordinates={userPolyline} strokeColor="#0f172a" strokeWidth={4} /> : null}
-        {startPoint ? <Marker coordinate={startPoint} title="Start" pinColor="#16a34a" /> : null}
-        {endPoint ? <Marker coordinate={endPoint} title="End" pinColor="#dc2626" /> : null}
-        {currentLocation ? <Marker coordinate={currentLocation} title="You" pinColor="#0f172a" /> : null}
+        {routePolyline.length > 1 ? <Polyline coordinates={routePolyline} strokeColor={colors.accent} strokeWidth={4} /> : null}
+        {userPolyline.length > 1 ? <Polyline coordinates={userPolyline} strokeColor={colors.info} strokeWidth={4} /> : null}
+        {startPoint ? <Marker coordinate={startPoint} title="Start" pinColor={colors.success} /> : null}
+        {endPoint ? <Marker coordinate={endPoint} title="End" pinColor={colors.danger} /> : null}
+        {currentLocation ? <Marker coordinate={currentLocation} title="You" pinColor={colors.textPrimary} /> : null}
       </MapView>
     </View>
   );
@@ -84,8 +85,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     width: '100%',
-    borderRadius: 12,
+    borderRadius: radius.md,
     overflow: 'hidden',
+    borderWidth: borderWidth.regular,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
   },
   map: {
     flex: 1,
