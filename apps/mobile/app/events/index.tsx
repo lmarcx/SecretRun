@@ -9,20 +9,19 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import type { StatusBadgeTone } from '@/components/ui/StatusBadge';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { DEV_MODE_LABEL, getDevModeMessage, isDevRunnerActive } from '@/services/devRunnerMode';
+import { isDevRunnerActive } from '@/services/devRunnerMode';
 import type { EventListItem } from '@/services/eventsService';
 import { fetchPublicEvents, getEventErrorMessage } from '@/services/eventsService';
 import { getStoredRunSession } from '@/services/runSessionStore';
-import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens';
+import { colors, spacing, typography } from '@/theme/tokens';
 
 interface EventPresentationModel {
   event: EventListItem;
   section: 'ready' | 'coming' | 'completed';
   eyebrow: string;
   description: string;
-  helperText: string;
-  badges: Array<{ label: string; tone: StatusBadgeTone }>;
-  meta: Array<{ label: string; value: string }>;
+  statusBadge: { label: string; tone: StatusBadgeTone };
+  meta: Array<{ label: string; value: string; icon: 'reveal' | 'start' | 'zone' }>;
   primaryActionLabel: string;
   primaryHref: `/events/${string}` | `/run/${string}`;
   primaryTone: 'primary' | 'secondary';
@@ -109,13 +108,15 @@ export default function EventsScreen() {
     return (
       <AppScreen contentContainerStyle={styles.content}>
         <View style={styles.intro}>
-          <StatusBadge label="Night sessions" tone="accent" />
+          <View style={styles.systemRow}>
+            <StatusBadge label="Night sessions" tone="accent" />
+          </View>
           <Text style={styles.screenTitle}>Events</Text>
-          <Text style={styles.screenSubtitle}>The next Secret Run will surface here as soon as a new drop is live.</Text>
+          <Text style={styles.screenSubtitle}>Hidden starts. Clear timing.</Text>
         </View>
         <EmptyStateCard
           title="No events live yet"
-          description="Nothing is scheduled right now. Check back later for the next reveal window."
+          description="No drop is live. Check back for the next reveal."
         />
         <PrimaryButton label="Refresh" onPress={() => setReloadKey((value) => value + 1)} />
       </AppScreen>
@@ -125,31 +126,21 @@ export default function EventsScreen() {
   return (
     <AppScreen contentContainerStyle={styles.content}>
       <View style={styles.intro}>
-        <StatusBadge label="Night sessions" tone="accent" />
-        <Text style={styles.screenTitle}>Events</Text>
-        <Text style={styles.screenSubtitle}>
-          Premium running, low noise. One featured event stays in front, the rest waits until it matters.
-        </Text>
-      </View>
-
-      {devRunnerActive ? (
-        <View style={styles.devBanner}>
-          <View style={styles.devBannerHeader}>
-            <Text style={styles.devBannerLabel}>{DEV_MODE_LABEL}</Text>
-            <StatusBadge label="Local beta" tone="warning" />
-          </View>
-          <Text style={styles.devBannerText}>{getDevModeMessage('events')}</Text>
+        <View style={styles.systemRow}>
+          <StatusBadge label="Night sessions" tone="accent" />
+          {devRunnerActive ? <StatusBadge label="DEV local joins" tone="warning" /> : null}
         </View>
-      ) : null}
+        <Text style={styles.screenTitle}>Events</Text>
+        <Text style={styles.screenSubtitle}>Hidden starts. Clear timing.</Text>
+      </View>
 
       {heroEvent ? (
         <EventHeroCard
           eyebrow={heroEvent.eyebrow}
           title={heroEvent.event.title}
           description={heroEvent.description}
-          detailItems={heroEvent.meta}
-          badges={heroEvent.badges}
-          helperText={heroEvent.helperText}
+          metaItems={heroEvent.meta}
+          statusBadge={heroEvent.statusBadge}
           primaryAction={{ label: heroEvent.primaryActionLabel, onPress: () => router.push(heroEvent.primaryHref) }}
           secondaryAction={{ label: 'Brief', onPress: () => router.push(`/events/${heroEvent.event.id}`) }}
         />
@@ -167,7 +158,7 @@ export default function EventsScreen() {
                 key={item.event.id}
                 title={item.event.title}
                 description={item.description}
-                badges={item.badges}
+                statusBadge={item.statusBadge}
                 meta={item.meta}
                 primaryAction={{
                   label: item.primaryActionLabel,
@@ -192,17 +183,17 @@ function buildSections(eventModels: EventPresentationModel[], heroEventId: strin
     {
       key: 'ready',
       title: 'Ready now',
-      subtitle: 'Joined sessions that can be opened immediately.',
+      subtitle: '',
       emptyTitle: 'Nothing armed right now',
-      emptyDescription: 'Your next run will appear here once timing and access are unlocked.',
+      emptyDescription: 'Your next open run will appear here.',
       items: visibleItems.filter((item) => item.section === 'ready'),
     },
     {
       key: 'coming',
       title: 'Coming up',
-      subtitle: 'Quietly queued events worth tracking before reveal and start.',
+      subtitle: '',
       emptyTitle: 'No upcoming drops',
-      emptyDescription: 'There is nothing else on deck after the featured event for now.',
+      emptyDescription: 'Nothing else is queued right now.',
       items: visibleItems.filter((item) => item.section === 'coming'),
     },
   ];
@@ -211,7 +202,7 @@ function buildSections(eventModels: EventPresentationModel[], heroEventId: strin
     sections.push({
       key: 'completed',
       title: 'Completed',
-      subtitle: 'Saved finishes and past events stay accessible without taking over the home feed.',
+      subtitle: '',
       emptyTitle: '',
       emptyDescription: '',
       items: completedItems,
@@ -248,7 +239,7 @@ function buildEventPresentation(event: EventListItem, devRunnerActive: boolean):
   const readyNow = joined && !finished && (devRunnerActive || (revealed && started && !past));
 
   const section: EventPresentationModel['section'] = readyNow ? 'ready' : finished || past ? 'completed' : 'coming';
-  const statusLabel = finished ? 'Completed' : readyNow ? 'Ready now' : joined ? 'Joined' : 'Open';
+  const statusLabel = finished ? 'Completed' : readyNow ? 'Ready now' : joined ? 'Joined' : revealed ? 'Open' : 'Route sealed';
 
   let eyebrow = 'Featured event';
   if (section === 'ready') {
@@ -257,21 +248,14 @@ function buildEventPresentation(event: EventListItem, devRunnerActive: boolean):
     eyebrow = 'Saved result';
   }
 
-  const description =
-    event.description ??
-    (section === 'ready'
-      ? 'Your next route is already open. Keep the brief light and the effort sharp.'
+  const description = getCompactDescription(
+    event.description,
+    section === 'ready'
+      ? 'Route open. Start when ready.'
       : section === 'completed'
-        ? 'A finished event kept close for review and quick re-entry into its result.'
-        : 'A scheduled drop with a controlled reveal window and a clean mobile brief.');
-
-  const helperText = finished
-    ? 'The local result for this event stays available on this device.'
-    : readyNow
-      ? 'This session is unlocked and can move straight into tracking.'
-      : joined
-        ? 'You are already on the list. The route stays discreet until timing opens.'
-        : 'Open the event brief to check timing, status, and entry details.';
+        ? 'Finished event kept ready for review.'
+        : 'Hidden route. Tight brief.',
+  );
 
   let primaryActionLabel = 'Open event';
   let primaryHref: EventPresentationModel['primaryHref'] = `/events/${event.id}`;
@@ -296,18 +280,14 @@ function buildEventPresentation(event: EventListItem, devRunnerActive: boolean):
     section,
     eyebrow,
     description,
-    helperText,
     primaryActionLabel,
     primaryHref,
     primaryTone,
-    badges: [
-      { label: statusLabel, tone: getBadgeTone(statusLabel) },
-      { label: revealed ? 'Revealed' : 'Route sealed', tone: revealed ? 'info' : 'neutral' },
-    ],
+    statusBadge: { label: statusLabel, tone: getBadgeTone(statusLabel) },
     meta: [
-      { label: 'Reveal', value: formatDateTime(event.revealAt) },
-      { label: 'Starts', value: formatDateTime(event.startsAt) },
-      { label: 'Start zone', value: `${event.startAreaRadiusKm} km radius` },
+      { label: 'Reveal', value: formatDateTime(event.revealAt), icon: 'reveal' },
+      { label: 'Start', value: formatDateTime(event.startsAt), icon: 'start' },
+      { label: 'Zone', value: `${event.startAreaRadiusKm} km`, icon: 'zone' },
     ],
   };
 }
@@ -320,9 +300,24 @@ function getBadgeTone(label: string): StatusBadgeTone {
       return 'info';
     case 'Joined':
       return 'accent';
+    case 'Route sealed':
+      return 'warning';
     default:
       return 'neutral';
   }
+}
+
+function getCompactDescription(source: string | null, fallback: string): string {
+  const normalized = source?.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return fallback;
+  }
+
+  if (normalized.length <= 88) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 85).trimEnd()}...`;
 }
 
 function formatDateTime(value: string): string {
@@ -347,39 +342,22 @@ const styles = StyleSheet.create({
   intro: {
     gap: spacing.xs,
   },
+  systemRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    alignItems: 'center',
+  },
   screenTitle: {
     ...typography.heroTitle,
     color: colors.textPrimary,
   },
   screenSubtitle: {
-    ...typography.body,
-    color: colors.textSecondary,
-    maxWidth: 420,
+    ...typography.bodySm,
+    color: colors.textMuted,
   },
   section: {
     gap: spacing.sm,
-  },
-  devBanner: {
-    borderRadius: radius.md,
-    borderWidth: borderWidth.regular,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  devBannerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  devBannerLabel: {
-    ...typography.eyebrow,
-    color: colors.textMuted,
-  },
-  devBannerText: {
-    ...typography.bodySm,
-    color: colors.textSecondary,
   },
   stateTitle: {
     ...typography.sectionTitle,

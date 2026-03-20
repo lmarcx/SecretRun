@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens';
+import { EventMetaRow } from './EventMetaRow';
 import { PrimaryButton } from './PrimaryButton';
 import { SecondaryButton } from './SecondaryButton';
 import type { StatusBadgeTone } from './StatusBadge';
@@ -8,8 +9,8 @@ import { StatusBadge } from './StatusBadge';
 interface EventCardProps {
   title: string;
   description: string;
-  meta: Array<{ label: string; value: string }>;
-  badges?: Array<{ label: string; tone?: StatusBadgeTone }>;
+  meta: Array<{ label: string; value: string; icon: 'reveal' | 'start' | 'zone' }>;
+  statusBadge?: { label: string; tone?: StatusBadgeTone };
   primaryAction?: {
     label: string;
     onPress: () => void;
@@ -23,31 +24,19 @@ interface EventCardProps {
   };
 }
 
-export function EventCard({ badges = [], description, meta, primaryAction, secondaryAction, title }: EventCardProps) {
+export function EventCard({ description, meta, primaryAction, secondaryAction, statusBadge, title }: EventCardProps) {
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        <View style={styles.copyBlock}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.description}>{description}</Text>
-        </View>
-        {badges.length > 0 ? (
-          <View style={styles.badgeRow}>
-            {badges.map((badge) => (
-              <StatusBadge key={`${badge.label}-${badge.tone ?? 'neutral'}`} label={badge.label} tone={badge.tone ?? 'neutral'} />
-            ))}
-          </View>
-        ) : null}
+        <Text style={styles.title}>{title}</Text>
+        {statusBadge ? <StatusBadge label={statusBadge.label} tone={statusBadge.tone ?? 'neutral'} /> : null}
       </View>
 
-      <View style={styles.metaRow}>
-        {meta.map((item) => (
-          <View key={item.label} style={styles.metaItem}>
-            <Text style={styles.metaLabel}>{item.label}</Text>
-            <Text style={styles.metaValue}>{item.value}</Text>
-          </View>
-        ))}
-      </View>
+      <Text numberOfLines={2} style={styles.description}>
+        {description}
+      </Text>
+
+      <EventMetaRow dense items={meta} />
 
       {primaryAction || secondaryAction ? (
         <View style={styles.actions}>
@@ -95,41 +84,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     gap: spacing.sm,
-  },
-  copyBlock: {
-    gap: spacing.xs,
   },
   title: {
     ...typography.cardTitle,
     color: colors.textPrimary,
+    flex: 1,
   },
   description: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  metaItem: {
-    flexGrow: 1,
-    minWidth: 96,
-    gap: spacing.xxs,
-  },
-  metaLabel: {
-    ...typography.eyebrow,
-    color: colors.textMuted,
-  },
-  metaValue: {
     ...typography.bodySm,
-    color: colors.textPrimary,
+    color: colors.textSecondary,
   },
   actions: {
     flexDirection: 'row',
