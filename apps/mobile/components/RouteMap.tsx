@@ -61,7 +61,7 @@ export function RouteMap({
 
   return (
     <View style={styles.container}>
-      <MapView style={styles.map} initialRegion={region}>
+      <MapView customMapStyle={DARK_MAP_STYLE} style={styles.map} initialRegion={region}>
         {startZoneCenter && startZoneRadiusKm ? (
           <Circle
             center={startZoneCenter}
@@ -77,9 +77,24 @@ export function RouteMap({
         {endPoint ? <Marker coordinate={endPoint} title="End" pinColor={colors.danger} /> : null}
         {currentLocation ? <Marker coordinate={currentLocation} title="You" pinColor={colors.textPrimary} /> : null}
       </MapView>
+      <View pointerEvents="none" style={styles.overlay} />
     </View>
   );
 }
+
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#12131a' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#73798c' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#12131a' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#222635' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#171a24' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#121820' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#23283a' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#2a3147' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#313952' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1b2030' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0b1019' }] },
+];
 
 const styles = StyleSheet.create({
   container: {
@@ -93,5 +108,9 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(7, 8, 12, 0.14)',
   },
 });

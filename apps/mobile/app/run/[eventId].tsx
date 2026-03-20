@@ -264,7 +264,7 @@ export default function RunScreen() {
 
         if (permission.status !== 'granted') {
           setPermissionState('denied');
-          setPermissionMessage('Location access is required to start a run.');
+          setPermissionMessage('Location needed.');
           return;
         }
 
@@ -277,7 +277,7 @@ export default function RunScreen() {
         }
 
         if (isWeb) {
-          setPermissionMessage('Live GPS tracking is only available on mobile. Web stays in a limited beta preview.');
+          setPermissionMessage('Tracking limited on web.');
           return;
         }
 
@@ -293,7 +293,7 @@ export default function RunScreen() {
       } catch (err) {
         if (active) {
           setPermissionState('error');
-          setPermissionMessage(err instanceof Error ? err.message : 'Location is unavailable in this environment.');
+          setPermissionMessage(err instanceof Error ? err.message : 'Location unavailable.');
         }
       }
     };
@@ -348,21 +348,6 @@ export default function RunScreen() {
     }),
     [distanceMeters, elapsedSeconds],
   );
-
-  const runStatusText =
-    runPhase === 'running'
-      ? 'Tracking is active on this device. Weak or impossible GPS points are filtered before upload.'
-      : runPhase === 'completed'
-        ? uploadError
-          ? 'Your local result is saved. Sync still needs attention.'
-          : uploadedActivity?.status === 'rejected'
-            ? 'Your run finished locally, but review flagged it for follow-up.'
-            : 'Your run is complete and has synced successfully.'
-        : runPhase === 'abandoned'
-          ? 'This run was abandoned and kept locally for review.'
-          : runPhase === 'invalid'
-            ? 'This run was not accepted as a valid completion.'
-            : 'Move into the start zone, review the route, and begin when ready.';
 
   function persistRunningDraft(nextTrackpoints: LocalTrackpoint[], nextDistanceMeters: number, nextStartedAt: string) {
     if (!resolvedEventId) {
@@ -469,8 +454,8 @@ export default function RunScreen() {
     setRunPhase('abandoned');
     setElapsedSeconds(durationSeconds);
     setResult(nextResult);
-    setFinishWarning('Abandoned runs stay on this device and are not synced.');
-    setUploadError('Abandoned runs are not synced.');
+    setFinishWarning('Saved local only.');
+    setUploadError('Local only.');
 
     if (resolvedEventId) {
       setStoredRunSession(resolvedEventId, {
@@ -478,7 +463,7 @@ export default function RunScreen() {
         draft: null,
         result: nextResult,
         uploadedActivity: null,
-        uploadError: 'Abandoned runs are not synced.',
+        uploadError: 'Local only.',
       });
     }
   }
@@ -517,7 +502,7 @@ export default function RunScreen() {
     if (allTrackpoints.length < 2) {
       finalizeInvalidRun(
         buildRunResult('invalid', effectiveStartedAt, finishedAt, durationSeconds, totalDistanceMeters, allTrackpoints),
-        'We need more stable GPS samples before this run can be completed.',
+        'Need more GPS samples.',
       );
       return;
     }
@@ -525,7 +510,7 @@ export default function RunScreen() {
     if (durationSeconds < MIN_RUN_DURATION_SECONDS) {
       finalizeInvalidRun(
         buildRunResult('invalid', effectiveStartedAt, finishedAt, durationSeconds, totalDistanceMeters, allTrackpoints),
-        `Run too short. Keep moving for at least ${MIN_RUN_DURATION_SECONDS} seconds before finishing.`,
+        `Min ${MIN_RUN_DURATION_SECONDS}s required.`,
       );
       return;
     }
@@ -533,7 +518,7 @@ export default function RunScreen() {
     if (totalDistanceMeters < MIN_RUN_DISTANCE_METERS) {
       finalizeInvalidRun(
         buildRunResult('invalid', effectiveStartedAt, finishedAt, durationSeconds, totalDistanceMeters, allTrackpoints),
-        `Run too short. Cover at least ${(MIN_RUN_DISTANCE_METERS / 1000).toFixed(2)} km before finishing.`,
+        `Min ${(MIN_RUN_DISTANCE_METERS / 1000).toFixed(2)} km required.`,
       );
       return;
     }
@@ -620,9 +605,9 @@ export default function RunScreen() {
       setUploadedActivity(activity);
       setFinishWarning(
         activity.status === 'rejected'
-          ? formatValidationReason(activity.validationReason) ?? 'This run was flagged during review and was not scored.'
+          ? formatValidationReason(activity.validationReason) ?? 'Flagged in review.'
           : suspiciousWarningRef.current
-            ? 'This run was uploaded, but some GPS samples looked suspicious and may still be reviewed.'
+            ? 'Uploaded with GPS warnings.'
             : null,
       );
 
@@ -636,7 +621,7 @@ export default function RunScreen() {
     } catch (err) {
       const nextUploadError = getActivityErrorMessage(err);
       setUploadError(nextUploadError);
-      setFinishWarning('Your result is saved on this device. Retry sync when the service is available again.');
+      setFinishWarning('Saved locally. Retry sync.');
 
       if (err instanceof ActivityUploadError && err.activity) {
         uploadedActivityRef.current = err.activity;
@@ -677,17 +662,12 @@ export default function RunScreen() {
   const systemItems = buildSystemItems({
     devRunnerActive,
     isWeb,
-    uploading,
-    uploadError,
-    uploadedActivity,
   });
 
-  const trackingRows = buildTrackingRows({
+  const systemRows = buildSystemRows({
     currentLatLng,
-    distanceToStartMeters,
     finishWarning,
     gpsQualityMessage,
-    insideStartZone,
     isWeb,
     permissionMessage,
     permissionState,
@@ -729,17 +709,12 @@ export default function RunScreen() {
 
   return (
     <AppScreen contentContainerStyle={styles.content}>
-      <ScreenHeader
-        eyebrow="Run brief"
-        title={event.title}
-        subtitle={runPresentation.line}
-        accessory={<StatusBadge label={runPresentation.label} tone={runPresentation.tone} />}
-      />
+      <ScreenHeader title={event.title} subtitle={runPresentation.line} accessory={<StatusBadge label={runPresentation.label} tone={runPresentation.tone} />} />
 
       {systemItems.length > 0 ? <StatusStrip compact muted items={systemItems} /> : null}
 
-      <SectionCard accessory={<StatusBadge compact label={zonePresentation.label} tone={zonePresentation.tone} />} tone="accent">
-        <View style={styles.statsGrid}>
+      <SectionCard tone="accent">
+        <View style={styles.statsRow}>
           <StatCard
             label="Timer"
             value={formatDuration(runPhase === 'running' ? elapsedSeconds : result?.durationSeconds ?? elapsedSeconds)}
@@ -748,20 +723,17 @@ export default function RunScreen() {
             label="Distance"
             value={`${(runPhase === 'running' ? liveStats.distanceKm : result?.distanceKm ?? liveStats.distanceKm).toFixed(3)} km`}
           />
+        </View>
+        <View style={styles.statsRow}>
           <StatCard
-            label="Avg speed"
+            label="Speed"
             value={`${(runPhase === 'running' ? liveStats.avgSpeedKmh : result?.avgSpeedKmh ?? liveStats.avgSpeedKmh).toFixed(2)} km/h`}
           />
+          <StatCard label="Zone" value={zonePresentation.metricValue} />
         </View>
-        <InfoRow label="Zone" tone={zonePresentation.tone === 'success' ? 'success' : zonePresentation.tone === 'warning' ? 'warning' : 'muted'} value={zonePresentation.line} />
-        <InfoRow label="GPS" tone={permissionState === 'granted' ? 'success' : permissionState === 'loading' ? 'muted' : 'warning'} value={getPermissionLine(permissionState, permissionMessage)} />
       </SectionCard>
 
-      <SectionCard
-        title="Route"
-        subtitle="Live route, start zone, and your trace."
-        accessory={<StatusBadge compact label={runPhase === 'running' ? 'Live' : 'Ready'} tone={runPhase === 'running' ? 'success' : 'accent'} />}
-      >
+      <SectionCard title="Route" accessory={<StatusBadge compact label={runPhase === 'running' ? 'Live' : 'Ready'} tone={runPhase === 'running' ? 'success' : 'accent'} />}>
         <View style={styles.mapCard}>
           <RouteMap
             routePolyline={route.polyline}
@@ -775,8 +747,8 @@ export default function RunScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Tracking" subtitle="Quality, review, and local state.">
-        {trackingRows.map((row) => (
+      <SectionCard title="System" tone="muted">
+        {systemRows.map((row) => (
           <InfoRow key={`${row.label}-${row.value}`} label={row.label} tone={row.tone} value={row.value} />
         ))}
       </SectionCard>
@@ -789,7 +761,7 @@ export default function RunScreen() {
       ) : null}
 
       {runPhase === 'running' ? (
-        <SectionCard title="Controls" subtitle={`Minimum ${(MIN_RUN_DISTANCE_METERS / 1000).toFixed(2)} km and ${MIN_RUN_DURATION_SECONDS}s.`} tone="muted">
+        <SectionCard title="Controls" subtitle={`Min ${(MIN_RUN_DISTANCE_METERS / 1000).toFixed(2)} km • ${MIN_RUN_DURATION_SECONDS}s`} tone="muted">
           <ActionBar
             secondary={<SecondaryButton label="Abandon" onPress={handleAbandonRun} />}
             primary={<PrimaryButton label="Finish" onPress={() => void handleFinishRun()} />}
@@ -839,42 +811,42 @@ function getRunPresentation({
   uploadedActivity: UploadedActivity | null;
 }) {
   if (uploading) {
-    return { label: 'Uploading', tone: 'warning' as const, line: 'Run saved locally. Sync in progress.' };
+    return { label: 'Uploading', tone: 'warning' as const, line: 'Sync in progress.' };
   }
 
   if (uploadedActivity?.status === 'rejected') {
-    return { label: 'Flagged', tone: 'warning' as const, line: 'Run flagged for review.' };
+    return { label: 'Flagged', tone: 'warning' as const, line: 'Run under review.' };
   }
 
   if (runPhase === 'completed') {
     return {
       label: uploadError ? 'Saved local' : 'Validated',
       tone: uploadError ? ('info' as const) : ('success' as const),
-      line: uploadError ? 'Result saved. Sync pending.' : 'Run complete and synced.',
+      line: uploadError ? 'Saved locally. Sync pending.' : 'Run complete.',
     };
   }
 
   if (runPhase === 'running') {
-    return { label: 'Running', tone: 'success' as const, line: 'Tracking active on this device.' };
+    return { label: 'Running', tone: 'success' as const, line: 'Tracking live.' };
   }
 
   if (runPhase === 'abandoned') {
-    return { label: 'Abandoned', tone: 'warning' as const, line: 'Run stopped before finish.' };
+    return { label: 'Abandoned', tone: 'warning' as const, line: 'Run stopped.' };
   }
 
   if (runPhase === 'invalid') {
-    return { label: 'Invalid', tone: 'danger' as const, line: 'Run did not pass minimum checks.' };
+    return { label: 'Invalid', tone: 'danger' as const, line: 'Run not valid.' };
   }
 
   if (permissionState !== 'granted') {
-    return { label: 'GPS needed', tone: 'warning' as const, line: 'Grant location to arm the run.' };
+    return { label: 'GPS needed', tone: 'warning' as const, line: 'Location needed.' };
   }
 
   if (!insideStartZone && !canStart) {
-    return { label: 'Move to zone', tone: 'warning' as const, line: 'Enter the start zone to arm the run.' };
+    return { label: 'Move to zone', tone: 'warning' as const, line: 'Move into the zone.' };
   }
 
-  return { label: 'Ready', tone: 'accent' as const, line: 'Route armed. Start when ready.' };
+  return { label: 'Ready', tone: 'accent' as const, line: 'Route armed.' };
 }
 
 function getZonePresentation({
@@ -893,71 +865,46 @@ function getZonePresentation({
   runPhase: RunPhase;
 }) {
   if (runPhase === 'running') {
-    return { label: 'Tracking', tone: 'success' as const, line: 'Run is live.' };
+    return { label: 'Tracking', tone: 'success' as const, line: 'Run live.', metricValue: 'Live' };
   }
 
   if (permissionState !== 'granted') {
-    return { label: 'Zone', tone: 'neutral' as const, line: 'Waiting for location.' };
+    return { label: 'Zone', tone: 'neutral' as const, line: 'Waiting for GPS.', metricValue: 'Waiting' };
   }
 
   if (!currentLatLng || distanceToStartMeters === null) {
-    return { label: 'Zone', tone: 'neutral' as const, line: 'Position not locked yet.' };
+    return { label: 'Zone', tone: 'neutral' as const, line: 'Locating.', metricValue: 'Locating' };
   }
 
   if (insideStartZone || canStart) {
-    return { label: 'In zone', tone: 'success' as const, line: 'Start zone confirmed.' };
+    return { label: 'In zone', tone: 'success' as const, line: 'Start armed.', metricValue: 'In zone' };
   }
 
-  return { label: `${Math.round(distanceToStartMeters)} m`, tone: 'warning' as const, line: 'Move closer to start.' };
-}
-
-function getPermissionLine(permissionState: PermissionState, permissionMessage: string | null): string {
-  if (permissionMessage) {
-    return permissionMessage;
-  }
-
-  switch (permissionState) {
-    case 'granted':
-      return 'Location active.';
-    case 'loading':
-      return 'Requesting location.';
-    case 'denied':
-      return 'Location denied.';
-    case 'error':
-      return 'Location unavailable.';
-    default:
-      return 'Waiting for location.';
-  }
+  return {
+    label: `${Math.round(distanceToStartMeters)} m`,
+    tone: 'warning' as const,
+    line: 'Move closer.',
+    metricValue: `${Math.round(distanceToStartMeters)} m`,
+  };
 }
 
 function buildSystemItems({
   devRunnerActive,
   isWeb,
-  uploading,
-  uploadError,
-  uploadedActivity,
 }: {
   devRunnerActive: boolean;
   isWeb: boolean;
-  uploading: boolean;
-  uploadError: string | null;
-  uploadedActivity: UploadedActivity | null;
 }) {
   return [
     ...(devRunnerActive ? [{ label: DEV_MODE_LABEL, tone: 'warning' as const }] : []),
     ...(isWeb ? [{ label: 'Web preview', tone: 'info' as const }] : []),
-    ...(uploading ? [{ label: 'Syncing', tone: 'warning' as const }] : []),
-    ...(uploadError ? [{ label: 'Sync pending', tone: 'warning' as const }] : []),
-    ...(uploadedActivity?.status === 'rejected' ? [{ label: 'Review flag', tone: 'warning' as const }] : []),
   ];
 }
 
-function buildTrackingRows({
+function buildSystemRows({
   currentLatLng,
-  distanceToStartMeters,
   finishWarning,
   gpsQualityMessage,
-  insideStartZone,
   isWeb,
   permissionMessage,
   permissionState,
@@ -968,10 +915,8 @@ function buildTrackingRows({
   uploadedActivity,
 }: {
   currentLatLng: LatLng | null;
-  distanceToStartMeters: number | null;
   finishWarning: string | null;
   gpsQualityMessage: string | null;
-  insideStartZone: boolean;
   isWeb: boolean;
   permissionMessage: string | null;
   permissionState: PermissionState;
@@ -983,44 +928,47 @@ function buildTrackingRows({
 }) {
   return [
     {
-      label: 'Location',
-      value:
-        permissionState === 'granted'
-          ? currentLatLng
-            ? 'Locked'
-            : 'Waiting for first fix'
-          : permissionMessage ?? 'Location blocked',
-      tone: permissionState === 'granted' ? ('success' as const) : ('warning' as const),
+      label: 'Mode',
+      value: isWeb ? 'Web preview only' : 'Live GPS on mobile',
+      tone: isWeb ? ('muted' as const) : ('success' as const),
     },
     {
-      label: 'Start zone',
+      label: 'GPS',
       value:
-        distanceToStartMeters === null
-          ? 'Unknown'
-          : insideStartZone
-            ? 'Inside'
-            : `${Math.round(distanceToStartMeters)} m out`,
-      tone: insideStartZone ? ('success' as const) : ('warning' as const),
+        gpsQualityMessage ??
+        permissionMessage ??
+        (permissionState === 'granted' ? (currentLatLng ? 'Locked' : 'Waiting for fix') : permissionState === 'loading' ? 'Requesting' : 'Location needed'),
+      tone:
+        gpsQualityMessage || permissionState === 'denied' || permissionState === 'error'
+          ? ('warning' as const)
+          : permissionState === 'granted'
+            ? ('success' as const)
+            : ('muted' as const),
     },
     {
       label: 'Trace',
-      value: `${trackpointCount} fixes stored`,
+      value: trackpointCount > 0 ? `${trackpointCount} fixes` : 'No trace yet',
       tone: runPhase === 'running' ? ('success' as const) : ('muted' as const),
     },
     {
-      label: 'Review',
-      value:
-        uploadedActivity?.status === 'rejected'
-          ? formatValidationReason(uploadedActivity.validationReason) ?? 'Flagged for review'
-          : suspiciousWarning ?? finishWarning ?? 'Clear',
-      tone: uploadedActivity?.status === 'rejected' || suspiciousWarning ? ('warning' as const) : ('muted' as const),
-    },
-    {
       label: 'Sync',
-      value: uploadError ?? (isWeb ? 'Mobile only' : uploadedActivity ? 'Saved' : 'Pending'),
+      value: uploadError ?? (uploadedActivity ? 'Synced' : runPhase === 'ready' ? 'Idle' : 'Pending'),
       tone: uploadError ? ('warning' as const) : uploadedActivity ? ('success' as const) : ('muted' as const),
     },
-    ...(gpsQualityMessage ? [{ label: 'GPS', value: gpsQualityMessage, tone: 'warning' as const }] : []),
+    ...(
+      uploadedActivity?.status === 'rejected' || suspiciousWarning || finishWarning
+        ? [
+            {
+              label: 'Review',
+              value:
+                uploadedActivity?.status === 'rejected'
+                  ? formatValidationReason(uploadedActivity.validationReason) ?? 'Flagged'
+                  : suspiciousWarning ?? finishWarning ?? 'Flagged',
+              tone: 'warning' as const,
+            },
+          ]
+        : []
+    ),
   ];
 }
 
@@ -1104,7 +1052,7 @@ function evaluateTrackpoint(previousPoint: LocalTrackpoint | null, nextPoint: Lo
       accept: false,
       distanceDeltaMeters: 0,
       message: 'Ignoring a GPS fix with an invalid timestamp.',
-      suspiciousWarning: 'Some GPS samples looked inconsistent during this run.',
+      suspiciousWarning: 'GPS timing looked inconsistent.',
     };
   }
 
@@ -1112,7 +1060,7 @@ function evaluateTrackpoint(previousPoint: LocalTrackpoint | null, nextPoint: Lo
     return {
       accept: false,
       distanceDeltaMeters: 0,
-      message: 'Weak GPS signal. Waiting for a fresher location fix.',
+      message: 'Waiting for a fresher GPS fix.',
       suspiciousWarning: null,
     };
   }
@@ -1121,7 +1069,7 @@ function evaluateTrackpoint(previousPoint: LocalTrackpoint | null, nextPoint: Lo
     return {
       accept: false,
       distanceDeltaMeters: 0,
-      message: 'GPS accuracy is weak right now. Move into a clearer area and keep running.',
+      message: 'GPS weak. Move to a clearer area.',
       suspiciousWarning: null,
     };
   }
@@ -1136,8 +1084,8 @@ function evaluateTrackpoint(previousPoint: LocalTrackpoint | null, nextPoint: Lo
     return {
       accept: false,
       distanceDeltaMeters: 0,
-      message: 'Ignoring an out-of-order GPS fix.',
-      suspiciousWarning: 'Some GPS timestamps became incoherent during this run.',
+      message: 'Out-of-order GPS fix ignored.',
+      suspiciousWarning: 'GPS timestamps looked incoherent.',
     };
   }
 
@@ -1159,8 +1107,8 @@ function evaluateTrackpoint(previousPoint: LocalTrackpoint | null, nextPoint: Lo
     return {
       accept: false,
       distanceDeltaMeters: 0,
-      message: 'Ignoring an impossible GPS jump. Keep the app open until the signal stabilizes.',
-      suspiciousWarning: 'Some GPS samples looked suspicious. Run review may look at this attempt.',
+      message: 'Impossible GPS jump ignored.',
+      suspiciousWarning: 'GPS samples looked suspicious.',
     };
   }
 
@@ -1258,6 +1206,10 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   statsGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  statsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
   },

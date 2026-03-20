@@ -14,7 +14,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { StatusBadge, type StatusBadgeTone } from '@/components/ui/StatusBadge';
 import { StatusStrip } from '@/components/ui/StatusStrip';
 import { useAuth } from '@/hooks/useAuth';
-import { DEV_MODE_LABEL, getDevJoinLabel, getEffectiveRunner, isDevRunnerActive } from '@/services/devRunnerMode';
+import { DEV_MODE_LABEL, getEffectiveRunner, isDevRunnerActive } from '@/services/devRunnerMode';
 import { canFetchProtectedEventRoute, fetchEventRoute } from '@/services/eventRoutes';
 import type { EventDetail } from '@/services/eventsService';
 import { fetchEventDetails, getEventErrorMessage, joinEvent } from '@/services/eventsService';
@@ -203,8 +203,21 @@ export default function EventDetailsScreen() {
         isAuthenticated,
         isAuthAvailable: isAvailable,
         joinLoading,
-      }),
+    }),
     [briefingState?.canOpenRun, briefingState?.joined, devRunnerActive, hasFinishedRun, isAuthenticated, isAvailable, joinLoading],
+  );
+
+  const routePreviewState = useMemo(
+    () =>
+      getRoutePreviewState({
+        devRunnerActive,
+        joined: briefingState?.joined ?? false,
+        routeError,
+        routeLoading,
+        routeRevealed: briefingState?.routeRevealed ?? false,
+        routeVisible: Boolean(route),
+      }),
+    [briefingState?.joined, briefingState?.routeRevealed, devRunnerActive, route, routeError, routeLoading],
   );
 
   const handleJoin = async () => {
@@ -281,12 +294,7 @@ export default function EventDetailsScreen() {
 
   return (
     <AppScreen contentContainerStyle={styles.content}>
-      <ScreenHeader
-        eyebrow="Event brief"
-        title={event.title}
-        subtitle={getBriefingLine(briefingState)}
-        accessory={<StatusBadge label={briefingState.routeLabel} tone={briefingState.routeTone} />}
-      />
+      <ScreenHeader title="Briefing" />
 
       {devRunnerActive || noticeMessage ? (
         <StatusStrip
@@ -299,7 +307,11 @@ export default function EventDetailsScreen() {
         />
       ) : null}
 
-      <SectionCard accessory={<StatusBadge label={briefingState.stateLabel} tone={briefingState.stateTone} />} tone="accent">
+      <SectionCard
+        title={event.title}
+        accessory={<StatusBadge label={briefingState.stateLabel} tone={briefingState.stateTone} />}
+        tone="accent"
+      >
         <EventMetaRow
           items={[
             { label: 'Rev', value: formatDateTime(event.revealAt), icon: 'reveal' },
@@ -308,23 +320,19 @@ export default function EventDetailsScreen() {
           ]}
           withRail
         />
-        <Text numberOfLines={2} style={styles.heroLine}>
-          {event.description ? shrinkCopy(event.description) : 'Brief route. Controlled reveal.'}
+        <Text numberOfLines={1} style={styles.heroLine}>
+          {getHeroSignal(briefingState)}
         </Text>
       </SectionCard>
 
-      <SectionCard title="Access" subtitle="Participation and run entry.">
+      <SectionCard title="Entry">
         <InfoRow label="State" value={briefingState.joined ? 'Registered' : isAuthenticated || devRunnerActive ? 'Not joined' : 'Signed out'} />
         {event.viewerJoinedAt ? <InfoRow label="Joined" value={formatDateTime(event.viewerJoinedAt)} /> : null}
         {event.participantCount !== null ? <InfoRow label="Runners" value={String(event.participantCount)} /> : null}
         {devRunnerActive && effectiveRunner ? <InfoRow label="Runner" value={effectiveRunner.username} tone="muted" /> : null}
       </SectionCard>
 
-      <SectionCard
-        title="Route"
-        subtitle={briefingState.routeRevealed ? 'Preview is live.' : 'Preview opens at reveal.'}
-        accessory={<StatusBadge compact label={routeLoading ? 'Loading' : route ? 'Preview' : briefingState.routeLabel} tone={route ? 'success' : briefingState.routeTone} />}
-      >
+      <SectionCard title="Route" accessory={<StatusBadge compact label={routePreviewState.label} tone={routePreviewState.tone} />}>
         {route && (briefingState.joined || devRunnerActive) ? (
           <View style={styles.mapCard}>
             <RouteMap
@@ -336,15 +344,7 @@ export default function EventDetailsScreen() {
             />
           </View>
         ) : (
-          <EmptyState
-            title={
-              !briefingState.joined && !devRunnerActive
-                ? 'Join to unlock preview'
-                : routeLoading
-                  ? 'Loading preview'
-                  : routeError ?? 'Route not available'
-            }
-          />
+          <EmptyState title={routePreviewState.emptyTitle} />
         )}
       </SectionCard>
 
@@ -412,7 +412,7 @@ function getPrimaryAction({
   if (!isAuthenticated && devRunnerActive) {
     return {
       kind: 'join' as const,
-      label: joinLoading ? 'Joining...' : getDevJoinLabel(),
+      label: joinLoading ? 'Joining...' : 'Join',
       disabled: joinLoading,
     };
   }
@@ -420,7 +420,7 @@ function getPrimaryAction({
   if (!isAuthenticated && !isAuthAvailable) {
     return {
       kind: 'auth_unavailable' as const,
-      label: 'Unavailable',
+      label: 'Join',
       disabled: true,
     };
   }
@@ -428,7 +428,7 @@ function getPrimaryAction({
   if (!isAuthenticated) {
     return {
       kind: 'login' as const,
-      label: 'Sign in',
+      label: 'Join',
       disabled: false,
     };
   }
@@ -440,25 +440,70 @@ function getPrimaryAction({
   };
 }
 
-function getBriefingLine(state: BriefingState): string {
+function getHeroSignal(state: BriefingState): string {
   if (state.canOpenRun) {
-    return 'Route live. Run window open.';
+    return 'Route live. Start window open.';
   }
 
   if (state.joined) {
-    return state.routeRevealed ? 'Joined. Awaiting run window.' : 'Joined. Route still sealed.';
+    return state.routeRevealed ? 'Preview live. Start window pending.' : 'Joined. Route sealed until reveal.';
   }
 
-  return state.routeRevealed ? 'Preview live. Join to unlock run.' : 'Secret route. Timed reveal.';
+  return state.routeRevealed ? 'Preview live. Join to run.' : 'Timed reveal. Tight start zone.';
 }
 
-function shrinkCopy(value: string): string {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= 92) {
-    return normalized;
+function getRoutePreviewState({
+  devRunnerActive,
+  joined,
+  routeError,
+  routeLoading,
+  routeRevealed,
+  routeVisible,
+}: {
+  devRunnerActive: boolean;
+  joined: boolean;
+  routeError: string | null;
+  routeLoading: boolean;
+  routeRevealed: boolean;
+  routeVisible: boolean;
+}) {
+  if (routeVisible) {
+    return {
+      label: 'Preview',
+      tone: 'success' as const,
+      emptyTitle: 'Preview live',
+    };
   }
 
-  return `${normalized.slice(0, 89).trimEnd()}...`;
+  if (routeLoading) {
+    return {
+      label: 'Loading',
+      tone: 'warning' as const,
+      emptyTitle: 'Loading preview',
+    };
+  }
+
+  if (!routeRevealed) {
+    return {
+      label: 'Sealed',
+      tone: 'warning' as const,
+      emptyTitle: 'Route sealed',
+    };
+  }
+
+  if (!joined && !devRunnerActive) {
+    return {
+      label: 'Locked',
+      tone: 'neutral' as const,
+      emptyTitle: 'Join to unlock route',
+    };
+  }
+
+  return {
+    label: 'Offline',
+    tone: 'warning' as const,
+    emptyTitle: routeError ?? 'Preview unavailable',
+  };
 }
 
 function formatDateTime(value: string): string {
