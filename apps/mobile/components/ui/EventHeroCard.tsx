@@ -39,16 +39,18 @@ export function EventHeroCard({
       <SecretZoneBackdrop />
 
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>{eyebrow}</Text>
+        <Text numberOfLines={1} style={styles.eyebrow}>
+          {eyebrow}
+        </Text>
         <StatusBadge label={statusBadge.label} tone={statusBadge.tone ?? 'neutral'} />
       </View>
 
       <Text style={styles.title}>{title}</Text>
-      <Text numberOfLines={2} style={styles.description}>
+      <Text numberOfLines={1} style={styles.description}>
         {description}
       </Text>
 
-      <EventMetaRow items={metaItems} />
+      <EventMetaRow items={metaItems} withRail />
 
       <View style={styles.actions}>
         <PrimaryButton label={primaryAction.label} onPress={primaryAction.onPress} disabled={primaryAction.disabled} style={styles.primaryButton} />
@@ -83,17 +85,19 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     ...typography.eyebrow,
-    color: colors.textSecondary,
+    color: colors.textMuted,
+    opacity: 0.82,
+    flexShrink: 1,
   },
   title: {
     ...typography.heroTitle,
     color: colors.textPrimary,
-    maxWidth: '78%',
+    maxWidth: '70%',
   },
   description: {
     ...typography.bodySm,
     color: colors.textSecondary,
-    maxWidth: '72%',
+    maxWidth: '66%',
   },
   actions: {
     flexDirection: 'row',
@@ -104,6 +108,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   secondaryButton: {
-    minWidth: 96,
+    minWidth: 88,
   },
 });

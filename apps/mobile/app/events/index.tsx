@@ -30,7 +30,7 @@ interface EventPresentationModel {
 interface EventSectionModel {
   key: 'ready' | 'coming' | 'completed';
   title: string;
-  subtitle: string;
+  subtitle?: string;
   emptyTitle: string;
   emptyDescription: string;
   items: EventPresentationModel[];
@@ -109,15 +109,12 @@ export default function EventsScreen() {
       <AppScreen contentContainerStyle={styles.content}>
         <View style={styles.intro}>
           <View style={styles.systemRow}>
-            <StatusBadge label="Night sessions" tone="accent" />
+            <StatusBadge compact label="Night" muted tone="accent" />
           </View>
           <Text style={styles.screenTitle}>Events</Text>
           <Text style={styles.screenSubtitle}>Hidden starts. Clear timing.</Text>
         </View>
-        <EmptyStateCard
-          title="No events live yet"
-          description="No drop is live. Check back for the next reveal."
-        />
+        <EmptyStateCard title="Nothing live yet" />
         <PrimaryButton label="Refresh" onPress={() => setReloadKey((value) => value + 1)} />
       </AppScreen>
     );
@@ -127,8 +124,8 @@ export default function EventsScreen() {
     <AppScreen contentContainerStyle={styles.content}>
       <View style={styles.intro}>
         <View style={styles.systemRow}>
-          <StatusBadge label="Night sessions" tone="accent" />
-          {devRunnerActive ? <StatusBadge label="DEV local joins" tone="warning" /> : null}
+          <StatusBadge compact label="Night" muted tone="accent" />
+          {devRunnerActive ? <StatusBadge compact label="DEV local" muted tone="warning" /> : null}
         </View>
         <Text style={styles.screenTitle}>Events</Text>
         <Text style={styles.screenSubtitle}>Hidden starts. Clear timing.</Text>
@@ -148,7 +145,7 @@ export default function EventsScreen() {
 
       {sections.map((section) => (
         <View key={section.key} style={styles.section}>
-          <SectionHeader title={section.title} subtitle={section.subtitle} />
+          <SectionHeader {...(section.subtitle ? { subtitle: section.subtitle } : {})} title={section.title} />
 
           {section.items.length === 0 ? (
             <EmptyStateCard title={section.emptyTitle} description={section.emptyDescription} />
@@ -183,17 +180,15 @@ function buildSections(eventModels: EventPresentationModel[], heroEventId: strin
     {
       key: 'ready',
       title: 'Ready now',
-      subtitle: '',
-      emptyTitle: 'Nothing armed right now',
-      emptyDescription: 'Your next open run will appear here.',
+      emptyTitle: 'Nothing ready yet',
+      emptyDescription: '',
       items: visibleItems.filter((item) => item.section === 'ready'),
     },
     {
       key: 'coming',
       title: 'Coming up',
-      subtitle: '',
-      emptyTitle: 'No upcoming drops',
-      emptyDescription: 'Nothing else is queued right now.',
+      emptyTitle: 'Nothing queued',
+      emptyDescription: '',
       items: visibleItems.filter((item) => item.section === 'coming'),
     },
   ];
@@ -202,7 +197,6 @@ function buildSections(eventModels: EventPresentationModel[], heroEventId: strin
     sections.push({
       key: 'completed',
       title: 'Completed',
-      subtitle: '',
       emptyTitle: '',
       emptyDescription: '',
       items: completedItems,
@@ -239,38 +233,40 @@ function buildEventPresentation(event: EventListItem, devRunnerActive: boolean):
   const readyNow = joined && !finished && (devRunnerActive || (revealed && started && !past));
 
   const section: EventPresentationModel['section'] = readyNow ? 'ready' : finished || past ? 'completed' : 'coming';
-  const statusLabel = finished ? 'Completed' : readyNow ? 'Ready now' : joined ? 'Joined' : revealed ? 'Open' : 'Route sealed';
+  const statusLabel = finished ? 'Done' : !revealed ? 'Route locked' : 'Secret';
 
-  let eyebrow = 'Featured event';
+  let eyebrow = 'Tonight';
   if (section === 'ready') {
-    eyebrow = 'Primary run';
+    eyebrow = 'Ready now';
   } else if (section === 'completed') {
-    eyebrow = 'Saved result';
+    eyebrow = 'Saved';
   }
 
-  const description = getCompactDescription(
+  const description = getSignalDescription(
     event.description,
     section === 'ready'
       ? 'Route open. Start when ready.'
       : section === 'completed'
-        ? 'Finished event kept ready for review.'
-        : 'Hidden route. Tight brief.',
+        ? 'Run saved for review.'
+        : !revealed
+          ? 'Route stays sealed until reveal.'
+          : 'Hidden route. Clean brief.',
   );
 
-  let primaryActionLabel = 'Open event';
+  let primaryActionLabel = 'Open';
   let primaryHref: EventPresentationModel['primaryHref'] = `/events/${event.id}`;
   let primaryTone: EventPresentationModel['primaryTone'] = 'secondary';
 
   if (finished) {
-    primaryActionLabel = 'View result';
+    primaryActionLabel = 'Result';
     primaryHref = `/run/${event.id}`;
     primaryTone = 'primary';
   } else if (readyNow) {
-    primaryActionLabel = 'Start run';
+    primaryActionLabel = 'Start';
     primaryHref = `/run/${event.id}`;
     primaryTone = 'primary';
   } else if (joined) {
-    primaryActionLabel = 'Track event';
+    primaryActionLabel = 'Open';
   } else {
     primaryTone = 'primary';
   }
@@ -294,36 +290,33 @@ function buildEventPresentation(event: EventListItem, devRunnerActive: boolean):
 
 function getBadgeTone(label: string): StatusBadgeTone {
   switch (label) {
-    case 'Ready now':
-      return 'success';
-    case 'Completed':
-      return 'info';
-    case 'Joined':
+    case 'Secret':
       return 'accent';
-    case 'Route sealed':
+    case 'Done':
+      return 'info';
+    case 'Route locked':
       return 'warning';
     default:
       return 'neutral';
   }
 }
 
-function getCompactDescription(source: string | null, fallback: string): string {
+function getSignalDescription(source: string | null, fallback: string): string {
   const normalized = source?.replace(/\s+/g, ' ').trim();
   if (!normalized) {
     return fallback;
   }
 
-  if (normalized.length <= 88) {
+  const words = normalized.split(' ');
+  if (words.length <= 6) {
     return normalized;
   }
 
-  return `${normalized.slice(0, 85).trimEnd()}...`;
+  return `${words.slice(0, 6).join(' ')}...`;
 }
 
 function formatDateTime(value: string): string {
   return new Date(value).toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -345,7 +338,7 @@ const styles = StyleSheet.create({
   systemRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.xs,
+    gap: spacing.xxs,
     alignItems: 'center',
   },
   screenTitle: {

@@ -3,14 +3,14 @@ import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens
 
 interface EmptyStateCardProps {
   title: string;
-  description: string;
+  description?: string;
 }
 
 export function EmptyStateCard({ description, title }: EmptyStateCardProps) {
   return (
     <View style={styles.card}>
       <Text style={styles.title}>{title}</Text>
-      <Text style={styles.description}>{description}</Text>
+      {description ? <Text style={styles.description}>{description}</Text> : null}
     </View>
   );
 }

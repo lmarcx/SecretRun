@@ -10,33 +10,30 @@ interface EventMetaRowProps {
     icon: EventMetaIcon;
   }>;
   dense?: boolean;
+  withRail?: boolean;
 }
 
-export function EventMetaRow({ dense = false, items }: EventMetaRowProps) {
+export function EventMetaRow({ dense = false, items, withRail = false }: EventMetaRowProps) {
   return (
     <View style={[styles.row, dense && styles.rowDense]}>
+      {withRail ? <View pointerEvents="none" style={[styles.rail, dense && styles.railDense]} /> : null}
       {items.map((item) => (
         <View key={`${item.label}-${item.value}`} style={[styles.item, dense && styles.itemDense]}>
-          <View style={[styles.iconWrap, dense && styles.iconWrapDense]}>
-            <MetaGlyph icon={item.icon} />
-          </View>
-          <View style={styles.copy}>
-            <Text numberOfLines={1} style={[styles.value, dense && styles.valueDense]}>
-              {item.value}
-            </Text>
-            <Text style={styles.label}>{item.label}</Text>
-          </View>
+          <MetaGlyph compact={dense} icon={item.icon} />
+          <Text accessibilityLabel={`${item.label} ${item.value}`} numberOfLines={1} style={[styles.value, dense && styles.valueDense]}>
+            {item.value}
+          </Text>
         </View>
       ))}
     </View>
   );
 }
 
-function MetaGlyph({ icon }: { icon: EventMetaIcon }) {
+function MetaGlyph({ compact = false, icon }: { icon: EventMetaIcon; compact?: boolean }) {
   if (icon === 'zone') {
     return (
-      <View style={styles.zoneOuter}>
-        <View style={styles.zoneMid}>
+      <View style={[styles.zoneOuter, compact && styles.zoneOuterCompact]}>
+        <View style={[styles.zoneMid, compact && styles.zoneMidCompact]}>
           <View style={styles.zoneCore} />
         </View>
       </View>
@@ -45,141 +42,165 @@ function MetaGlyph({ icon }: { icon: EventMetaIcon }) {
 
   if (icon === 'start') {
     return (
-      <View style={styles.startTrack}>
-        <View style={styles.startTail} />
-        <View style={styles.startCore} />
+      <View style={[styles.startTrack, compact && styles.startTrackCompact]}>
+        <View style={[styles.startTail, compact && styles.startTailCompact]} />
+        <View style={[styles.startCore, compact && styles.startCoreCompact]} />
       </View>
     );
   }
 
   return (
-    <View style={styles.revealTrack}>
-      <View style={styles.revealRing} />
-      <View style={styles.revealPulse} />
-      <View style={styles.revealCore} />
+    <View style={[styles.revealTrack, compact && styles.revealTrackCompact]}>
+      <View style={[styles.revealRing, compact && styles.revealRingCompact]} />
+      <View style={[styles.revealPulse, compact && styles.revealPulseCompact]} />
+      <View style={[styles.revealCore, compact && styles.revealCoreCompact]} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
+    position: 'relative',
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    minHeight: 22,
   },
   rowDense: {
-    gap: spacing.sm,
+    gap: spacing.xs,
+    minHeight: 18,
+  },
+  rail: {
+    position: 'absolute',
+    left: 2,
+    right: 10,
+    height: borderWidth.regular,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  railDense: {
+    right: 4,
   },
   item: {
-    flexGrow: 1,
-    minWidth: 92,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    flexShrink: 1,
   },
   itemDense: {
-    minWidth: 82,
-  },
-  iconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.pill,
-    borderWidth: borderWidth.regular,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconWrapDense: {
-    width: 24,
-    height: 24,
-  },
-  copy: {
-    gap: 1,
+    gap: spacing.xxs + 1,
   },
   value: {
     ...typography.bodySm,
     color: colors.textPrimary,
   },
   valueDense: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  label: {
-    ...typography.eyebrow,
-    color: colors.textMuted,
-    fontSize: 10,
-    lineHeight: 12,
-    letterSpacing: 0.8,
+    fontSize: 11,
+    lineHeight: 14,
   },
   revealTrack: {
-    width: 14,
-    height: 14,
+    width: 12,
+    height: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  revealTrackCompact: {
+    width: 10,
+    height: 10,
+  },
   revealRing: {
     position: 'absolute',
-    width: 12,
-    height: 12,
+    width: 10,
+    height: 10,
     borderRadius: 12,
     borderWidth: borderWidth.regular,
-    borderColor: 'rgba(138, 165, 255, 0.5)',
+    borderColor: 'rgba(138, 165, 255, 0.38)',
+  },
+  revealRingCompact: {
+    width: 8,
+    height: 8,
   },
   revealPulse: {
     position: 'absolute',
-    width: 16,
-    height: 6,
+    width: 14,
+    height: 4,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(138, 165, 255, 0.14)',
+    backgroundColor: 'rgba(138, 165, 255, 0.12)',
     transform: [{ rotate: '-28deg' }],
   },
+  revealPulseCompact: {
+    width: 10,
+    height: 3,
+  },
   revealCore: {
-    width: 4,
-    height: 4,
+    width: 3,
+    height: 3,
     borderRadius: 4,
     backgroundColor: colors.info,
   },
+  revealCoreCompact: {
+    width: 2,
+    height: 2,
+  },
   startTrack: {
-    width: 14,
-    height: 14,
+    width: 12,
+    height: 12,
     justifyContent: 'center',
   },
+  startTrackCompact: {
+    width: 10,
+    height: 10,
+  },
   startTail: {
-    width: 9,
+    width: 8,
     height: 2,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(120, 86, 255, 0.38)',
+    backgroundColor: 'rgba(120, 86, 255, 0.34)',
+  },
+  startTailCompact: {
+    width: 6,
   },
   startCore: {
     position: 'absolute',
     right: 0,
-    width: 6,
-    height: 6,
+    width: 5,
+    height: 5,
     borderRadius: 6,
     backgroundColor: colors.accent,
   },
+  startCoreCompact: {
+    width: 4,
+    height: 4,
+  },
   zoneOuter: {
-    width: 13,
-    height: 13,
+    width: 11,
+    height: 11,
     borderRadius: 13,
     borderWidth: borderWidth.regular,
-    borderColor: 'rgba(83, 215, 166, 0.45)',
+    borderColor: 'rgba(83, 215, 166, 0.4)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  zoneOuterCompact: {
+    width: 9,
+    height: 9,
   },
   zoneMid: {
-    width: 7,
-    height: 7,
+    width: 6,
+    height: 6,
     borderRadius: 7,
     borderWidth: borderWidth.regular,
-    borderColor: 'rgba(83, 215, 166, 0.38)',
+    borderColor: 'rgba(83, 215, 166, 0.32)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  zoneMidCompact: {
+    width: 4,
+    height: 4,
+  },
   zoneCore: {
-    width: 3,
-    height: 3,
+    width: 2,
+    height: 2,
     borderRadius: 3,
     backgroundColor: colors.success,
   },

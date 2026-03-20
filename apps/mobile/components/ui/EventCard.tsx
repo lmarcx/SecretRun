@@ -32,7 +32,7 @@ export function EventCard({ description, meta, primaryAction, secondaryAction, s
         {statusBadge ? <StatusBadge label={statusBadge.label} tone={statusBadge.tone ?? 'neutral'} /> : null}
       </View>
 
-      <Text numberOfLines={2} style={styles.description}>
+      <Text numberOfLines={1} style={styles.description}>
         {description}
       </Text>
 
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   },
   description: {
     ...typography.bodySm,
-    color: colors.textSecondary,
+    color: colors.textMuted,
   },
   actions: {
     flexDirection: 'row',

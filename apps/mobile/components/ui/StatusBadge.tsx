@@ -7,12 +7,14 @@ export type StatusBadgeTone = 'neutral' | 'accent' | 'success' | 'info' | 'warni
 interface StatusBadgeProps {
   label: string;
   tone?: StatusBadgeTone;
+  compact?: boolean;
+  muted?: boolean;
 }
 
-export function StatusBadge({ label, tone = 'neutral' }: StatusBadgeProps) {
+export function StatusBadge({ compact = false, label, muted = false, tone = 'neutral' }: StatusBadgeProps) {
   return (
-    <View style={[styles.badge, toneStyles[tone].badge]}>
-      <Text style={[styles.label, toneStyles[tone].label]}>{label}</Text>
+    <View style={[styles.badge, compact && styles.badgeCompact, toneStyles[tone].badge, muted && styles.badgeMuted]}>
+      <Text style={[styles.label, compact && styles.labelCompact, toneStyles[tone].label, muted && styles.labelMuted]}>{label}</Text>
     </View>
   );
 }
@@ -24,8 +26,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs + 2,
     paddingVertical: spacing.xxs + 1,
   },
+  badgeCompact: {
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  badgeMuted: {
+    opacity: 0.74,
+  },
   label: {
     ...typography.badge,
+  },
+  labelCompact: {
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  labelMuted: {
+    color: colors.textMuted,
   },
 });
 
