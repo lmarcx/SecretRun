@@ -10,6 +10,10 @@ export interface CurrentProfile {
   createdAt: string;
 }
 
+export interface CurrentProfileStats {
+  validatedRuns: number;
+}
+
 export interface CreateCurrentProfileInput {
   username: string;
   displayName: string;
@@ -42,6 +46,16 @@ const CREATE_PROFILE_MUTATION = gql`
   }
 `;
 
+const CURRENT_PROFILE_STATS_QUERY = gql`
+  query CurrentProfileStats($userId: uuid!) {
+    validated_runs: activities_aggregate(where: { user_id: { _eq: $userId }, status: { _eq: validated } }) {
+      aggregate {
+        count
+      }
+    }
+  }
+`;
+
 interface CurrentProfileQuery {
   profiles_by_pk: {
     id: string;
@@ -60,6 +74,14 @@ interface CreateCurrentProfileMutation {
     avatar_url: string | null;
     created_at: string;
   } | null;
+}
+
+interface CurrentProfileStatsQuery {
+  validated_runs: {
+    aggregate: {
+      count: number;
+    } | null;
+  };
 }
 
 export async function fetchCurrentProfile(): Promise<CurrentProfile | null> {
@@ -101,6 +123,23 @@ export async function createCurrentProfile(input: CreateCurrentProfileInput): Pr
   }
 
   return mapProfile(response.insert_profiles_one);
+}
+
+export async function fetchCurrentProfileStats(): Promise<CurrentProfileStats> {
+  const userId = nhost.auth.getUser()?.id;
+  if (!userId) {
+    return {
+      validatedRuns: 0,
+    };
+  }
+
+  const response = await requestGraphql<CurrentProfileStatsQuery>(CURRENT_PROFILE_STATS_QUERY, {
+    userId,
+  });
+
+  return {
+    validatedRuns: response.validated_runs.aggregate?.count ?? 0,
+  };
 }
 
 function mapProfile(profile: NonNullable<CurrentProfileQuery['profiles_by_pk']>): CurrentProfile {

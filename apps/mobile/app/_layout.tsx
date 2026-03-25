@@ -71,6 +71,7 @@ export default function RootLayout() {
               <Stack.Screen name="run/[eventId]" options={{ title: 'Run' }} />
               <Stack.Screen name="feed" options={{ title: 'Feed' }} />
               <Stack.Screen name="profile" options={{ title: 'Profile' }} />
+              <Stack.Screen name="settings" options={{ title: 'Settings' }} />
               <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
               <Stack.Screen name="teams/index" options={{ title: 'Teams' }} />
               <Stack.Screen name="teams/[id]" options={{ title: 'Team' }} />

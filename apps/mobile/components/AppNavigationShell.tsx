@@ -26,9 +26,10 @@ const navigationItems = [
     isActive: (pathname: string) => pathname === '/teams' || pathname.startsWith('/teams/'),
   },
   {
-    href: '/profile',
-    label: 'Profile',
-    isActive: (pathname: string) => pathname === '/profile',
+    href: '/feed',
+    label: 'Feed',
+    isActive: (pathname: string) =>
+      pathname === '/feed' || pathname === '/profile' || pathname === '/settings',
   },
 ] as const;
 

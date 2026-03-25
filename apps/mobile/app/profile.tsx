@@ -1,7 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Image, Linking, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActionBar } from '@/components/ui/ActionBar';
+import { ActionRow } from '@/components/ui/ActionRow';
+import { AppScreen } from '@/components/ui/AppScreen';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { InfoRow } from '@/components/ui/InfoRow';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { SecondaryButton } from '@/components/ui/SecondaryButton';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { StatCard } from '@/components/ui/StatCard';
+import { useBottomContentPadding } from '@/hooks/useBottomContentPadding';
 import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
 import {
   buildBetaIssueMailto,
@@ -11,24 +22,53 @@ import {
   useBetaDiagnostics,
 } from '@/services/betaDiagnostics';
 import { DEV_MODE_LABEL, getDevModeMessage } from '@/services/devRunnerMode';
+import { fetchLeaderboard } from '@/services/leaderboardService';
 import { nhost } from '@/services/nhostClient';
 import {
   enablePushNotifications,
   getNotificationRegistrationState,
-  notificationCapabilities,
   type NotificationRegistrationState,
 } from '@/services/notificationsService';
 import type { CurrentProfile } from '@/services/profileService';
-import { createCurrentProfile, fetchCurrentProfile, getProfileErrorMessage } from '@/services/profileService';
+import {
+  createCurrentProfile,
+  fetchCurrentProfile,
+  fetchCurrentProfileStats,
+  getProfileErrorMessage,
+} from '@/services/profileService';
+import { fetchTeams } from '@/services/teamsService';
+import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens';
+
+interface ProfileOverview {
+  validatedRuns: number;
+  seasonPoints: number;
+  seasonRank: number | null;
+  seasonName: string | null;
+  teamName: string | null;
+  teamId: string | null;
+}
+
+const emptyOverview: ProfileOverview = {
+  validatedRuns: 0,
+  seasonPoints: 0,
+  seasonRank: null,
+  seasonName: null,
+  teamName: null,
+  teamId: null,
+};
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { isAvailable, disabledMessage, loading: authLoading, signOut, betaAccessState } = useAuth();
+  const { betaAccessState, disabledMessage, isAvailable, loading: authLoading, signOut } = useAuth();
   const currentUser = nhost.auth.getUser();
   const userId = currentUser?.id ?? null;
+  const bottomContentPadding = useBottomContentPadding();
+  const diagnostics = useBetaDiagnostics();
   const [profile, setProfile] = useState<CurrentProfile | null>(null);
+  const [overview, setOverview] = useState<ProfileOverview>(emptyOverview);
   const [loading, setLoading] = useState(true);
-  const [screenError, setScreenError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -38,15 +78,16 @@ export default function ProfileScreen() {
   const [usernameDraft, setUsernameDraft] = useState('');
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [profileSubmitting, setProfileSubmitting] = useState(false);
-  const diagnostics = useBetaDiagnostics();
 
   useEffect(() => {
     let active = true;
 
     if (!userId) {
       setProfile(null);
-      setScreenError(null);
+      setOverview(emptyOverview);
+      setLoadError(null);
       setFormError(null);
+      setActionError(null);
       setLoading(false);
       return () => {
         active = false;
@@ -55,27 +96,42 @@ export default function ProfileScreen() {
 
     const load = async () => {
       setLoading(true);
-      setScreenError(null);
+      setLoadError(null);
 
-      try {
-        const nextProfile = await fetchCurrentProfile();
-        if (!active) {
-          return;
-        }
+      const [profileResult, statsResult, leaderboardResult, teamsResult] = await Promise.allSettled([
+        fetchCurrentProfile(),
+        fetchCurrentProfileStats(),
+        fetchLeaderboard(),
+        fetchTeams(),
+      ]);
 
-        setProfile(nextProfile);
-      } catch (err) {
-        if (!active) {
-          return;
-        }
-
-        setProfile(null);
-        setScreenError(getProfileErrorMessage(err));
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
+      if (!active) {
+        return;
       }
+
+      if (profileResult.status === 'rejected') {
+        setProfile(null);
+        setOverview(emptyOverview);
+        setLoadError(getProfileErrorMessage(profileResult.reason));
+        setLoading(false);
+        return;
+      }
+
+      const leaderboardData = leaderboardResult.status === 'fulfilled' ? leaderboardResult.value : null;
+      const teamsData = teamsResult.status === 'fulfilled' ? teamsResult.value : null;
+      const currentTeam = teamsData?.items.find((item) => item.isCurrentUserMember) ?? null;
+      const currentStanding = leaderboardData?.users.find((entry) => entry.id === userId) ?? null;
+
+      setProfile(profileResult.value);
+      setOverview({
+        validatedRuns: statsResult.status === 'fulfilled' ? statsResult.value.validatedRuns : 0,
+        seasonPoints: currentStanding?.points ?? 0,
+        seasonRank: currentStanding?.rank ?? null,
+        seasonName: leaderboardData?.seasonName ?? null,
+        teamName: currentTeam?.name ?? null,
+        teamId: currentTeam?.id ?? null,
+      });
+      setLoading(false);
     };
 
     void load();
@@ -136,14 +192,15 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     setLogoutLoading(true);
-    setScreenError(null);
+    setActionError(null);
 
     try {
       await signOut();
       setProfile(null);
+      setOverview(emptyOverview);
       setLoading(false);
     } catch (err) {
-      setScreenError(getProfileErrorMessage(err));
+      setActionError(getProfileErrorMessage(err));
     } finally {
       setLogoutLoading(false);
     }
@@ -154,7 +211,7 @@ export default function ProfileScreen() {
     const trimmedDisplayName = displayNameDraft.trim();
 
     if (!normalizedUsername.match(/^[a-z0-9_]{3,20}$/)) {
-      setFormError('Username must be 3-20 characters and use only letters, numbers, or underscores.');
+      setFormError('Username must be 3-20 characters with letters, numbers, or underscores.');
       return;
     }
 
@@ -165,6 +222,7 @@ export default function ProfileScreen() {
 
     setProfileSubmitting(true);
     setFormError(null);
+    setActionError(null);
 
     try {
       const nextProfile = await createCurrentProfile({
@@ -174,6 +232,7 @@ export default function ProfileScreen() {
       setProfile(nextProfile);
       setUsernameDraft(normalizedUsername);
       setDisplayNameDraft(trimmedDisplayName);
+      setReloadKey((value) => value + 1);
     } catch (err) {
       setFormError(getProfileErrorMessage(err));
     } finally {
@@ -183,353 +242,403 @@ export default function ProfileScreen() {
 
   const handleEnableNotifications = async () => {
     setNotificationsSubmitting(true);
-    const nextState = await enablePushNotifications();
-    setNotificationState(nextState);
-    setNotificationsSubmitting(false);
+    setActionError(null);
+
+    try {
+      const nextState = await enablePushNotifications();
+      setNotificationState(nextState);
+    } finally {
+      setNotificationsSubmitting(false);
+    }
   };
 
   const handleReportIssue = async () => {
     try {
       await Linking.openURL(buildBetaIssueMailto(diagnostics));
     } catch {
-      setScreenError('This device could not open the beta issue draft.');
+      setActionError('This device could not open the beta issue draft.');
     }
   };
 
-  if (authLoading) {
+  const notificationAction = useMemo(
+    () => getNotificationAction(notificationState, notificationsLoading, notificationsSubmitting, handleEnableNotifications),
+    [notificationState, notificationsLoading, notificationsSubmitting],
+  );
+
+  if (authLoading || loading) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" />
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
+        <ActivityIndicator color={colors.accent} size="large" />
         <Text style={styles.info}>Loading profile...</Text>
-      </SafeAreaView>
+      </AppScreen>
     );
   }
 
-  if (!userId) {
-    const guestCopy = getGuestProfileCopy(betaAccessState, disabledMessage);
-
+  if (loadError) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.container}>
-          <View style={styles.heroCard}>
-            <Text style={styles.title}>Profile</Text>
-            <Text style={styles.cardText}>{guestCopy.title}</Text>
-            <Text style={styles.info}>{guestCopy.description}</Text>
-          </View>
-
-          {betaAccessState === 'dev_runner' ? (
-            <View style={styles.devModeCard}>
-              <Text style={styles.devModeTitle}>{DEV_MODE_LABEL}</Text>
-              <Text style={styles.devModeText}>{getDevModeMessage('profile')}</Text>
-            </View>
-          ) : null}
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>What still works</Text>
-            <Text style={styles.cardText}>
-              Events, event details, local run testing, and leaderboard browsing remain available without a signed-in beta
-              account.
-            </Text>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Notifications</Text>
-            <Text style={styles.cardText}>
-              Notifications become available after sign-in on a supported mobile device. They stay off in guest mode and
-              DEV runner mode.
-            </Text>
-          </View>
-
-          <BetaSupportCard diagnostics={diagnostics} onReportIssue={handleReportIssue} />
-
-          <View style={styles.actionColumn}>
-            <Pressable style={styles.secondaryButton} onPress={() => router.push('/events')}>
-              <Text style={styles.secondaryButtonText}>Browse events</Text>
-            </Pressable>
-            <Pressable style={styles.secondaryButton} onPress={() => router.push('/leaderboard')}>
-              <Text style={styles.secondaryButtonText}>Open leaderboard</Text>
-            </Pressable>
-            {isAvailable ? (
-              <>
-                <Pressable style={styles.primaryButton} onPress={() => router.push('/(auth)/login')}>
-                  <Text style={styles.primaryButtonText}>Sign in</Text>
-                </Pressable>
-                <Pressable style={styles.secondaryButton} onPress={() => router.push('/(auth)/register')}>
-                  <Text style={styles.secondaryButtonText}>Create account</Text>
-                </Pressable>
-              </>
-            ) : null}
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.info}>Loading profile...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (screenError) {
-    return (
-      <SafeAreaView style={styles.centered}>
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
         <Text style={styles.title}>Profile</Text>
-        <Text style={styles.error}>{screenError}</Text>
-        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
-          <Text style={styles.secondaryButtonText}>Retry</Text>
-        </Pressable>
-      </SafeAreaView>
+        <Text style={styles.error}>{loadError}</Text>
+        <SecondaryButton label="Retry" onPress={() => setReloadKey((value) => value + 1)} style={styles.stateButton} />
+      </AppScreen>
     );
   }
 
-  if (!profile) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.container}>
-          <View style={styles.heroCard}>
-            <Text style={styles.title}>Finish your profile</Text>
-            <Text style={styles.info}>
-              Your beta account is signed in on this device, but the runner profile is not ready yet. Finish it here to
-              unlock the full beta path.
-            </Text>
-          </View>
+  return (
+    <AppScreen contentContainerStyle={[styles.content, { paddingBottom: bottomContentPadding }]}>
+      <ScreenHeader title="Profile" subtitle={getProfileSubtitle(betaAccessState, Boolean(profile))} />
+      {actionError ? <EmptyState title={actionError} /> : null}
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Runner profile</Text>
-            <Text style={styles.cardText}>
-              This profile is used for your personal feed, team membership details, and leaderboard identity.
-            </Text>
+      {!userId ? (
+        <>
+          <GuestIdentityCard betaAccessState={betaAccessState} disabledMessage={disabledMessage} />
 
-            <View style={styles.field}>
-              <Text style={styles.inputLabel}>Username</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                onChangeText={setUsernameDraft}
-                placeholder="runner_name"
-                style={styles.input}
-                value={usernameDraft}
+          <View style={styles.section}>
+            <SectionHeader title="Access" subtitle="Account actions" />
+            <View style={styles.actionList}>
+              <ActionRow title="Browse events" subtitle="Upcoming drops and start windows" value="Open" onPress={() => router.push('/events')} />
+              <ActionRow
+                title="Open leaderboard"
+                subtitle="Season ranking and team standing"
+                value="Open"
+                onPress={() => router.push('/leaderboard')}
               />
             </View>
-
-            <View style={styles.field}>
-              <Text style={styles.inputLabel}>Display name</Text>
-              <TextInput onChangeText={setDisplayNameDraft} placeholder="Runner Name" style={styles.input} value={displayNameDraft} />
-            </View>
-
-            {formError ? <Text style={styles.errorInline}>{formError}</Text> : null}
-
-          <View style={styles.actionColumn}>
-            <Pressable
-              style={[styles.primaryButton, profileSubmitting && styles.buttonDisabled]}
-                onPress={() => void handleCreateProfile()}
-                disabled={profileSubmitting}
-              >
-                <Text style={styles.primaryButtonText}>{profileSubmitting ? 'Saving profile...' : 'Finish profile'}</Text>
-              </Pressable>
-              <Pressable style={styles.secondaryButton} onPress={handleLogout} disabled={logoutLoading}>
-                <Text style={styles.secondaryButtonText}>{logoutLoading ? 'Signing out...' : 'Sign out'}</Text>
-              </Pressable>
-            </View>
+            {isAvailable ? (
+              <ActionBar
+                primary={<PrimaryButton label="Sign in" onPress={() => router.push('/(auth)/login')} />}
+                secondary={<SecondaryButton label="Create" onPress={() => router.push('/(auth)/register')} />}
+              />
+            ) : null}
           </View>
 
-          <BetaSupportCard diagnostics={diagnostics} onReportIssue={handleReportIssue} />
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.heroCard}>
-          <View style={styles.identitySection}>
-            {profile.avatarUrl ? (
-              <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Text style={styles.avatarFallbackText}>{profile.displayName.slice(0, 1).toUpperCase()}</Text>
+          <SupportSection diagnostics={diagnostics} onReportIssue={handleReportIssue} />
+        </>
+      ) : !profile ? (
+        <>
+          <SectionCard tone="accent">
+            <View style={styles.identityRow}>
+              <ProfileAvatar label={displayNameDraft || currentUser?.email || 'Runner'} />
+              <View style={styles.identityCopy}>
+                <Text style={styles.identityName}>Finish your profile</Text>
+                <Text style={styles.identitySecondary}>{currentUser?.email ?? 'Signed-in beta account'}</Text>
               </View>
-            )}
+            </View>
+          </SectionCard>
 
-            <Text style={styles.title}>{profile.displayName}</Text>
-            <Text style={styles.username}>@{profile.username}</Text>
+          <View style={styles.section}>
+            <SectionHeader title="Setup" subtitle="Runner identity" />
+            <SectionCard>
+              <View style={styles.field}>
+                <Text style={styles.inputLabel}>Username</Text>
+                <TextInput
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setUsernameDraft}
+                  placeholder="runner_name"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.input}
+                  value={usernameDraft}
+                />
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.inputLabel}>Display name</Text>
+                <TextInput
+                  onChangeText={setDisplayNameDraft}
+                  placeholder="Runner Name"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.input}
+                  value={displayNameDraft}
+                />
+              </View>
+
+              {formError ? <Text style={styles.errorInline}>{formError}</Text> : null}
+
+              <ActionBar
+                primary={
+                  <PrimaryButton
+                    disabled={profileSubmitting}
+                    label={profileSubmitting ? 'Saving...' : 'Finish profile'}
+                    onPress={() => void handleCreateProfile()}
+                  />
+                }
+                secondary={
+                  <SecondaryButton disabled={logoutLoading} label={logoutLoading ? 'Signing out...' : 'Sign out'} onPress={handleLogout} />
+                }
+              />
+            </SectionCard>
           </View>
-        </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Beta account</Text>
-          <Text style={styles.cardText}>
-            Signed in and synced on this device. Your personal feed, team details, and supported notifications now use this
-            profile.
-          </Text>
-        </View>
+          <View style={styles.section}>
+            <SectionHeader title="Account" subtitle="Connected access" />
+            <View style={styles.actionList}>
+              <ActionRow title="Connected account" subtitle={currentUser?.email ?? 'Beta account'} value="Email" tone="muted" />
+              <ActionRow
+                disabled={logoutLoading}
+                onPress={handleLogout}
+                subtitle="Remove this beta account from this device"
+                title="Sign out"
+                tone="danger"
+                value={logoutLoading ? 'Signing out...' : undefined}
+              />
+            </View>
+          </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Profile details</Text>
-          <MetaRow label="Display name" value={profile.displayName} />
-          <MetaRow label="Username" value={`@${profile.username}`} />
-          <MetaRow label="Created" value={formatDate(profile.createdAt)} />
-        </View>
+          <SupportSection diagnostics={diagnostics} onReportIssue={handleReportIssue} />
+        </>
+      ) : (
+        <>
+          <SectionCard tone="accent">
+            <View style={styles.identityRow}>
+              <ProfileAvatar avatarUrl={profile.avatarUrl} label={profile.displayName} />
+              <View style={styles.identityCopy}>
+                <Text style={styles.identityName}>{profile.displayName}</Text>
+                <Text style={styles.identitySecondary}>
+                  @{profile.username}
+                  {currentUser?.email ? ` | ${currentUser.email}` : ''}
+                </Text>
+              </View>
+            </View>
+          </SectionCard>
 
-        <View style={styles.actionRow}>
-          <Pressable style={styles.secondaryButtonCompact} onPress={() => router.push('/feed')}>
-            <Text style={styles.secondaryButtonText}>Open feed</Text>
-          </Pressable>
-          <Pressable style={styles.secondaryButtonCompact} onPress={() => router.push('/teams')}>
-            <Text style={styles.secondaryButtonText}>Open teams</Text>
-          </Pressable>
-        </View>
+          <View style={styles.section}>
+            <SectionHeader title="Stats" subtitle="Season snapshot" />
+            <View style={styles.statRow}>
+              <StatCard helper="Validated" label="Runs" value={`${overview.validatedRuns}`} />
+              <StatCard helper={overview.seasonName ?? 'Season'} label="Points" value={`${overview.seasonPoints}`} />
+            </View>
+            <View style={styles.statRow}>
+              <StatCard helper={overview.seasonName ?? 'Season'} label="Rank" value={overview.seasonRank != null ? `#${overview.seasonRank}` : 'Unranked'} />
+              <StatCard helper={overview.teamName ? 'Current squad' : 'No squad yet'} label="Team" value={overview.teamName ?? 'None'} />
+            </View>
+          </View>
 
-        <View style={styles.actionRow}>
-          <Pressable style={styles.primaryButtonCompact} onPress={handleLogout} disabled={logoutLoading}>
-            <Text style={styles.primaryButtonText}>{logoutLoading ? 'Signing out...' : 'Sign out'}</Text>
-          </Pressable>
-        </View>
+          <View style={styles.section}>
+            <SectionHeader title="Account" subtitle="Shortcuts and access" />
+            <View style={styles.actionList}>
+              <ActionRow title="Feed" subtitle="Your run history" value="Open" onPress={() => router.push('/feed')} />
+              <ActionRow
+                title={overview.teamName ? 'Team' : 'Teams'}
+                subtitle={overview.teamName ?? 'Browse squads'}
+                value={overview.teamName ? 'Open' : 'Browse'}
+                onPress={() =>
+                  overview.teamId
+                    ? router.push({ pathname: '/teams/[id]', params: { id: overview.teamId } })
+                    : router.push('/teams')
+                }
+              />
+              <ActionRow
+                disabled={notificationAction.disabled}
+                onPress={notificationAction.onPress}
+                subtitle={notificationAction.subtitle}
+                title="Notifications"
+                value={notificationAction.value}
+              />
+              <ActionRow title="Connected account" subtitle={currentUser?.email ?? 'Beta account'} value="Email" tone="muted" />
+              <ActionRow
+                disabled={logoutLoading}
+                onPress={handleLogout}
+                subtitle="Remove this beta account from this device"
+                title="Sign out"
+                tone="danger"
+                value={logoutLoading ? 'Signing out...' : undefined}
+              />
+            </View>
+          </View>
 
-        <NotificationCard
-          state={notificationState}
-          loading={notificationsLoading}
-          submitting={notificationsSubmitting}
-          onEnable={handleEnableNotifications}
-        />
-
-        <BetaSupportCard diagnostics={diagnostics} onReportIssue={handleReportIssue} />
-      </ScrollView>
-    </SafeAreaView>
+          <SupportSection diagnostics={diagnostics} onReportIssue={handleReportIssue} profileCreatedAt={profile.createdAt} />
+        </>
+      )}
+    </AppScreen>
   );
 }
 
-function NotificationCard({
-  state,
-  loading,
-  submitting,
-  onEnable,
+function GuestIdentityCard({
+  betaAccessState,
+  disabledMessage,
 }: {
-  state: NotificationRegistrationState | null;
-  loading: boolean;
-  submitting: boolean;
-  onEnable: () => void;
+  betaAccessState: BetaAccessState;
+  disabledMessage: string | null | undefined;
 }) {
-  const buttonDisabled =
-    loading ||
-    submitting ||
-    !state ||
-    state.kind === 'unsupported' ||
-    state.kind === 'signed_out' ||
-    state.kind === 'registered' ||
-    state.kind === 'not_ready';
-  const buttonLabel =
-    state?.kind === 'registered'
-      ? 'Notifications enabled'
-      : state?.kind === 'not_ready'
-        ? 'Build not ready'
-        : submitting
-          ? 'Turning on...'
-          : 'Enable notifications';
+  const copy = getGuestProfileCopy(betaAccessState, disabledMessage);
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>Notifications</Text>
-      {loading ? <Text style={styles.cardText}>Checking device notification support...</Text> : null}
-      {!loading && state ? <Text style={styles.cardText}>{state.message}</Text> : null}
-
-      <View style={styles.notificationList}>
-        {notificationCapabilities.map((capability) => (
-          <View key={capability.key} style={styles.notificationRow}>
-            <View style={styles.notificationTextBlock}>
-              <Text style={styles.notificationLabel}>{capability.label}</Text>
-              <Text style={styles.notificationDescription}>{capability.description}</Text>
-            </View>
-            <View style={[styles.statusBadge, capability.status === 'supported' ? styles.statusSupported : styles.statusNotReady]}>
-              <Text style={[styles.statusBadgeText, capability.status === 'supported' ? styles.statusSupportedText : styles.statusNotReadyText]}>
-                {capability.status === 'supported' ? 'Ready' : 'Later'}
-              </Text>
-            </View>
-          </View>
-        ))}
+    <SectionCard tone="muted">
+      <View style={styles.identityRow}>
+        <ProfileAvatar label={copy.avatarLabel} />
+        <View style={styles.identityCopy}>
+          <Text style={styles.identityName}>{copy.title}</Text>
+          <Text style={styles.identitySecondary}>{copy.description}</Text>
+        </View>
       </View>
-
-      <Pressable style={[styles.secondaryButton, buttonDisabled && styles.buttonDisabled]} onPress={onEnable} disabled={buttonDisabled}>
-        <Text style={styles.secondaryButtonText}>{buttonLabel}</Text>
-      </Pressable>
-    </View>
+      {betaAccessState === 'dev_runner' ? <Text style={styles.quietNote}>{DEV_MODE_LABEL}: {getDevModeMessage('profile')}</Text> : null}
+    </SectionCard>
   );
 }
 
-function BetaSupportCard({
+function SupportSection({
   diagnostics,
   onReportIssue,
+  profileCreatedAt,
 }: {
   diagnostics: ReturnType<typeof useBetaDiagnostics>;
   onReportIssue: () => void;
+  profileCreatedAt?: string;
 }) {
   const validationMessage = formatValidationReason(diagnostics.activity.validationReason);
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>Beta support</Text>
-      <MetaRow label="Build" value={getBetaBuildLabel()} />
-      <MetaRow label="Current screen" value={diagnostics.currentScreen ?? '/profile'} />
-      <MetaRow label="Last run sync" value={formatActivityDiagnostic(diagnostics.activity)} />
-      <MetaRow label="Run update" value={formatBetaTimestamp(diagnostics.activity.updatedAt)} />
-      {diagnostics.activity.eventId ? <MetaRow label="Event ID" value={diagnostics.activity.eventId} /> : null}
-      {diagnostics.activity.activityId ? <MetaRow label="Activity ID" value={diagnostics.activity.activityId} /> : null}
-      {diagnostics.activity.acceptedTrackpoints !== null || diagnostics.activity.rejectedTrackpoints !== null ? (
-        <MetaRow
-          label="Trackpoints"
-          value={`${diagnostics.activity.acceptedTrackpoints ?? 0} accepted / ${diagnostics.activity.rejectedTrackpoints ?? 0} rejected`}
-        />
-      ) : null}
-      <Text style={styles.cardText}>
-        Notification state: {formatNotificationDiagnostic(diagnostics.notification)}. Last update:{' '}
-        {formatBetaTimestamp(diagnostics.notification.updatedAt)}.
-      </Text>
-      {validationMessage ? <Text style={styles.cardText}>Validation note: {validationMessage}</Text> : null}
-      {diagnostics.activity.message ? <Text style={styles.cardText}>Recent beta note: {diagnostics.activity.message}</Text> : null}
-      <Text style={styles.cardText}>
-        Use this card when reporting beta issues so the team can match your screen, build, and last sync state quickly.
-      </Text>
-      <Pressable style={styles.secondaryButton} onPress={onReportIssue}>
-        <Text style={styles.secondaryButtonText}>Report beta issue</Text>
-      </Pressable>
+    <View style={styles.section}>
+      <SectionHeader title="Beta" subtitle="Build and support" />
+      <View style={styles.actionList}>
+        <ActionRow title="Report issue" subtitle="Draft an email with diagnostics" value="Open" onPress={onReportIssue} tone="muted" />
+      </View>
+      <SectionCard tone="muted">
+        <InfoRow label="Build" value={getBetaBuildLabel()} />
+        <InfoRow label="Screen" value={diagnostics.currentScreen ?? '/profile'} />
+        {profileCreatedAt ? <InfoRow label="Joined" value={formatDate(profileCreatedAt)} /> : null}
+        <InfoRow label="Run sync" value={formatActivityDiagnostic(diagnostics.activity)} />
+        <InfoRow label="Run update" value={formatBetaTimestamp(diagnostics.activity.updatedAt)} />
+        <InfoRow label="Push" value={formatNotificationDiagnostic(diagnostics.notification)} />
+        {diagnostics.activity.eventId ? <InfoRow label="Event ID" value={diagnostics.activity.eventId} /> : null}
+        {diagnostics.activity.activityId ? <InfoRow label="Activity ID" value={diagnostics.activity.activityId} /> : null}
+        {diagnostics.activity.acceptedTrackpoints !== null || diagnostics.activity.rejectedTrackpoints !== null ? (
+          <InfoRow
+            label="Trackpts"
+            value={`${diagnostics.activity.acceptedTrackpoints ?? 0} ok / ${diagnostics.activity.rejectedTrackpoints ?? 0} rejected`}
+          />
+        ) : null}
+        {validationMessage ? <Text style={styles.quietNote}>Validation: {validationMessage}</Text> : null}
+        {diagnostics.activity.message ? <Text style={styles.quietNote}>Note: {diagnostics.activity.message}</Text> : null}
+      </SectionCard>
     </View>
   );
 }
 
-function MetaRow({ label, value }: { label: string; value: string }) {
+function ProfileAvatar({ avatarUrl, label }: { avatarUrl?: string | null; label: string }) {
+  const initial = label.trim().charAt(0).toUpperCase() || 'P';
+
+  if (avatarUrl) {
+    return <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />;
+  }
+
   return (
-    <View style={styles.metaRow}>
-      <Text style={styles.metaLabel}>{label}</Text>
-      <Text style={styles.metaValue}>{value}</Text>
+    <View style={styles.avatarFallback}>
+      <Text style={styles.avatarFallbackText}>{initial}</Text>
     </View>
   );
+}
+
+function getNotificationAction(
+  state: NotificationRegistrationState | null,
+  loading: boolean,
+  submitting: boolean,
+  onEnable: () => void,
+) {
+  if (loading) {
+    return {
+      subtitle: 'Checking device status',
+      value: 'Loading',
+      disabled: true,
+      onPress: undefined,
+    };
+  }
+
+  if (!state) {
+    return {
+      subtitle: 'Status unavailable',
+      value: 'Later',
+      disabled: true,
+      onPress: undefined,
+    };
+  }
+
+  if (submitting) {
+    return {
+      subtitle: 'Registering this device',
+      value: 'Turning on...',
+      disabled: true,
+      onPress: undefined,
+    };
+  }
+
+  switch (state.kind) {
+    case 'registered':
+      return {
+        subtitle: 'Route reveal alerts are active',
+        value: 'On',
+        disabled: true,
+        onPress: undefined,
+      };
+    case 'ready':
+      return {
+        subtitle: 'Route reveal alerts are ready',
+        value: 'Enable',
+        disabled: false,
+        onPress: onEnable,
+      };
+    case 'error':
+      return {
+        subtitle: state.message,
+        value: 'Retry',
+        disabled: false,
+        onPress: onEnable,
+      };
+    case 'not_ready':
+      return {
+        subtitle: state.message,
+        value: 'Later',
+        disabled: true,
+        onPress: undefined,
+      };
+    case 'unsupported':
+      return {
+        subtitle: state.message,
+        value: 'Unavailable',
+        disabled: true,
+        onPress: undefined,
+      };
+    case 'signed_out':
+    default:
+      return {
+        subtitle: state.message,
+        value: 'Sign in',
+        disabled: true,
+        onPress: undefined,
+      };
+  }
+}
+
+function getProfileSubtitle(betaAccessState: BetaAccessState, hasProfile: boolean) {
+  if (betaAccessState === 'signed_out') {
+    return 'Beta identity and account tools.';
+  }
+
+  return hasProfile ? 'Personal identity, season snapshot, and support.' : 'Finish your runner identity.';
 }
 
 function getGuestProfileCopy(betaAccessState: BetaAccessState, disabledMessage: string | null | undefined) {
   switch (betaAccessState) {
     case 'dev_runner':
       return {
-        title: 'DEV runner is active on this device.',
-        description:
-          'Sign in with a beta account when you want synced profile access. DEV runner remains local-only for events and runs.',
+        avatarLabel: 'D',
+        title: 'DEV runner',
+        description: 'Local events and runs stay active. Sign in when you need synced profile access.',
       };
     case 'auth_unavailable':
       return {
-        title: 'Guest mode is active.',
+        avatarLabel: 'G',
+        title: 'Guest mode',
         description: disabledMessage ?? 'Sign-in is not connected in this environment yet.',
       };
     case 'signed_out':
     case 'loading':
     default:
       return {
-        title: 'You are browsing in guest mode.',
-        description:
-          'Sign in or create an account to sync your runner profile, personal feed, team details, and supported notifications.',
+        avatarLabel: 'G',
+        title: 'Guest mode',
+        description: 'Sign in to unlock your profile, feed, team identity, and supported notifications.',
       };
   }
 }
@@ -544,7 +653,11 @@ function sanitizeUsername(value: string): string {
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString();
+  return new Date(value).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function formatActivityDiagnostic(diagnostic: ReturnType<typeof useBetaDiagnostics>['activity']): string {
@@ -552,17 +665,17 @@ function formatActivityDiagnostic(diagnostic: ReturnType<typeof useBetaDiagnosti
     case 'start_requested':
       return 'Starting run sync';
     case 'started':
-      return 'Activity started on backend';
+      return 'Activity started';
     case 'ingesting':
       return 'Trackpoints uploaded';
     case 'finish_requested':
-      return 'Finishing run on backend';
+      return 'Finishing run';
     case 'synced':
-      return diagnostic.idempotent ? 'Synced from an existing backend result' : 'Run synced successfully';
+      return diagnostic.idempotent ? 'Synced from existing result' : 'Run synced';
     case 'rejected':
-      return 'Run rejected during backend review';
+      return 'Run rejected';
     case 'sync_failed':
-      return 'Run sync needs attention';
+      return 'Sync needs attention';
     case 'idle':
     default:
       return 'No recent run sync';
@@ -576,251 +689,121 @@ function formatNotificationDiagnostic(diagnostic: ReturnType<typeof useBetaDiagn
     case 'registered':
       return 'Device registered';
     case 'unsupported':
-      return 'Not supported on this device';
+      return 'Unsupported';
     case 'not_ready':
-      return 'Not ready in this build';
+      return 'Not ready';
     case 'failed':
       return 'Needs attention';
     case 'idle':
     default:
-      return 'No recent notification action';
+      return 'No recent action';
   }
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  container: {
-    padding: 24,
-    gap: 16,
+  content: {
+    gap: spacing.lg,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-    gap: 12,
-    backgroundColor: '#f8fafc',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
+    gap: spacing.sm,
   },
-  heroCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 18,
-    gap: 10,
+  title: {
+    ...typography.heroTitle,
+    color: colors.textPrimary,
   },
-  identitySection: {
+  info: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  error: {
+    ...typography.body,
+    color: colors.danger,
+    textAlign: 'center',
+    maxWidth: 320,
+  },
+  errorInline: {
+    ...typography.bodySm,
+    color: colors.danger,
+  },
+  stateButton: {
+    minWidth: 180,
+  },
+  section: {
+    gap: spacing.sm,
+  },
+  identityRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.md,
   },
-  avatar: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: '#cbd5e1',
+  identityCopy: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  identityName: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+  },
+  identitySecondary: {
+    ...typography.bodySm,
+    color: colors.textSecondary,
+  },
+  avatarImage: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.pill,
+    borderWidth: borderWidth.regular,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceMuted,
   },
   avatarFallback: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: '#0f172a',
+    width: 72,
+    height: 72,
+    borderRadius: radius.pill,
+    borderWidth: borderWidth.regular,
+    borderColor: 'rgba(120, 86, 255, 0.26)',
+    backgroundColor: colors.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarFallbackText: {
-    color: '#ffffff',
-    fontSize: 36,
+    fontSize: 24,
+    lineHeight: 28,
     fontWeight: '700',
+    color: colors.textPrimary,
   },
-  title: {
-    fontSize: 30,
-    fontWeight: '700',
-    color: '#0f172a',
-    textAlign: 'center',
+  statRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
-  username: {
-    fontSize: 16,
-    color: '#475569',
-  },
-  card: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 12,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  cardText: {
-    color: '#475569',
-    lineHeight: 20,
-  },
-  info: {
-    textAlign: 'center',
-    color: '#475569',
-    lineHeight: 21,
-  },
-  error: {
-    textAlign: 'center',
-    color: '#b91c1c',
-    fontWeight: '600',
-  },
-  errorInline: {
-    color: '#b91c1c',
-    fontWeight: '600',
-  },
-  devModeCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#f59e0b',
-    backgroundColor: '#fffbeb',
-    padding: 16,
-    gap: 6,
-  },
-  devModeTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#92400e',
-    textTransform: 'uppercase',
-  },
-  devModeText: {
-    color: '#92400e',
-    lineHeight: 20,
+  actionList: {
+    gap: spacing.sm,
   },
   field: {
-    gap: 8,
+    gap: spacing.xs,
   },
   inputLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-    textTransform: 'uppercase',
+    ...typography.eyebrow,
+    color: colors.textMuted,
   },
   input: {
     minHeight: 52,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 16,
-    color: '#0f172a',
+    borderRadius: radius.md,
+    borderWidth: borderWidth.regular,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: spacing.md,
+    color: colors.textPrimary,
+    ...typography.body,
   },
-  notificationList: {
-    gap: 10,
-  },
-  notificationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  notificationTextBlock: {
-    flex: 1,
-    gap: 2,
-  },
-  notificationLabel: {
-    color: '#0f172a',
-    fontWeight: '700',
-  },
-  notificationDescription: {
-    color: '#64748b',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  statusBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  statusSupported: {
-    backgroundColor: '#dcfce7',
-  },
-  statusNotReady: {
-    backgroundColor: '#e2e8f0',
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  statusSupportedText: {
-    color: '#166534',
-  },
-  statusNotReadyText: {
-    color: '#475569',
-  },
-  metaRow: {
-    gap: 2,
-  },
-  metaLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-    textTransform: 'uppercase',
-  },
-  metaValue: {
-    fontSize: 16,
-    color: '#0f172a',
-  },
-  actionColumn: {
-    gap: 10,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  primaryButton: {
-    minHeight: 52,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0f172a',
-    paddingHorizontal: 18,
-  },
-  primaryButtonCompact: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0f172a',
-    paddingHorizontal: 18,
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    minHeight: 52,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#e2e8f0',
-    paddingHorizontal: 18,
-  },
-  secondaryButtonCompact: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#e2e8f0',
-    paddingHorizontal: 18,
-  },
-  secondaryButtonText: {
-    color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
+  quietNote: {
+    ...typography.bodySm,
+    color: colors.textMuted,
   },
 });
