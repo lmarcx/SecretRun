@@ -1,6 +1,11 @@
 import { Link, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  APP_NAVIGATION_BOTTOM_PADDING,
+  APP_NAVIGATION_ITEM_HEIGHT,
+  APP_NAVIGATION_TOP_PADDING,
+} from '@/theme/layout';
 import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens';
 
 const navigationItems = [
@@ -32,7 +37,7 @@ export function AppNavigationShell() {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.shell, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+    <View style={[styles.shell, { paddingBottom: Math.max(insets.bottom, APP_NAVIGATION_BOTTOM_PADDING) }]}>
       {navigationItems.map((item) => {
         const active = item.isActive(pathname);
 
@@ -62,12 +67,12 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     backgroundColor: colors.backgroundRaised,
     paddingHorizontal: spacing.xs,
-    paddingTop: spacing.xs,
+    paddingTop: APP_NAVIGATION_TOP_PADDING,
     gap: spacing.xs,
   },
   item: {
     flex: 1,
-    minHeight: 48,
+    minHeight: APP_NAVIGATION_ITEM_HEIGHT,
     borderRadius: radius.md,
     borderWidth: borderWidth.regular,
     borderColor: colors.border,

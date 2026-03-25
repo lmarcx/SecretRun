@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '@/components/ui/AppScreen';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -10,6 +10,7 @@ import { SecondaryButton } from '@/components/ui/SecondaryButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { SegmentedTabs } from '@/components/ui/SegmentedTabs';
 import { StatusStrip } from '@/components/ui/StatusStrip';
+import { useBottomContentPadding } from '@/hooks/useBottomContentPadding';
 import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
 import type { LeaderboardData } from '@/services/leaderboardService';
 import { fetchLeaderboard, getLeaderboardErrorMessage } from '@/services/leaderboardService';
@@ -32,13 +33,15 @@ interface LeaderboardListItem {
 
 export default function LeaderboardScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ board?: string; scope?: string }>();
   const { betaAccessState } = useAuth();
-  const [board, setBoard] = useState<LeaderboardBoard>('runners');
-  const [scope, setScope] = useState<LeaderboardScope>('season');
+  const [board, setBoard] = useState<LeaderboardBoard>(resolveBoardParam(params.board));
+  const [scope, setScope] = useState<LeaderboardScope>(resolveScopeParam(params.scope));
   const [data, setData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const bottomContentPadding = useBottomContentPadding();
 
   useEffect(() => {
     let active = true;
@@ -73,6 +76,14 @@ export default function LeaderboardScreen() {
       active = false;
     };
   }, [reloadKey]);
+
+  useEffect(() => {
+    setBoard(resolveBoardParam(params.board));
+  }, [params.board]);
+
+  useEffect(() => {
+    setScope(resolveScopeParam(params.scope));
+  }, [params.scope]);
 
   const rows = useMemo<LeaderboardListItem[]>(() => {
     if (!data || scope !== 'season') {
@@ -150,7 +161,7 @@ export default function LeaderboardScreen() {
         key={`${scope}-${board}`}
         keyExtractor={(item) => item.id}
         style={styles.list}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: bottomContentPadding }]}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
@@ -220,6 +231,21 @@ function getHeaderSubtitle(scope: LeaderboardScope, board: LeaderboardBoard) {
   return `${getScopeLabel(scope)} ranking`;
 }
 
+function resolveBoardParam(value: string | string[] | undefined): LeaderboardBoard {
+  const resolved = Array.isArray(value) ? value[0] : value;
+  return resolved === 'teams' ? 'teams' : 'runners';
+}
+
+function resolveScopeParam(value: string | string[] | undefined): LeaderboardScope {
+  const resolved = Array.isArray(value) ? value[0] : value;
+
+  if (resolved === 'weekly' || resolved === 'global') {
+    return resolved;
+  }
+
+  return 'season';
+}
+
 function getScopeLabel(scope: LeaderboardScope) {
   switch (scope) {
     case 'weekly':
@@ -285,6 +311,7 @@ function getEmptyTitle({
 
 const styles = StyleSheet.create({
   screen: {
+    flex: 1,
     paddingHorizontal: 0,
     paddingTop: 0,
     paddingBottom: 0,
@@ -301,9 +328,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
+    flexGrow: 1,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
   },
   header: {
     gap: spacing.md,

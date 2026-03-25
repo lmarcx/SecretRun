@@ -1,18 +1,44 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
-import { isDevRunnerActive } from '@/services/devRunnerMode';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActionBar } from '@/components/ui/ActionBar';
+import { AppScreen } from '@/components/ui/AppScreen';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { InfoRow } from '@/components/ui/InfoRow';
+import { LeaderboardRow } from '@/components/ui/LeaderboardRow';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { SecondaryButton } from '@/components/ui/SecondaryButton';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { StatusStrip } from '@/components/ui/StatusStrip';
+import { TeamOverviewCard } from '@/components/ui/TeamOverviewCard';
+import { useBottomContentPadding } from '@/hooks/useBottomContentPadding';
+import { useAuth } from '@/hooks/useAuth';
+import type { LeaderboardData } from '@/services/leaderboardService';
+import { fetchLeaderboard } from '@/services/leaderboardService';
 import type { TeamListItem, TeamsData } from '@/services/teamsService';
 import { fetchTeams, getTeamsErrorMessage } from '@/services/teamsService';
+import { colors, spacing, typography } from '@/theme/tokens';
+
+interface TeamDiscoveryItem extends TeamListItem {
+  rank: number | null;
+  points: number | null;
+}
 
 export default function TeamsScreen() {
+  const router = useRouter();
   const { betaAccessState } = useAuth();
-  const devRunnerActive = isDevRunnerActive();
-  const [data, setData] = useState<TeamsData | null>(null);
+  const [teamsData, setTeamsData] = useState<TeamsData | null>(null);
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const bottomContentPadding = useBottomContentPadding();
+
+  const openTeamDetails = (teamId: string) => {
+    router.push({ pathname: '/teams/[id]', params: { id: teamId } });
+  };
 
   useEffect(() => {
     let active = true;
@@ -21,24 +47,22 @@ export default function TeamsScreen() {
       setLoading(true);
       setError(null);
 
-      try {
-        const nextData = await fetchTeams();
-        if (!active) {
-          return;
-        }
-
-        setData(nextData);
-      } catch (err) {
-        if (!active) {
-          return;
-        }
-
-        setError(getTeamsErrorMessage(err));
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
+      const [teamsResult, leaderboardResult] = await Promise.allSettled([fetchTeams(), fetchLeaderboard()]);
+      if (!active) {
+        return;
       }
+
+      if (teamsResult.status === 'rejected') {
+        setError(getTeamsErrorMessage(teamsResult.reason));
+        setTeamsData(null);
+        setLeaderboardData(null);
+        setLoading(false);
+        return;
+      }
+
+      setTeamsData(teamsResult.value);
+      setLeaderboardData(leaderboardResult.status === 'fulfilled' ? leaderboardResult.value : null);
+      setLoading(false);
     };
 
     void load();
@@ -48,247 +72,265 @@ export default function TeamsScreen() {
     };
   }, [reloadKey]);
 
+  const currentTeam = useMemo(
+    () => teamsData?.items.find((item) => item.isCurrentUserMember) ?? null,
+    [teamsData?.items],
+  );
+
+  const currentTeamStanding = useMemo(() => {
+    if (!currentTeam || !leaderboardData) {
+      return null;
+    }
+
+    return leaderboardData.teams.find((item) => item.id === currentTeam.id) ?? null;
+  }, [currentTeam, leaderboardData]);
+
+  const discoveryTeams = useMemo<TeamDiscoveryItem[]>(() => {
+    if (!teamsData) {
+      return [];
+    }
+
+    return teamsData.items
+      .filter((item) => item.id !== currentTeam?.id)
+      .map((item) => {
+        const standing = leaderboardData?.teams.find((entry) => entry.id === item.id) ?? null;
+
+        return {
+          ...item,
+          rank: standing?.rank ?? null,
+          points: standing?.points ?? null,
+        };
+      });
+  }, [currentTeam?.id, leaderboardData, teamsData]);
+
+  const standingRows = useMemo(() => {
+    if (!leaderboardData) {
+      return [];
+    }
+
+    return leaderboardData.teams.map((entry, index) => {
+      const team = teamsData?.items.find((item) => item.id === entry.id) ?? null;
+
+      return {
+        id: entry.id,
+        rank: entry.rank ?? index + 1,
+        points: entry.points,
+        title: team?.name ?? entry.name ?? 'Unknown team',
+        subtitle:
+          team?.memberCount != null ? `${team.memberCount} ${team.memberCount === 1 ? 'member' : 'members'}` : 'Team',
+        highlighted: currentTeam?.id === entry.id,
+      };
+    });
+  }, [currentTeam?.id, leaderboardData, teamsData?.items]);
+
+  const headerItems = getHeaderItems({
+    betaAccessState,
+    seasonName: leaderboardData?.seasonName ?? null,
+    supportsMembershipDetails: teamsData?.supportsMembershipDetails ?? false,
+  });
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" />
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
+        <ActivityIndicator color={colors.accent} size="large" />
         <Text style={styles.info}>Loading teams...</Text>
-      </SafeAreaView>
+      </AppScreen>
     );
   }
 
-  if (error) {
+  if (error || !teamsData) {
     return (
-      <SafeAreaView style={styles.centered}>
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
         <Text style={styles.title}>Teams</Text>
-        <Text style={styles.error}>{error}</Text>
-        <Pressable style={styles.secondaryButton} onPress={() => setReloadKey((value) => value + 1)}>
-          <Text style={styles.secondaryButtonText}>Retry</Text>
-        </Pressable>
-      </SafeAreaView>
+        <Text style={styles.error}>{error ?? 'Teams unavailable.'}</Text>
+        <SecondaryButton label="Retry" onPress={() => setReloadKey((value) => value + 1)} style={styles.stateButton} />
+      </AppScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <FlatList
-        data={data?.items ?? []}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <Text style={styles.title}>Teams</Text>
-            <Text style={styles.subtitle}>Browse the current squads in this closed beta.</Text>
-            <View style={styles.noticeCard}>
-              <Text style={styles.noticeTitle}>Read-only beta</Text>
-              <Text style={styles.info}>{getTeamsNotice(betaAccessState, devRunnerActive, Boolean(data?.supportsMembershipDetails))}</Text>
-            </View>
-            <View style={styles.noticeCard}>
-              <Text style={styles.noticeTitle}>Available now</Text>
-              <Text style={styles.info}>Browse squad names, season presence, and any membership details already visible to your account.</Text>
-            </View>
-            <View style={styles.noticeCard}>
-              <Text style={styles.noticeTitle}>Later in beta</Text>
-              <Text style={styles.info}>Join and create team actions stay disabled until the full workflow is ready.</Text>
-            </View>
+    <AppScreen contentContainerStyle={[styles.content, { paddingBottom: bottomContentPadding }]}>
+      <ScreenHeader title="Teams" subtitle="Squads and season standing." />
+      {headerItems.length > 0 ? <StatusStrip compact muted items={headerItems} /> : null}
+
+      {currentTeam ? (
+        <SectionCard accessory={undefined} title="My Team" tone="accent">
+          <View style={styles.currentHeader}>
+            <Text style={styles.currentTeamName}>{currentTeam.name}</Text>
+            <Text style={styles.currentTeamLine}>
+              {currentTeamStanding?.rank != null ? `Season rank #${currentTeamStanding.rank}` : 'Season squad'}
+            </Text>
           </View>
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No teams yet</Text>
-            <Text style={styles.info}>More squads will appear here as the closed beta roster expands.</Text>
+          <InfoRow
+            label="Members"
+            value={formatMemberCount(currentTeam.memberCount, teamsData.supportsMembershipDetails)}
+          />
+          <InfoRow label="Rank" value={currentTeamStanding?.rank != null ? `#${currentTeamStanding.rank}` : 'Unranked'} />
+          <InfoRow label="Points" value={currentTeamStanding?.points != null ? String(currentTeamStanding.points) : '0'} />
+          <ActionBar
+            primary={
+              <PrimaryButton label="Open" onPress={() => openTeamDetails(currentTeam.id)} />
+            }
+          />
+        </SectionCard>
+      ) : (
+        <SectionCard title="My Team" tone="muted">
+          <EmptyState title={betaAccessState === 'signed_out' ? 'Sign in to link a team' : 'No team yet'} />
+          {betaAccessState === 'signed_out' ? (
+            <ActionBar primary={<PrimaryButton label="Sign in" onPress={() => router.push('/(auth)/login')} />} />
+          ) : null}
+        </SectionCard>
+      )}
+
+      <View style={styles.section}>
+        <SectionHeader title="Discover" subtitle="Browse squads" />
+        {discoveryTeams.length > 0 ? (
+          <View style={styles.cards}>
+            {discoveryTeams.map((item) => (
+              <TeamOverviewCard
+                key={item.id}
+                actionLabel="View"
+                badgeLabel={item.rank != null ? `#${item.rank}` : undefined}
+                badgeTone={item.rank != null && item.rank <= 3 ? getPlacementTone(item.rank) : 'neutral'}
+                highlighted={item.isCurrentUserMember}
+                metaItems={[
+                  { label: 'Members', value: formatMemberCount(item.memberCount, teamsData.supportsMembershipDetails) },
+                  { label: 'Rank', value: item.rank != null ? `#${item.rank}` : 'Unranked' },
+                  { label: 'Points', value: item.points != null ? String(item.points) : '0' },
+                ]}
+                onAction={() => openTeamDetails(item.id)}
+                subtitle={getTeamDescriptor(item)}
+                title={item.name}
+              />
+            ))}
           </View>
-        }
-        renderItem={({ item }) => <TeamCard item={item} supportsMembershipDetails={Boolean(data?.supportsMembershipDetails)} />}
-      />
-    </SafeAreaView>
-  );
-}
-
-function getTeamsNotice(betaAccessState: BetaAccessState, devRunnerActive: boolean, supportsMembershipDetails: boolean) {
-  if (betaAccessState === 'dev_runner' || devRunnerActive) {
-    return 'DEV runner keeps events and runs testable, but teams stay browse-only and account-based in this beta.';
-  }
-
-  if (supportsMembershipDetails) {
-    return 'Your account can see current membership details where available. Team joining and creation still open later.';
-  }
-
-  if (betaAccessState === 'signed_out') {
-    return 'Sign in to see your memberships and member counts. Team joining and creation still open later.';
-  }
-
-  return 'Teams are browse-only for now. Joining and creation will open in a later beta update.';
-}
-
-function TeamCard({ item, supportsMembershipDetails }: { item: TeamListItem; supportsMembershipDetails: boolean }) {
-  return (
-    <View style={[styles.card, item.isCurrentUserMember && styles.cardHighlighted]}>
-      <View style={styles.cardHeader}>
-        <View style={styles.teamIdentity}>
-          <View style={styles.teamBadge}>
-            <Text style={styles.teamBadgeText}>{item.name.slice(0, 1).toUpperCase()}</Text>
-          </View>
-          <Text style={styles.cardTitle}>{item.name}</Text>
-        </View>
-        {item.isCurrentUserMember ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>Your team</Text>
-          </View>
-        ) : null}
+        ) : (
+          <EmptyState title="No teams to browse" />
+        )}
       </View>
-      <Text style={styles.cardDescription}>Browse-only beta team. Season rankings continue on the leaderboard.</Text>
-      <Text style={styles.cardMeta}>Created {formatDate(item.createdAt)}</Text>
-      <Text style={styles.cardMeta}>
-        {supportsMembershipDetails && item.memberCount !== null
-          ? `${item.memberCount} member${item.memberCount === 1 ? '' : 's'}`
-          : 'Member counts appear after sign-in'}
-      </Text>
-    </View>
+
+      <View style={styles.section}>
+        <SectionHeader title="Standings" subtitle="Season team points" />
+        {standingRows.length > 0 ? (
+          <View style={styles.rows}>
+            {standingRows.map((item) => (
+              <LeaderboardRow
+                key={item.id}
+                highlighted={item.highlighted}
+                points={item.points}
+                rank={item.rank}
+                subtitle={item.subtitle}
+                title={item.title}
+                variant="team"
+                {...(item.highlighted ? { badgeLabel: 'Your team' } : {})}
+              />
+            ))}
+          </View>
+        ) : (
+          <EmptyState title="No team standings yet" />
+        )}
+      </View>
+    </AppScreen>
   );
 }
 
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString();
+function getHeaderItems({
+  betaAccessState,
+  seasonName,
+  supportsMembershipDetails,
+}: {
+  betaAccessState: 'loading' | 'signed_in' | 'signed_out' | 'dev_runner' | 'auth_unavailable';
+  seasonName: string | null;
+  supportsMembershipDetails: boolean;
+}) {
+  return [
+    ...(seasonName ? [{ label: seasonName, tone: 'accent' as const }] : []),
+    ...(betaAccessState === 'dev_runner' ? [{ label: 'DEV local', tone: 'warning' as const }] : []),
+    ...(betaAccessState === 'signed_out' ? [{ label: 'Guest view', tone: 'neutral' as const }] : []),
+    ...(supportsMembershipDetails ? [{ label: 'Members live', tone: 'info' as const }] : []),
+  ];
+}
+
+function getTeamDescriptor(item: TeamListItem) {
+  if (item.isCurrentUserMember) {
+    return 'Your current squad';
+  }
+
+  return 'Closed beta squad';
+}
+
+function formatMemberCount(memberCount: number | null, supportsMembershipDetails: boolean) {
+  if (!supportsMembershipDetails || memberCount === null) {
+    return 'Hidden';
+  }
+
+  return `${memberCount}`;
+}
+
+function getPlacementTone(rank: number) {
+  if (rank === 1) {
+    return 'accent' as const;
+  }
+
+  if (rank === 2) {
+    return 'info' as const;
+  }
+
+  if (rank === 3) {
+    return 'warning' as const;
+  }
+
+  return 'neutral' as const;
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
+  content: {
+    gap: spacing.lg,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    padding: 24,
-    backgroundColor: '#f8fafc',
-  },
-  list: {
-    padding: 16,
-    gap: 12,
-  },
-  header: {
-    gap: 10,
-    marginBottom: 6,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
+    gap: spacing.sm,
   },
   title: {
-    fontSize: 30,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  subtitle: {
-    color: '#475569',
-    lineHeight: 20,
-  },
-  noticeCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 6,
-  },
-  noticeTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  card: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 8,
-  },
-  cardHighlighted: {
-    borderColor: '#0f172a',
-    backgroundColor: '#f1f5f9',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  teamIdentity: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  teamBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#1e293b',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  teamBadgeText: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  cardDescription: {
-    color: '#475569',
-    lineHeight: 20,
-  },
-  cardMeta: {
-    color: '#64748b',
-  },
-  badge: {
-    borderRadius: 999,
-    backgroundColor: '#dbeafe',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  badgeText: {
-    color: '#1d4ed8',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  emptyCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 8,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-    textAlign: 'center',
+    ...typography.heroTitle,
+    color: colors.textPrimary,
   },
   info: {
-    color: '#475569',
+    ...typography.body,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   error: {
-    color: '#b91c1c',
+    ...typography.body,
+    color: colors.danger,
     textAlign: 'center',
-    fontWeight: '600',
+    maxWidth: 320,
   },
-  secondaryButton: {
-    minHeight: 48,
+  stateButton: {
     minWidth: 180,
-    borderRadius: 12,
-    backgroundColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
   },
-  secondaryButtonText: {
-    color: '#0f172a',
-    fontWeight: '700',
-    fontSize: 16,
+  section: {
+    gap: spacing.sm,
+  },
+  currentHeader: {
+    gap: spacing.xxs,
+  },
+  currentTeamName: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+  },
+  currentTeamLine: {
+    ...typography.bodySm,
+    color: colors.textSecondary,
+  },
+  cards: {
+    gap: spacing.sm,
+  },
+  rows: {
+    gap: spacing.sm,
   },
 });

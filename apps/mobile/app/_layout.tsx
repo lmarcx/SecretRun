@@ -73,6 +73,7 @@ export default function RootLayout() {
               <Stack.Screen name="profile" options={{ title: 'Profile' }} />
               <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
               <Stack.Screen name="teams/index" options={{ title: 'Teams' }} />
+              <Stack.Screen name="teams/[id]" options={{ title: 'Team' }} />
             </Stack>
           </View>
           <AppNavigationShell />
