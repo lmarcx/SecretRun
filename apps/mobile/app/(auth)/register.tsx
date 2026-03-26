@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/AuthScreenLayout';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { getAuthErrorMessage, useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import { debugAuth, debugAuthError } from '@/services/authDebug';
 import { colors, typography } from '@/theme/tokens';
 
 type FocusedField = 'username' | 'email' | 'password' | null;
@@ -26,12 +27,26 @@ export default function RegisterScreen() {
   const [focusedField, setFocusedField] = useState<FocusedField>(null);
 
   if (isAuthenticated) {
-    return <Redirect href="/events" />;
+    return <Redirect href="/feed" />;
   }
 
   const handleRegister = async () => {
     const normalizedUsername = username.trim().toLowerCase();
     const normalizedEmail = email.trim().toLowerCase();
+    const signUpOptions = {
+      displayName: normalizedUsername,
+      metadata: {
+        username: normalizedUsername,
+      },
+    };
+
+    debugAuth('register.submit', {
+      username: normalizedUsername,
+      email: normalizedEmail,
+      hasPassword: Boolean(password),
+      isAvailable,
+      signUpOptions,
+    });
 
     if (!normalizedUsername.match(/^[a-z0-9_]{3,20}$/)) {
       setError('Username must be 3-20 characters and use only letters, numbers, or underscores.');
@@ -57,15 +72,20 @@ export default function RegisterScreen() {
     setSuccess(null);
 
     try {
-      const response = await signUp(normalizedEmail, password);
+      const response = await signUp(normalizedEmail, password, signUpOptions);
 
       if (response.needsEmailVerification) {
         setSuccess('Account created. Verify your email, then sign in.');
         return;
       }
 
-      router.replace({ pathname: '/profile', params: { username: normalizedUsername } });
+      router.replace('/feed');
     } catch (err) {
+      debugAuthError('register.catch', err, {
+        username: normalizedUsername,
+        email: normalizedEmail,
+        signUpOptions,
+      });
       setError(getAuthErrorMessage(err));
     }
   };

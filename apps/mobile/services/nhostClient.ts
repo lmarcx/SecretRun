@@ -1,10 +1,12 @@
 import { NhostClient } from '@nhost/react';
+import { debugAuth } from './authDebug';
 
 const subdomain = process.env.EXPO_PUBLIC_NHOST_SUBDOMAIN;
 const region = process.env.EXPO_PUBLIC_NHOST_REGION;
 const configuredBaseUrl = process.env.EXPO_PUBLIC_NHOST_BASE_URL;
 const configuredGraphqlUrl = process.env.EXPO_PUBLIC_HASURA_GRAPHQL_URL;
 const fallbackSubdomain = 'local';
+const hasExplicitBaseUrl = Boolean(configuredBaseUrl && configuredBaseUrl.length > 0);
 
 const normalizeBaseUrl = (url: string): string => url.replace(/\/+$/, '');
 
@@ -32,7 +34,7 @@ const derivedBaseUrl =
       : undefined;
 
 const isLocalPlaceholderAuthConfig =
-  (subdomain === fallbackSubdomain || !subdomain) && (!region || region === fallbackSubdomain);
+  !hasExplicitBaseUrl && (subdomain === fallbackSubdomain || !subdomain) && (!region || region === fallbackSubdomain);
 
 export const nhostConfig = {
   isConfigured: Boolean(derivedBaseUrl),
@@ -52,9 +54,19 @@ export const getGraphqlUrl = (): string =>
     ? configuredGraphqlUrl
     : `${nhostConfig.baseUrl}/v1/graphql`;
 
+export const getAuthUrl = (): string => `${nhostConfig.baseUrl}/v1/auth`;
 export const getFunctionsBaseUrl = (): string => `${nhostConfig.baseUrl}/v1/functions`;
 
 const createNhostClient = () => {
+  if (hasExplicitBaseUrl) {
+    return new NhostClient({
+      authUrl: getAuthUrl(),
+      functionsUrl: getFunctionsBaseUrl(),
+      graphqlUrl: getGraphqlUrl(),
+      storageUrl: `${nhostConfig.baseUrl}/v1/storage`,
+    });
+  }
+
   if (nhostConfig.isConfigured && subdomain) {
     if (region) {
       return new NhostClient({
@@ -77,3 +89,17 @@ const createNhostClient = () => {
 };
 
 export const nhost = createNhostClient();
+
+debugAuth('nhost.config', {
+  subdomain,
+  region,
+  configuredBaseUrl,
+  derivedBaseUrl,
+  authUrl: getAuthUrl(),
+  graphqlUrl: getGraphqlUrl(),
+  isConfigured: nhostConfig.isConfigured,
+  isAuthEnabled: nhostConfig.isAuthEnabled,
+  authDisabledMessage: nhostConfig.authDisabledMessage,
+  hasExplicitBaseUrl,
+  isLocalPlaceholderAuthConfig,
+});

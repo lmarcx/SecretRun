@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/AuthScreenLayout';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { getAuthErrorMessage, useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import { debugAuth, debugAuthError } from '@/services/authDebug';
 import { colors, typography } from '@/theme/tokens';
 
 type FocusedField = 'email' | 'password' | null;
@@ -25,11 +26,16 @@ export default function LoginScreen() {
   const [focusedField, setFocusedField] = useState<FocusedField>(null);
 
   if (isAuthenticated) {
-    return <Redirect href="/events" />;
+    return <Redirect href="/feed" />;
   }
 
   const handleLogin = async () => {
     const normalizedEmail = email.trim().toLowerCase();
+    debugAuth('login.submit', {
+      email: normalizedEmail,
+      hasPassword: Boolean(password),
+      isAvailable,
+    });
 
     if (!normalizedEmail || !password) {
       setError('Enter your email and password.');
@@ -56,8 +62,11 @@ export default function LoginScreen() {
         return;
       }
 
-      router.replace('/events');
+      router.replace('/feed');
     } catch (err) {
+      debugAuthError('login.catch', err, {
+        email: normalizedEmail,
+      });
       setError(getAuthErrorMessage(err));
     }
   };
@@ -70,7 +79,7 @@ export default function LoginScreen() {
       <AuthScreenLayout
         cardSubtitle="Use your beta account to continue."
         cardTitle="Sign in to your account"
-        footer={<AuthTertiaryButton label="Continue as guest" onPress={() => router.replace('/events')} />}
+        footer={<AuthTertiaryButton label="Continue as guest" onPress={() => router.replace('/feed')} />}
         onBack={() => router.back()}
         subtitle="Unlock your feed, profile, and team identity."
         support={

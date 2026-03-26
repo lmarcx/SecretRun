@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { ActivityIndicator, Image, Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ActionBar } from '@/components/ui/ActionBar';
 import { ActionRow } from '@/components/ui/ActionRow';
@@ -58,11 +58,9 @@ const emptyOverview: ProfileOverview = {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ username?: string | string[] }>();
   const { betaAccessState, disabledMessage, isAvailable, loading: authLoading, signOut } = useAuth();
   const currentUser = nhost.auth.getUser();
   const userId = currentUser?.id ?? null;
-  const suggestedUsernameParam = Array.isArray(params.username) ? params.username[0] : params.username;
   const bottomContentPadding = useBottomContentPadding();
   const diagnostics = useBetaDiagnostics();
   const [profile, setProfile] = useState<CurrentProfile | null>(null);
@@ -150,11 +148,11 @@ export default function ProfileScreen() {
     }
 
     const suggestedDisplayName = currentUser?.displayName?.trim() || currentUser?.email?.split('@')[0] || '';
-    const suggestedUsername = sanitizeUsername(suggestedUsernameParam ?? currentUser?.displayName ?? currentUser?.email?.split('@')[0] ?? '');
+    const suggestedUsername = sanitizeUsername(currentUser?.displayName ?? currentUser?.email?.split('@')[0] ?? '');
 
     setDisplayNameDraft((value) => value || suggestedDisplayName);
     setUsernameDraft((value) => value || suggestedUsername);
-  }, [currentUser?.displayName, currentUser?.email, suggestedUsernameParam, userId]);
+  }, [currentUser?.displayName, currentUser?.email, userId]);
 
   useEffect(() => {
     let active = true;
@@ -200,6 +198,7 @@ export default function ProfileScreen() {
       setProfile(null);
       setOverview(emptyOverview);
       setLoading(false);
+      router.replace('/feed');
     } catch (err) {
       setActionError(getProfileErrorMessage(err));
     } finally {

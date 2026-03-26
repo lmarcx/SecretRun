@@ -1,6 +1,8 @@
 import { useAuthenticationStatus, useSignInEmailPassword, useSignOut, useSignUpEmailPassword } from '@nhost/react';
+import { useEffect } from 'react';
+import { debugAuth, debugAuthError } from '@/services/authDebug';
 import { isDevRunnerActive } from '@/services/devRunnerMode';
-import { nhostConfig } from '@/services/nhostClient';
+import { getAuthUrl, nhostConfig } from '@/services/nhostClient';
 
 export type AuthState = 'unconfigured' | 'loading' | 'signed in' | 'signed out';
 export type BetaAccessState = 'loading' | 'signed_in' | 'signed_out' | 'dev_runner' | 'auth_unavailable';
@@ -14,27 +16,95 @@ export function useAuth() {
   const loading = authLoading || signInLoading || signUpLoading;
 
   const signIn = async (email: string, password: string) => {
+    debugAuth('signIn.request', {
+      email,
+      authUrl: getAuthUrl(),
+      isAuthEnabled: nhostConfig.isAuthEnabled,
+    });
+
     if (!nhostConfig.isAuthEnabled) {
-      throw new Error(nhostConfig.authDisabledMessage ?? 'Sign-in is not connected in this environment yet.');
+      const error = new Error(nhostConfig.authDisabledMessage ?? 'Sign-in is not connected in this environment yet.');
+      debugAuthError('signIn.disabled', error, {
+        authUrl: getAuthUrl(),
+      });
+      throw error;
     }
 
-    const response = await signInEmailPassword(email, password);
-    if (response.error) {
-      throw response.error;
+    try {
+      const response = await signInEmailPassword(email, password);
+      debugAuth('signIn.response', response);
+
+      if (response.error) {
+        debugAuthError('signIn.response.error', response.error, { response });
+        throw response.error;
+      }
+
+      return response;
+    } catch (error) {
+      debugAuthError('signIn.throw', error, {
+        email,
+        authUrl: getAuthUrl(),
+      });
+      throw error;
     }
-    return response;
   };
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (
+    email: string,
+    password: string,
+    options?: Parameters<typeof signUpEmailPassword>[2],
+  ) => {
+    debugAuth('signUp.request', {
+      email,
+      authUrl: getAuthUrl(),
+      isAuthEnabled: nhostConfig.isAuthEnabled,
+      options,
+    });
+
     if (!nhostConfig.isAuthEnabled) {
-      throw new Error(nhostConfig.authDisabledMessage ?? 'Sign-in is not connected in this environment yet.');
+      const error = new Error(nhostConfig.authDisabledMessage ?? 'Sign-in is not connected in this environment yet.');
+      debugAuthError('signUp.disabled', error, {
+        authUrl: getAuthUrl(),
+        options,
+      });
+      throw error;
     }
 
-    const response = await signUpEmailPassword(email, password);
-    if (response.error) {
-      throw response.error;
+    try {
+      const response = await signUpEmailPassword(email, password, options);
+      debugAuth('signUp.response', response);
+
+      if (response.error) {
+        debugAuthError('signUp.response.error', response.error, { response, options });
+        throw response.error;
+      }
+
+      return response;
+    } catch (error) {
+      debugAuthError('signUp.throw', error, {
+        email,
+        authUrl: getAuthUrl(),
+        options,
+      });
+      throw error;
     }
-    return response;
+  };
+
+  const signOutWithDebug = async () => {
+    debugAuth('signOut.request', {
+      authUrl: getAuthUrl(),
+    });
+
+    try {
+      const response = await signOut();
+      debugAuth('signOut.response', response);
+      return response;
+    } catch (error) {
+      debugAuthError('signOut.throw', error, {
+        authUrl: getAuthUrl(),
+      });
+      throw error;
+    }
   };
 
   const authState: AuthState = !nhostConfig.isConfigured
@@ -56,6 +126,19 @@ export function useAuth() {
             ? 'signed_out'
             : 'auth_unavailable';
 
+  useEffect(() => {
+    debugAuth('status.change', {
+      authState,
+      betaAccessState,
+      isAuthenticated,
+      loading,
+      signInLoading,
+      signUpLoading,
+      isAuthEnabled: nhostConfig.isAuthEnabled,
+      authUrl: getAuthUrl(),
+    });
+  }, [authState, betaAccessState, isAuthenticated, loading, signInLoading, signUpLoading]);
+
   return {
     isAuthenticated: nhostConfig.isAuthEnabled ? isAuthenticated : false,
     hasBetaAccount: betaAccessState === 'signed_in',
@@ -68,7 +151,7 @@ export function useAuth() {
     loading,
     signIn,
     signUp,
-    signOut,
+    signOut: signOutWithDebug,
     signInError,
     signUpError,
   };
