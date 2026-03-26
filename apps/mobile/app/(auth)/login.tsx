@@ -1,15 +1,33 @@
 import { useState } from 'react';
-import { Redirect, useRouter } from 'expo-router';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Redirect, Stack, useRouter } from 'expo-router';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { SecondaryButton } from '@/components/ui/SecondaryButton';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { useBottomContentPadding } from '@/hooks/useBottomContentPadding';
 import { getAuthErrorMessage, useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens';
+
+type FocusedField = 'email' | 'password' | null;
 
 export default function LoginScreen() {
   const router = useRouter();
+  const bottomContentPadding = useBottomContentPadding();
   const { isAuthenticated, isAvailable, disabledMessage, signIn, loading, betaAccessState } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<FocusedField>(null);
 
   if (isAuthenticated) {
     return <Redirect href="/events" />;
@@ -49,213 +67,297 @@ export default function LoginScreen() {
     }
   };
 
-  const accessStateCopy = getAccessStateCopy(betaAccessState, disabledMessage);
+  const devModeCopy = getDeviceStateCopy(betaAccessState, disabledMessage);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
-        <View style={styles.container}>
-          <View style={styles.hero}>
-            <Text style={styles.title}>Sign in</Text>
-            <Text style={styles.subtitle}>
-              Use your beta account to unlock profile sync, your personal feed, team details, and supported notifications.
-            </Text>
-          </View>
-
-          <View style={styles.stateCard}>
-            <Text style={styles.stateLabel}>Current device state</Text>
-            <Text style={styles.stateTitle}>{accessStateCopy.title}</Text>
-            <Text style={styles.note}>{accessStateCopy.description}</Text>
-          </View>
-
-          <View style={styles.form}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                onChangeText={setEmail}
-                placeholder="runner@example.com"
-                style={styles.input}
-                value={email}
-              />
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
+          <ScrollView
+            automaticallyAdjustKeyboardInsets
+            bounces={false}
+            contentContainerStyle={[styles.content, { paddingBottom: bottomContentPadding }]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.header}>
+              <Pressable accessibilityRole="button" onPress={() => router.back()} style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}>
+                <Text style={styles.backButtonLabel}>Back</Text>
+              </Pressable>
             </View>
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                onChangeText={setPassword}
-                placeholder="Password"
-                secureTextEntry
-                style={styles.input}
-                value={password}
-              />
+            <View style={styles.hero}>
+              <Text style={styles.eyebrow}>Secret Run</Text>
+              <Text style={styles.title}>Sign in</Text>
+              <Text style={styles.subtitle}>Unlock your feed, profile, and team identity.</Text>
             </View>
 
-            {!isAvailable ? <Text style={styles.warning}>{disabledMessage}</Text> : null}
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <SectionCard subtitle="Use your beta account to continue." title="Sign in to your account">
+              <View style={styles.form}>
+                <AuthField
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  autoCorrect={false}
+                  focused={focusedField === 'email'}
+                  keyboardType="email-address"
+                  label="Email"
+                  onBlur={() => setFocusedField((value) => (value === 'email' ? null : value))}
+                  onChangeText={setEmail}
+                  onFocus={() => setFocusedField('email')}
+                  placeholder="runner@example.com"
+                  textContentType="emailAddress"
+                  value={email}
+                />
 
-            <Pressable
-              style={[styles.button, (!isAvailable || loading) && styles.buttonDisabled]}
-              onPress={handleLogin}
-              disabled={loading || !isAvailable}
-            >
-              <Text style={styles.buttonText}>{isAvailable ? (loading ? 'Signing in...' : 'Sign in') : 'Sign in unavailable'}</Text>
-            </Pressable>
-          </View>
+                <AuthField
+                  autoCapitalize="none"
+                  autoComplete="password"
+                  autoCorrect={false}
+                  focused={focusedField === 'password'}
+                  label="Password"
+                  onBlur={() => setFocusedField((value) => (value === 'password' ? null : value))}
+                  onChangeText={setPassword}
+                  onFocus={() => setFocusedField('password')}
+                  onSubmitEditing={() => void handleLogin()}
+                  placeholder="Password"
+                  secureTextEntry
+                  textContentType="password"
+                  value={password}
+                />
 
-          <View style={styles.footer}>
-            <Pressable style={styles.secondaryButton} onPress={() => router.replace('/events')}>
-              <Text style={styles.secondaryButtonText}>Browse as guest</Text>
-            </Pressable>
-            <Pressable onPress={() => router.push('/(auth)/register')}>
-              <Text style={styles.link}>Create account</Text>
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+                {!isAvailable ? (
+                  <InlineNotice description={disabledMessage ?? 'Sign-in is not connected in this environment yet.'} tone="muted" />
+                ) : null}
+                {error ? <InlineNotice description={error} tone="danger" /> : null}
+
+                <PrimaryButton
+                  disabled={loading || !isAvailable}
+                  label={loading ? 'Signing in...' : 'Sign in'}
+                  onPress={() => void handleLogin()}
+                />
+
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerLabel}>or</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <SecondaryButton label="Create account" onPress={() => router.push('/(auth)/register')} />
+              </View>
+            </SectionCard>
+
+            <View style={styles.guestWrap}>
+              <Pressable accessibilityRole="button" onPress={() => router.replace('/events')} style={({ pressed }) => [styles.guestButton, pressed && styles.guestButtonPressed]}>
+                <Text style={styles.guestButtonLabel}>Continue as guest</Text>
+              </Pressable>
+            </View>
+
+            {devModeCopy ? (
+              <SectionCard tone="muted">
+                <Text style={styles.devModeLabel}>{devModeCopy.title}</Text>
+                <Text style={styles.devModeDescription}>{devModeCopy.description}</Text>
+              </SectionCard>
+            ) : null}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </>
   );
 }
 
-function getAccessStateCopy(betaAccessState: BetaAccessState, disabledMessage: string | null | undefined) {
+function AuthField({
+  focused,
+  label,
+  ...props
+}: React.ComponentProps<typeof TextInput> & {
+  focused: boolean;
+  label: string;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        placeholderTextColor={colors.textMuted}
+        selectionColor={colors.accent}
+        style={[styles.input, focused && styles.inputFocused]}
+        {...props}
+      />
+    </View>
+  );
+}
+
+function InlineNotice({
+  description,
+  tone,
+}: {
+  description: string;
+  tone: 'muted' | 'danger';
+}) {
+  return (
+    <View style={[styles.notice, tone === 'danger' ? styles.noticeDanger : styles.noticeMuted]}>
+      <Text style={[styles.noticeText, tone === 'danger' ? styles.noticeTextDanger : styles.noticeTextMuted]}>{description}</Text>
+    </View>
+  );
+}
+
+function getDeviceStateCopy(betaAccessState: BetaAccessState, disabledMessage: string | null | undefined) {
   switch (betaAccessState) {
     case 'dev_runner':
       return {
-        title: 'DEV runner also available',
-        description:
-          'You can still test events and runs locally without signing in, but the closed beta account path remains the preferred experience.',
+        title: 'DEV runner active',
+        description: 'Local event testing stays available on this device. Sign in when you need synced account access.',
       };
     case 'auth_unavailable':
       return {
-        title: 'Sign-in not ready here',
-        description: disabledMessage ?? 'This local environment is still guest-only right now.',
+        title: 'Auth unavailable',
+        description: disabledMessage ?? 'This environment is still guest-only right now.',
       };
     case 'signed_out':
     case 'loading':
+    case 'signed_in':
     default:
-      return {
-        title: 'Guest mode active',
-        description: 'Sign in to switch this device from guest browsing to a synced beta account.',
-      };
+      return null;
   }
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.background,
   },
   keyboard: {
     flex: 1,
   },
-  container: {
-    flex: 1,
+  content: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    gap: spacing.lg,
+  },
+  header: {
+    alignItems: 'flex-start',
+  },
+  backButton: {
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: borderWidth.regular,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
     justifyContent: 'center',
-    padding: 24,
-    gap: 24,
+  },
+  backButtonPressed: {
+    backgroundColor: colors.surface,
+  },
+  backButtonLabel: {
+    ...typography.bodySm,
+    color: colors.textPrimary,
   },
   hero: {
-    gap: 10,
+    gap: spacing.xs,
   },
-  stateCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 6,
-  },
-  form: {
-    gap: 16,
-  },
-  field: {
-    gap: 8,
+  eyebrow: {
+    ...typography.eyebrow,
+    color: colors.textMuted,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#0f172a',
+    ...typography.heroTitle,
+    color: colors.textPrimary,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#334155',
+    ...typography.body,
+    color: colors.textSecondary,
+    maxWidth: 320,
   },
-  note: {
-    fontSize: 14,
-    color: '#475569',
-    lineHeight: 20,
+  form: {
+    gap: spacing.md,
   },
-  stateLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-    textTransform: 'uppercase',
+  field: {
+    gap: spacing.xs,
   },
-  stateTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-    textTransform: 'uppercase',
+  fieldLabel: {
+    ...typography.eyebrow,
+    color: colors.textMuted,
   },
   input: {
-    minHeight: 52,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 16,
-    color: '#0f172a',
+    minHeight: 54,
+    borderRadius: radius.md,
+    borderWidth: borderWidth.regular,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: spacing.md,
+    color: colors.textPrimary,
+    ...typography.body,
   },
-  button: {
-    backgroundColor: '#0f172a',
-    minHeight: 52,
-    borderRadius: 12,
+  inputFocused: {
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
+  },
+  notice: {
+    borderRadius: radius.md,
+    borderWidth: borderWidth.regular,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  noticeMuted: {
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+  },
+  noticeDanger: {
+    borderColor: 'rgba(255, 124, 147, 0.32)',
+    backgroundColor: colors.dangerSoft,
+  },
+  noticeText: {
+    ...typography.bodySm,
+  },
+  noticeTextMuted: {
+    color: colors.textSecondary,
+  },
+  noticeTextDanger: {
+    color: colors.danger,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  dividerLine: {
+    flex: 1,
+    height: borderWidth.subtle,
+    backgroundColor: colors.border,
+  },
+  dividerLabel: {
+    ...typography.bodySm,
+    color: colors.textMuted,
+    textTransform: 'lowercase',
+  },
+  guestWrap: {
+    alignItems: 'center',
+  },
+  guestButton: {
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: borderWidth.regular,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonDisabled: {
-    backgroundColor: '#94a3b8',
+  guestButtonPressed: {
+    backgroundColor: colors.surface,
   },
-  buttonText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 16,
+  guestButtonLabel: {
+    ...typography.bodySm,
+    color: colors.textSecondary,
   },
-  error: {
-    color: '#b91c1c',
-    fontWeight: '600',
+  devModeLabel: {
+    ...typography.eyebrow,
+    color: colors.textMuted,
   },
-  warning: {
-    color: '#7c2d12',
-    fontWeight: '600',
-  },
-  footer: {
-    gap: 12,
-  },
-  link: {
-    color: '#2563eb',
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  secondaryButton: {
-    minHeight: 52,
-    borderRadius: 12,
-    backgroundColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryButtonText: {
-    color: '#0f172a',
-    fontWeight: '700',
-    fontSize: 16,
+  devModeDescription: {
+    ...typography.bodySm,
+    color: colors.textSecondary,
   },
 });
