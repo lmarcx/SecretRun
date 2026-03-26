@@ -28,6 +28,7 @@ export default function FeedScreen() {
   const { isAvailable, loading: authLoading, signOut } = useAuth();
   const currentUser = nhost.auth.getUser();
   const userId = currentUser?.id ?? null;
+  const isSignedIn = Boolean(userId);
   const bottomContentPadding = useBottomContentPadding();
   const [data, setData] = useState<FeedData | null>(null);
   const [menuIdentity, setMenuIdentity] = useState<FeedIdentity>({
@@ -105,8 +106,10 @@ export default function FeedScreen() {
         <ScreenHeader
           accessory={
             <ProfileMenuButton
+              authenticated={isSignedIn}
               avatarUrl={menuIdentity.avatarUrl}
               label={menuIdentity.label}
+              onLogin={() => router.push('/(auth)/login')}
               onProfile={() => router.push('/profile')}
               onSettings={() => router.push('/settings')}
               onSignOut={() => void handleSignOut()}
@@ -122,7 +125,7 @@ export default function FeedScreen() {
         {actionError ? <EmptyState title={actionError} /> : null}
       </View>
     ),
-    [actionError, menuIdentity, router, signOutLoading, userId],
+    [actionError, isSignedIn, menuIdentity, router, signOutLoading, userId],
   );
 
   if (authLoading || loading) {
@@ -157,12 +160,16 @@ export default function FeedScreen() {
         ListEmptyComponent={
           data?.requiresAuth ? (
             <View style={styles.emptyWrap}>
-              <EmptyState title="Feed is private" description="Sign in to view your activity." />
-              {isAvailable ? (
-                <ActionBar
-                  primary={<PrimaryButton label="Sign in" onPress={() => router.push('/(auth)/login')} />}
-                  secondary={<SecondaryButton label="Events" onPress={() => router.push('/events')} />}
+              <View style={styles.emptyStateCard}>
+                <EmptyState
+                  title="Your activity feed is private"
+                  description="Sign in to see your runs, results, and event activity."
                 />
+              </View>
+              {isAvailable ? (
+                <View style={styles.emptyStateActions}>
+                  <ActionBar primary={<PrimaryButton label="Sign in" onPress={() => router.push('/(auth)/login')} />} />
+                </View>
               ) : null}
             </View>
           ) : (
@@ -333,6 +340,18 @@ const styles = StyleSheet.create({
     height: spacing.sm,
   },
   emptyWrap: {
-    gap: spacing.sm,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    paddingTop: spacing.xl,
+  },
+  emptyStateCard: {
+    width: '100%',
+    maxWidth: 360,
+  },
+  emptyStateActions: {
+    width: '100%',
+    maxWidth: 360,
   },
 });

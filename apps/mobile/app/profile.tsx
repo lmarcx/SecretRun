@@ -13,7 +13,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { StatCard } from '@/components/ui/StatCard';
 import { useBottomContentPadding } from '@/hooks/useBottomContentPadding';
-import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import { useAuth } from '@/hooks/useAuth';
 import {
   buildBetaIssueMailto,
   formatBetaTimestamp,
@@ -21,7 +21,6 @@ import {
   getBetaBuildLabel,
   useBetaDiagnostics,
 } from '@/services/betaDiagnostics';
-import { DEV_MODE_LABEL, getDevModeMessage } from '@/services/devRunnerMode';
 import { fetchLeaderboard } from '@/services/leaderboardService';
 import { nhost } from '@/services/nhostClient';
 import {
@@ -264,12 +263,37 @@ export default function ProfileScreen() {
     () => getNotificationAction(notificationState, notificationsLoading, notificationsSubmitting, handleEnableNotifications),
     [notificationState, notificationsLoading, notificationsSubmitting],
   );
+  const guestGuardActive = !authLoading && !loading && !userId;
+
+  useEffect(() => {
+    if (guestGuardActive && isAvailable) {
+      router.replace('/(auth)/login');
+    }
+  }, [guestGuardActive, isAvailable, router]);
 
   if (authLoading || loading) {
     return (
       <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
         <ActivityIndicator color={colors.accent} size="large" />
         <Text style={styles.info}>Loading profile...</Text>
+      </AppScreen>
+    );
+  }
+
+  if (guestGuardActive) {
+    return (
+      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
+        {isAvailable ? (
+          <>
+            <ActivityIndicator color={colors.accent} size="large" />
+            <Text style={styles.info}>Opening login...</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.title}>Profile</Text>
+            <EmptyState title="Profile requires sign in" description={disabledMessage ?? 'Sign-in is not connected right now.'} />
+          </>
+        )}
       </AppScreen>
     );
   }
@@ -286,35 +310,10 @@ export default function ProfileScreen() {
 
   return (
     <AppScreen contentContainerStyle={[styles.content, { paddingBottom: bottomContentPadding }]}>
-      <ScreenHeader title="Profile" subtitle={getProfileSubtitle(betaAccessState, Boolean(profile))} />
+      <ScreenHeader title="Profile" subtitle={getProfileSubtitle(Boolean(profile))} />
       {actionError ? <EmptyState title={actionError} /> : null}
 
-      {!userId ? (
-        <>
-          <GuestIdentityCard betaAccessState={betaAccessState} disabledMessage={disabledMessage} />
-
-          <View style={styles.section}>
-            <SectionHeader title="Access" subtitle="Account actions" />
-            <View style={styles.actionList}>
-              <ActionRow title="Browse events" subtitle="Upcoming drops and start windows" value="Open" onPress={() => router.push('/events')} />
-              <ActionRow
-                title="Open leaderboard"
-                subtitle="Season ranking and team standing"
-                value="Open"
-                onPress={() => router.push('/leaderboard')}
-              />
-            </View>
-            {isAvailable ? (
-              <ActionBar
-                primary={<PrimaryButton label="Sign in" onPress={() => router.push('/(auth)/login')} />}
-                secondary={<SecondaryButton label="Create" onPress={() => router.push('/(auth)/register')} />}
-              />
-            ) : null}
-          </View>
-
-          <SupportSection diagnostics={diagnostics} onReportIssue={handleReportIssue} />
-        </>
-      ) : !profile ? (
+      {!profile ? (
         <>
           <SectionCard tone="accent">
             <View style={styles.identityRow}>
@@ -454,29 +453,6 @@ export default function ProfileScreen() {
   );
 }
 
-function GuestIdentityCard({
-  betaAccessState,
-  disabledMessage,
-}: {
-  betaAccessState: BetaAccessState;
-  disabledMessage: string | null | undefined;
-}) {
-  const copy = getGuestProfileCopy(betaAccessState, disabledMessage);
-
-  return (
-    <SectionCard tone="muted">
-      <View style={styles.identityRow}>
-        <ProfileAvatar label={copy.avatarLabel} />
-        <View style={styles.identityCopy}>
-          <Text style={styles.identityName}>{copy.title}</Text>
-          <Text style={styles.identitySecondary}>{copy.description}</Text>
-        </View>
-      </View>
-      {betaAccessState === 'dev_runner' ? <Text style={styles.quietNote}>{DEV_MODE_LABEL}: {getDevModeMessage('profile')}</Text> : null}
-    </SectionCard>
-  );
-}
-
 function SupportSection({
   diagnostics,
   onReportIssue,
@@ -610,37 +586,8 @@ function getNotificationAction(
   }
 }
 
-function getProfileSubtitle(betaAccessState: BetaAccessState, hasProfile: boolean) {
-  if (betaAccessState === 'signed_out') {
-    return 'Beta identity and account tools.';
-  }
-
+function getProfileSubtitle(hasProfile: boolean) {
   return hasProfile ? 'Personal identity, season snapshot, and support.' : 'Finish your runner identity.';
-}
-
-function getGuestProfileCopy(betaAccessState: BetaAccessState, disabledMessage: string | null | undefined) {
-  switch (betaAccessState) {
-    case 'dev_runner':
-      return {
-        avatarLabel: 'D',
-        title: 'DEV runner',
-        description: 'Local events and runs stay active. Sign in when you need synced profile access.',
-      };
-    case 'auth_unavailable':
-      return {
-        avatarLabel: 'G',
-        title: 'Guest mode',
-        description: disabledMessage ?? 'Sign-in is not connected in this environment yet.',
-      };
-    case 'signed_out':
-    case 'loading':
-    default:
-      return {
-        avatarLabel: 'G',
-        title: 'Guest mode',
-        description: 'Sign in to unlock your profile, feed, team identity, and supported notifications.',
-      };
-  }
 }
 
 function sanitizeUsername(value: string): string {

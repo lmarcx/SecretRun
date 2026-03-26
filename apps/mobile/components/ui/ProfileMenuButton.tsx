@@ -5,19 +5,23 @@ import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens
 import { LeaderboardAvatar } from './LeaderboardAvatar';
 
 interface ProfileMenuButtonProps {
+  authenticated: boolean;
   avatarUrl?: string | null | undefined;
   label: string;
   secondaryLabel?: string | undefined;
   signOutDisabled?: boolean | undefined;
   signOutLabel?: string | undefined;
+  onLogin: () => void;
   onProfile: () => void;
   onSettings: () => void;
   onSignOut: () => void;
 }
 
 export function ProfileMenuButton({
+  authenticated,
   avatarUrl,
   label,
+  onLogin,
   onProfile,
   onSettings,
   onSignOut,
@@ -59,9 +63,15 @@ export function ProfileMenuButton({
                 </View>
               </View>
 
-              <MenuItem label="Profile" onPress={() => handlePress(onProfile)} />
-              <MenuItem label="Settings" onPress={() => handlePress(onSettings)} />
-              <MenuItem danger disabled={signOutDisabled} label={signOutLabel} onPress={() => handlePress(onSignOut)} />
+              {authenticated ? (
+                <>
+                  <MenuItem label="Profile" onPress={() => handlePress(onProfile)} />
+                  <MenuItem label="Settings" onPress={() => handlePress(onSettings)} />
+                  <MenuItem danger disabled={signOutDisabled} label={signOutLabel} onPress={() => handlePress(onSignOut)} />
+                </>
+              ) : (
+                <MenuItem label="Login" onPress={() => handlePress(onLogin)} />
+              )}
             </View>
           </View>
         </View>
