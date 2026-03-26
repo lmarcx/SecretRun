@@ -2,22 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { ActionBar } from '@/components/ui/ActionBar';
+import { ActivityCard, type ActivityCardStat } from '@/components/ui/ActivityCard';
 import { AppScreen } from '@/components/ui/AppScreen';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { LeaderboardAvatar } from '@/components/ui/LeaderboardAvatar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ProfileMenuButton } from '@/components/ui/ProfileMenuButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { SecondaryButton } from '@/components/ui/SecondaryButton';
-import { SectionCard } from '@/components/ui/SectionCard';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useBottomContentPadding } from '@/hooks/useBottomContentPadding';
-import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import { useAuth } from '@/hooks/useAuth';
 import type { FeedActivityItem, FeedData } from '@/services/feedService';
 import { fetchFeed, getFeedErrorMessage } from '@/services/feedService';
 import { nhost } from '@/services/nhostClient';
 import { fetchCurrentProfile } from '@/services/profileService';
-import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens';
+import { colors, spacing, typography } from '@/theme/tokens';
 
 interface FeedIdentity {
   label: string;
@@ -27,14 +25,14 @@ interface FeedIdentity {
 
 export default function FeedScreen() {
   const router = useRouter();
-  const { betaAccessState, isAvailable, loading: authLoading, signOut } = useAuth();
+  const { isAvailable, loading: authLoading, signOut } = useAuth();
   const currentUser = nhost.auth.getUser();
   const userId = currentUser?.id ?? null;
   const bottomContentPadding = useBottomContentPadding();
   const [data, setData] = useState<FeedData | null>(null);
   const [menuIdentity, setMenuIdentity] = useState<FeedIdentity>({
     label: 'Guest',
-    secondaryLabel: 'Browse only',
+    secondaryLabel: 'Private feed',
     avatarUrl: null,
   });
   const [loading, setLoading] = useState(true);
@@ -65,7 +63,7 @@ export default function FeedScreen() {
 
       const fallbackLabel =
         currentUser?.displayName?.trim() || currentUser?.email?.split('@')[0] || (userId ? 'Runner' : 'Guest');
-      const fallbackSecondary = userId ? currentUser?.email ?? 'Beta account' : 'Browse only';
+      const fallbackSecondary = userId ? currentUser?.email ?? 'Beta account' : 'Private feed';
       const currentProfile = profileResult.status === 'fulfilled' ? profileResult.value : null;
 
       setMenuIdentity({
@@ -118,28 +116,13 @@ export default function FeedScreen() {
             />
           }
           title="Feed"
-          subtitle={getFeedSubtitle(data?.requiresAuth ?? !userId)}
+          subtitle="Private activity and result updates."
         />
 
         {actionError ? <EmptyState title={actionError} /> : null}
-
-        {data?.message ? (
-          <SectionCard tone="muted">
-            <Text style={styles.supportText}>{data.message}</Text>
-          </SectionCard>
-        ) : null}
-
-        {data?.requiresAuth ? (
-          <SectionCard tone="accent" title="Private feed" subtitle={getFeedLockedMessage(betaAccessState, isAvailable)}>
-            <ActionBar
-              primary={isAvailable ? <PrimaryButton label="Sign in" onPress={() => router.push('/(auth)/login')} /> : undefined}
-              secondary={<SecondaryButton label="Events" onPress={() => router.push('/events')} />}
-            />
-          </SectionCard>
-        ) : null}
       </View>
     ),
-    [actionError, betaAccessState, data?.message, data?.requiresAuth, isAvailable, menuIdentity, router, signOutLoading, userId],
+    [actionError, menuIdentity, router, signOutLoading, userId],
   );
 
   if (authLoading || loading) {
@@ -172,132 +155,112 @@ export default function FeedScreen() {
         ListHeaderComponent={listHeader}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
-          <EmptyState
-            title={data?.requiresAuth ? 'Feed locked' : 'No activity yet'}
-            description={
-              data?.requiresAuth
-                ? getFeedLockedMessage(betaAccessState, isAvailable)
-                : 'Validated runs, review updates, and result drops land here.'
-            }
-          />
+          data?.requiresAuth ? (
+            <View style={styles.emptyWrap}>
+              <EmptyState title="Feed is private" description="Sign in to view your activity." />
+              {isAvailable ? (
+                <ActionBar
+                  primary={<PrimaryButton label="Sign in" onPress={() => router.push('/(auth)/login')} />}
+                  secondary={<SecondaryButton label="Events" onPress={() => router.push('/events')} />}
+                />
+              ) : null}
+            </View>
+          ) : (
+            <EmptyState title="No activity yet" description="Your runs and results will appear here." />
+          )
         }
-        renderItem={({ item }) => <FeedCard item={item} />}
+        renderItem={({ item }) => (
+          <ActivityCard
+            actionLabel={getItemActionLabel(item)}
+            actionLine={getActionLine(item)}
+            avatarUrl={item.profile?.avatarUrl ?? null}
+            onAction={getItemAction(item, router)}
+            stats={getStats(item)}
+            supportLine={getSupportLine(item)}
+            timestamp={formatTimestamp(item.createdAt)}
+            username={item.profile?.username ?? item.profile?.displayName ?? 'runner'}
+          />
+        )}
       />
     </AppScreen>
   );
 }
 
-function FeedCard({ item }: { item: FeedActivityItem }) {
-  const name = item.profile?.displayName ?? item.profile?.username ?? 'Runner';
-  const handle = item.profile?.username ? `@${item.profile.username}` : 'Secret Run';
-  const badge = getStatusBadge(item.status);
-  const eventLabel = item.event?.title ?? 'Secret Run activity';
+function getActionLine(item: FeedActivityItem) {
+  const eventTitle = item.event?.title ?? 'Secret Run';
 
-  return (
-    <SectionCard accessory={<StatusBadge compact label={badge.label} tone={badge.tone} />}>
-      <View style={styles.cardHeader}>
-        <View style={styles.identity}>
-          <LeaderboardAvatar avatarUrl={item.profile?.avatarUrl} label={name} size="sm" />
-          <View style={styles.identityCopy}>
-            <Text numberOfLines={1} style={styles.cardTitle}>
-              {name}
-            </Text>
-            <Text numberOfLines={1} style={styles.cardSubtitle}>
-              {handle}
-            </Text>
-          </View>
-        </View>
-        <Text style={styles.cardDate}>{formatDateTime(item.createdAt)}</Text>
-      </View>
-
-      <View style={styles.activityBlock}>
-        <Text style={styles.activityLine}>{getActivityHeadline(item.status)}</Text>
-        <Text numberOfLines={1} style={styles.activityMeta}>
-          {eventLabel}
-        </Text>
-      </View>
-
-      <View style={styles.metaRow}>
-        <Metric label="Distance" value={`${item.distanceKm.toFixed(2)} km`} />
-        <Metric label="Duration" value={formatDuration(item.durationSeconds)} />
-        <Metric label="Points" value={`${item.points}`} />
-      </View>
-
-      <Text style={styles.supportText}>{getActivitySupportLine(item)}</Text>
-    </SectionCard>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text numberOfLines={1} style={styles.metricValue}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function getFeedSubtitle(requiresAuth: boolean) {
-  return requiresAuth ? 'Private activity and result updates.' : 'Run updates, review state, and results.';
-}
-
-function getFeedLockedMessage(betaAccessState: BetaAccessState, isAvailable: boolean) {
-  if (betaAccessState === 'dev_runner') {
-    return 'Local run testing stays open, but this feed still needs a signed-in beta account.';
-  }
-
-  if (!isAvailable || betaAccessState === 'auth_unavailable') {
-    return 'This environment is still guest-only, so the private feed stays locked.';
-  }
-
-  return 'Sign in to unlock your personal run activity and result updates.';
-}
-
-function getActivityHeadline(status: string) {
-  switch (status) {
-    case 'validated':
-      return 'Result available';
-    case 'rejected':
-      return 'Run reviewed';
-    case 'pending':
+  switch (item.type) {
+    case 'joined_event':
+      return `Joined ${eventTitle}`;
+    case 'result_available':
+      return `Result available for ${eventTitle}`;
+    case 'completed_run':
     default:
-      return 'Completed run';
+      return `Completed ${eventTitle}`;
   }
 }
 
-function getActivitySupportLine(item: FeedActivityItem) {
-  switch (item.status) {
-    case 'validated':
-      return `Leaderboard updated with ${item.points} points.`;
-    case 'rejected':
-      return 'This run did not pass review.';
-    case 'pending':
+function getSupportLine(item: FeedActivityItem) {
+  if (item.type === 'result_available') {
+    if (item.status === 'rejected') {
+      return 'Review finished. This run did not score.';
+    }
+
+    return `Season score updated with ${item.points ?? 0} points.`;
+  }
+
+  if (item.type === 'completed_run') {
+    return 'Run submitted for review.';
+  }
+
+  return undefined;
+}
+
+function getStats(item: FeedActivityItem): ActivityCardStat[] | undefined {
+  if (item.type === 'joined_event') {
+    return undefined;
+  }
+
+  const stats: ActivityCardStat[] = [];
+
+  if (item.durationSeconds != null) {
+    stats.push({ label: 'Time', value: formatDuration(item.durationSeconds), tone: 'accent' });
+  }
+
+  if (item.distanceKm != null) {
+    stats.push({ label: 'Dist', value: `${item.distanceKm.toFixed(2)} km`, tone: 'info' });
+  }
+
+  if (item.avgSpeedKmh != null) {
+    stats.push({ label: 'Speed', value: `${item.avgSpeedKmh.toFixed(1)} km/h`, tone: 'success' });
+  }
+
+  return stats.length > 0 ? stats : undefined;
+}
+
+function getItemActionLabel(item: FeedActivityItem) {
+  switch (item.type) {
+    case 'joined_event':
+      return item.event ? 'View' : undefined;
+    case 'result_available':
+      return 'Open result';
+    case 'completed_run':
     default:
-      return 'Leaderboard update pending review.';
+      return item.event ? 'Open run' : undefined;
   }
 }
 
-function getStatusBadge(status: string) {
-  switch (status) {
-    case 'validated':
-      return {
-        label: 'Scored',
-        tone: 'success' as const,
-      };
-    case 'rejected':
-      return {
-        label: 'Rejected',
-        tone: 'danger' as const,
-      };
-    case 'pending':
-    default:
-      return {
-        label: 'Review',
-        tone: 'warning' as const,
-      };
+function getItemAction(item: FeedActivityItem, router: ReturnType<typeof useRouter>) {
+  if (item.type === 'result_available') {
+    return () => router.push('/leaderboard');
   }
+
+  const eventId = item.event?.id ?? null;
+  if (eventId) {
+    return () => router.push({ pathname: '/events/[id]', params: { id: eventId } });
+  }
+
+  return undefined;
 }
 
 function formatDuration(durationSeconds: number) {
@@ -312,7 +275,7 @@ function formatDuration(durationSeconds: number) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-function formatDateTime(value: string) {
+function formatTimestamp(value: string) {
   return new Date(value).toLocaleString([], {
     month: 'short',
     day: 'numeric',
@@ -369,68 +332,7 @@ const styles = StyleSheet.create({
   separator: {
     height: spacing.sm,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  emptyWrap: {
     gap: spacing.sm,
-  },
-  identity: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  identityCopy: {
-    flex: 1,
-    gap: spacing.xxs,
-  },
-  cardTitle: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  cardSubtitle: {
-    ...typography.bodySm,
-    color: colors.textMuted,
-  },
-  cardDate: {
-    ...typography.bodySm,
-    color: colors.textMuted,
-  },
-  activityBlock: {
-    gap: spacing.xxs,
-  },
-  activityLine: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-  },
-  activityMeta: {
-    ...typography.bodySm,
-    color: colors.textSecondary,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    borderRadius: radius.sm,
-    borderWidth: borderWidth.regular,
-    borderColor: colors.border,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  metric: {
-    flex: 1,
-    gap: spacing.xxs,
-  },
-  metricLabel: {
-    ...typography.eyebrow,
-    color: colors.textMuted,
-  },
-  metricValue: {
-    ...typography.bodySm,
-    color: colors.textPrimary,
-  },
-  supportText: {
-    ...typography.bodySm,
-    color: colors.textMuted,
   },
 });
