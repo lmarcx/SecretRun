@@ -1,37 +1,40 @@
 import { useState } from 'react';
-import { Redirect, useRouter } from 'expo-router';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Redirect, Stack, useRouter } from 'expo-router';
+import { Text } from 'react-native';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { SecondaryButton } from '@/components/ui/SecondaryButton';
+import {
+  AuthDivider,
+  AuthField,
+  AuthNotice,
+  AuthScreenLayout,
+} from '@/components/ui/AuthScreenLayout';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { getAuthErrorMessage, useAuth, type BetaAccessState } from '@/hooks/useAuth';
-import { createCurrentProfile, getProfileErrorMessage } from '@/services/profileService';
+import { colors, typography } from '@/theme/tokens';
+
+type FocusedField = 'username' | 'email' | 'password' | null;
 
 export default function RegisterScreen() {
   const router = useRouter();
   const { isAuthenticated, isAvailable, disabledMessage, signUp, loading, betaAccessState } = useAuth();
   const [username, setUsername] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [accountReady, setAccountReady] = useState(false);
+  const [focusedField, setFocusedField] = useState<FocusedField>(null);
 
-  if (isAuthenticated && !accountReady) {
+  if (isAuthenticated) {
     return <Redirect href="/events" />;
   }
 
   const handleRegister = async () => {
     const normalizedUsername = username.trim().toLowerCase();
     const normalizedEmail = email.trim().toLowerCase();
-    const trimmedDisplayName = displayName.trim();
 
     if (!normalizedUsername.match(/^[a-z0-9_]{3,20}$/)) {
       setError('Username must be 3-20 characters and use only letters, numbers, or underscores.');
-      return;
-    }
-
-    if (trimmedDisplayName.length < 2) {
-      setError('Display name must be at least 2 characters.');
       return;
     }
 
@@ -54,270 +57,127 @@ export default function RegisterScreen() {
     setSuccess(null);
 
     try {
-      if (!isAuthenticated) {
-        const response = await signUp(normalizedEmail, password);
+      const response = await signUp(normalizedEmail, password);
 
-        if (response.needsEmailVerification) {
-          setAccountReady(false);
-          setSuccess('Account created. Verify your email, then sign in.');
-          return;
-        }
-
-        setAccountReady(true);
-      }
-
-      try {
-        await createCurrentProfile({
-          username: normalizedUsername,
-          displayName: trimmedDisplayName,
-        });
-      } catch (profileError) {
-        setAccountReady(true);
-        setError(
-          `${getProfileErrorMessage(profileError)} Update the profile fields below and try again to finish beta setup.`,
-        );
+      if (response.needsEmailVerification) {
+        setSuccess('Account created. Verify your email, then sign in.');
         return;
       }
 
-      router.replace('/events');
+      router.replace({ pathname: '/profile', params: { username: normalizedUsername } });
     } catch (err) {
-      setAccountReady(false);
       setError(getAuthErrorMessage(err));
     }
   };
 
-  const accessStateCopy = getRegisterAccessStateCopy(betaAccessState, disabledMessage);
+  const devModeCopy = getDeviceStateCopy(betaAccessState, disabledMessage);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
-        <View style={styles.container}>
-          <View style={styles.hero}>
-            <Text style={styles.title}>Create account</Text>
-            <Text style={styles.subtitle}>
-              Beta accounts are the preferred path for profile sync, private feed access, team details, and supported notifications.
-            </Text>
-          </View>
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <AuthScreenLayout
+        cardSubtitle="Create your beta account to continue."
+        cardTitle="Create your account"
+        onBack={() => router.back()}
+        subtitle="Set your sign-in now. Runner profile details can wait."
+        support={
+          devModeCopy ? (
+            <SectionCard tone="muted">
+              <Text style={styles.supportTitle}>{devModeCopy.title}</Text>
+              <Text style={styles.supportDescription}>{devModeCopy.description}</Text>
+            </SectionCard>
+          ) : null
+        }
+        title="Create account"
+      >
+        <AuthField
+          autoCapitalize="none"
+          autoCorrect={false}
+          focused={focusedField === 'username'}
+          label="Username"
+          onBlur={() => setFocusedField((value) => (value === 'username' ? null : value))}
+          onChangeText={setUsername}
+          onFocus={() => setFocusedField('username')}
+          placeholder="runner_name"
+          value={username}
+        />
 
-          <View style={styles.stateCard}>
-            <Text style={styles.stateLabel}>Current device state</Text>
-            <Text style={styles.stateTitle}>{accessStateCopy.title}</Text>
-            <Text style={styles.note}>{accessStateCopy.description}</Text>
-            {accountReady && isAuthenticated ? (
-              <Text style={styles.success}>Your account is signed in on this device. Finish the runner profile below.</Text>
-            ) : null}
-          </View>
+        <AuthField
+          autoCapitalize="none"
+          autoComplete="email"
+          autoCorrect={false}
+          focused={focusedField === 'email'}
+          keyboardType="email-address"
+          label="Email"
+          onBlur={() => setFocusedField((value) => (value === 'email' ? null : value))}
+          onChangeText={setEmail}
+          onFocus={() => setFocusedField('email')}
+          placeholder="runner@example.com"
+          textContentType="emailAddress"
+          value={email}
+        />
 
-          <View style={styles.form}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Username</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                onChangeText={setUsername}
-                placeholder="runner_name"
-                style={styles.input}
-                value={username}
-              />
-            </View>
+        <AuthField
+          autoCapitalize="none"
+          autoComplete="password"
+          autoCorrect={false}
+          focused={focusedField === 'password'}
+          label="Password"
+          onBlur={() => setFocusedField((value) => (value === 'password' ? null : value))}
+          onChangeText={setPassword}
+          onFocus={() => setFocusedField('password')}
+          onSubmitEditing={() => void handleRegister()}
+          placeholder="At least 8 characters"
+          secureTextEntry
+          textContentType="newPassword"
+          value={password}
+        />
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Display name</Text>
-              <TextInput onChangeText={setDisplayName} placeholder="Runner Name" style={styles.input} value={displayName} />
-            </View>
+        {!isAvailable ? <AuthNotice description={disabledMessage ?? 'Sign-in is not connected in this environment yet.'} tone="muted" /> : null}
+        {error ? <AuthNotice description={error} tone="danger" /> : null}
+        {success ? <AuthNotice description={success} tone="success" /> : null}
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                onChangeText={setEmail}
-                placeholder="runner@example.com"
-                style={styles.input}
-                value={email}
-              />
-            </View>
+        <PrimaryButton
+          disabled={loading || !isAvailable}
+          label={loading ? 'Creating account...' : 'Create account'}
+          onPress={() => void handleRegister()}
+        />
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                onChangeText={setPassword}
-                placeholder="At least 8 characters"
-                secureTextEntry
-                style={styles.input}
-                value={password}
-              />
-            </View>
+        <AuthDivider />
 
-            {!isAvailable ? <Text style={styles.warning}>{disabledMessage}</Text> : null}
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            {success ? <Text style={styles.success}>{success}</Text> : null}
-
-            <Pressable
-              style={[styles.button, (!isAvailable || loading) && styles.buttonDisabled]}
-              onPress={handleRegister}
-              disabled={loading || !isAvailable}
-            >
-              <Text style={styles.buttonText}>{isAvailable ? (loading ? 'Creating account...' : 'Create account') : 'Registration unavailable'}</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.footer}>
-            <Pressable style={styles.secondaryButton} onPress={() => router.replace('/events')}>
-              <Text style={styles.secondaryButtonText}>Browse as guest</Text>
-            </Pressable>
-            <Pressable onPress={() => router.replace('/(auth)/login')}>
-              <Text style={styles.link}>Sign in</Text>
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        <SecondaryButton label="Sign in" onPress={() => router.replace('/(auth)/login')} />
+      </AuthScreenLayout>
+    </>
   );
 }
 
-function getRegisterAccessStateCopy(betaAccessState: BetaAccessState, disabledMessage: string | null | undefined) {
+function getDeviceStateCopy(betaAccessState: BetaAccessState, disabledMessage: string | null | undefined) {
   switch (betaAccessState) {
     case 'dev_runner':
       return {
-        title: 'DEV runner stays local only',
-        description:
-          'DEV runner can still test event and run flows on this device, but it does not create a synced beta profile.',
+        title: 'DEV runner stays local',
+        description: 'Local event testing still works here. Create an account when you need synced access.',
       };
     case 'auth_unavailable':
       return {
-        title: 'Account setup not ready here',
-        description: disabledMessage ?? 'This local environment is still guest-only right now.',
+        title: 'Auth unavailable',
+        description: disabledMessage ?? 'This environment is still guest-only right now.',
       };
     case 'signed_out':
     case 'loading':
+    case 'signed_in':
     default:
-      return {
-        title: 'Create your beta path',
-        description: 'This creates your sign-in first, then your runner profile for the closed beta.',
-      };
+      return null;
   }
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
+const styles = {
+  supportTitle: {
+    ...typography.eyebrow,
+    color: colors.textMuted,
   },
-  keyboard: {
-    flex: 1,
+  supportDescription: {
+    ...typography.bodySm,
+    color: colors.textSecondary,
   },
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 24,
-    gap: 24,
-  },
-  hero: {
-    gap: 10,
-  },
-  stateCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    padding: 16,
-    gap: 6,
-  },
-  form: {
-    gap: 16,
-  },
-  field: {
-    gap: 8,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#334155',
-  },
-  note: {
-    fontSize: 14,
-    color: '#475569',
-    lineHeight: 20,
-  },
-  stateLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-    textTransform: 'uppercase',
-  },
-  stateTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-    textTransform: 'uppercase',
-  },
-  input: {
-    minHeight: 52,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 16,
-    color: '#0f172a',
-  },
-  button: {
-    backgroundColor: '#0f172a',
-    minHeight: 52,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonDisabled: {
-    backgroundColor: '#94a3b8',
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  error: {
-    color: '#b91c1c',
-    fontWeight: '600',
-  },
-  success: {
-    color: '#166534',
-    fontWeight: '600',
-  },
-  warning: {
-    color: '#7c2d12',
-    fontWeight: '600',
-  },
-  footer: {
-    gap: 12,
-  },
-  link: {
-    color: '#2563eb',
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  secondaryButton: {
-    minHeight: 52,
-    borderRadius: 12,
-    backgroundColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryButtonText: {
-    color: '#0f172a',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-});
+};
