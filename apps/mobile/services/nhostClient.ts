@@ -1,105 +1,94 @@
 import { NhostClient } from '@nhost/react';
 import { debugAuth } from './authDebug';
 
-const subdomain = process.env.EXPO_PUBLIC_NHOST_SUBDOMAIN;
-const region = process.env.EXPO_PUBLIC_NHOST_REGION;
-const configuredBaseUrl = process.env.EXPO_PUBLIC_NHOST_BASE_URL;
-const configuredGraphqlUrl = process.env.EXPO_PUBLIC_HASURA_GRAPHQL_URL;
-const fallbackSubdomain = 'local';
-const hasExplicitBaseUrl = Boolean(configuredBaseUrl && configuredBaseUrl.length > 0);
+type NhostService = 'auth' | 'functions' | 'graphql' | 'storage';
 
-const normalizeBaseUrl = (url: string): string => url.replace(/\/+$/, '');
-
-const deriveBaseUrlFromSubdomainRegion = (valueSubdomain: string, valueRegion?: string): string => {
-  if (valueSubdomain === fallbackSubdomain && !valueRegion) {
-    return 'http://localhost:1337';
-  }
-
-  if (valueSubdomain === fallbackSubdomain && valueRegion === fallbackSubdomain) {
-    return 'http://localhost:1337';
-  }
-
-  if (!valueRegion) {
-    throw new Error(`Missing Nhost region for subdomain "${valueSubdomain}".`);
-  }
-
-  return `https://${valueSubdomain}.${valueRegion}.nhost.run`;
+const normalizeEnvValue = (value: string | undefined): string | undefined => {
+  const trimmedValue = value?.trim();
+  return trimmedValue ? trimmedValue : undefined;
 };
 
-const derivedBaseUrl =
-  configuredBaseUrl && configuredBaseUrl.length > 0
-    ? normalizeBaseUrl(configuredBaseUrl)
-    : subdomain
-      ? deriveBaseUrlFromSubdomainRegion(subdomain, region)
-      : undefined;
+const normalizeUrl = (url: string | undefined): string | undefined => normalizeEnvValue(url)?.replace(/\/+$/, '');
 
-const isLocalPlaceholderAuthConfig =
-  !hasExplicitBaseUrl && (subdomain === fallbackSubdomain || !subdomain) && (!region || region === fallbackSubdomain);
+const subdomain = normalizeEnvValue(process.env.EXPO_PUBLIC_NHOST_SUBDOMAIN);
+const region = normalizeEnvValue(process.env.EXPO_PUBLIC_NHOST_REGION);
+const configuredGraphqlUrl = normalizeUrl(process.env.EXPO_PUBLIC_HASURA_GRAPHQL_URL);
+
+const buildCloudServiceBaseUrl = (service: NhostService): string | undefined => {
+  if (!subdomain || !region) {
+    return undefined;
+  }
+
+  return `https://${subdomain}.${service}.${region}.nhost.run`;
+};
+
+const buildCloudServiceUrl = (service: NhostService): string | undefined => {
+  const serviceBaseUrl = buildCloudServiceBaseUrl(service);
+  return serviceBaseUrl ? `${serviceBaseUrl}/v1` : undefined;
+};
+
+const derivedAuthUrl = buildCloudServiceUrl('auth');
+const derivedFunctionsUrl = buildCloudServiceUrl('functions');
+const derivedStorageUrl = buildCloudServiceUrl('storage');
+const derivedGraphqlUrl = buildCloudServiceUrl('graphql')
+  ? `${buildCloudServiceUrl('graphql')}/graphql`
+  : undefined;
+
+const placeholderAuthUrl = 'https://placeholder.auth.invalid/v1';
+const placeholderFunctionsUrl = 'https://placeholder.functions.invalid/v1';
+const placeholderStorageUrl = 'https://placeholder.storage.invalid/v1';
+const placeholderGraphqlUrl = 'https://placeholder.graphql.invalid/v1/graphql';
+
+const missingEnvironmentVariables = [
+  !subdomain ? 'EXPO_PUBLIC_NHOST_SUBDOMAIN' : null,
+  !region ? 'EXPO_PUBLIC_NHOST_REGION' : null,
+  !configuredGraphqlUrl ? 'EXPO_PUBLIC_HASURA_GRAPHQL_URL' : null,
+].filter((value): value is string => Boolean(value));
 
 export const nhostConfig = {
-  isConfigured: Boolean(derivedBaseUrl),
-  baseUrl: derivedBaseUrl ?? 'http://localhost:1337',
-  subdomain: subdomain ?? fallbackSubdomain,
+  isConfigured: Boolean(derivedAuthUrl),
+  subdomain: subdomain ?? null,
   region,
-  isAuthEnabled: Boolean(derivedBaseUrl) && !isLocalPlaceholderAuthConfig,
-  authDisabledMessage: !derivedBaseUrl
-    ? 'Sign-in is not connected in this environment yet.'
-    : isLocalPlaceholderAuthConfig
-      ? 'Sign-in is not connected in this local environment yet. You can keep browsing in guest mode.'
-      : null,
+  authUrl: derivedAuthUrl ?? placeholderAuthUrl,
+  functionsUrl: derivedFunctionsUrl ?? placeholderFunctionsUrl,
+  storageUrl: derivedStorageUrl ?? placeholderStorageUrl,
+  graphqlUrl: configuredGraphqlUrl ?? derivedGraphqlUrl ?? placeholderGraphqlUrl,
+  isAuthEnabled: Boolean(derivedAuthUrl),
+  authDisabledMessage: derivedAuthUrl
+    ? null
+    : `Set ${missingEnvironmentVariables.join(', ')} to enable the Nhost Cloud project in mobile.`,
 };
 
-export const getGraphqlUrl = (): string =>
-  configuredGraphqlUrl && configuredGraphqlUrl.length > 0
-    ? configuredGraphqlUrl
-    : `${nhostConfig.baseUrl}/v1/graphql`;
+export const getGraphqlUrl = (): string => nhostConfig.graphqlUrl;
+export const getAuthUrl = (): string => nhostConfig.authUrl;
+export const getFunctionsBaseUrl = (): string => nhostConfig.functionsUrl;
 
-export const getAuthUrl = (): string => `${nhostConfig.baseUrl}/v1/auth`;
-export const getFunctionsBaseUrl = (): string => `${nhostConfig.baseUrl}/v1/functions`;
-
-const createNhostClient = () => {
-  if (hasExplicitBaseUrl) {
-    return new NhostClient({
-      authUrl: getAuthUrl(),
-      functionsUrl: getFunctionsBaseUrl(),
-      graphqlUrl: getGraphqlUrl(),
-      storageUrl: `${nhostConfig.baseUrl}/v1/storage`,
-    });
-  }
-
-  if (nhostConfig.isConfigured && subdomain) {
-    if (region) {
-      return new NhostClient({
-        subdomain,
-        region,
-      });
-    }
-
-    return new NhostClient({
-      authUrl: `${nhostConfig.baseUrl}/v1/auth`,
-      functionsUrl: `${nhostConfig.baseUrl}/v1/functions`,
-      graphqlUrl: getGraphqlUrl(),
-      storageUrl: `${nhostConfig.baseUrl}/v1/storage`,
-    });
-  }
-
-  return new NhostClient({
-    subdomain: fallbackSubdomain,
+const createNhostClient = () =>
+  new NhostClient({
+    authUrl: nhostConfig.authUrl,
+    functionsUrl: nhostConfig.functionsUrl,
+    graphqlUrl: nhostConfig.graphqlUrl,
+    storageUrl: nhostConfig.storageUrl,
+    ...(subdomain ? { subdomain } : {}),
+    ...(region ? { region } : {}),
   });
-};
 
 export const nhost = createNhostClient();
 
 debugAuth('nhost.config', {
   subdomain,
   region,
-  configuredBaseUrl,
-  derivedBaseUrl,
+  configuredGraphqlUrl,
+  derivedAuthUrl,
+  derivedFunctionsUrl,
+  derivedStorageUrl,
+  derivedGraphqlUrl,
   authUrl: getAuthUrl(),
+  functionsUrl: getFunctionsBaseUrl(),
   graphqlUrl: getGraphqlUrl(),
+  storageUrl: nhostConfig.storageUrl,
   isConfigured: nhostConfig.isConfigured,
   isAuthEnabled: nhostConfig.isAuthEnabled,
   authDisabledMessage: nhostConfig.authDisabledMessage,
-  hasExplicitBaseUrl,
-  isLocalPlaceholderAuthConfig,
+  missingEnvironmentVariables,
 });

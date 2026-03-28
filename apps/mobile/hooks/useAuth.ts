@@ -167,7 +167,8 @@ export function getAuthErrorMessage(error: unknown): string {
       lowerMessage.includes('fetch failed') ||
       lowerMessage.includes('failed to fetch') ||
       lowerMessage.includes('cors') ||
-      lowerMessage.includes('local.auth.local.nhost.run')
+      lowerMessage.includes('placeholder.auth.invalid') ||
+      (lowerMessage.includes('.auth.') && lowerMessage.includes('.nhost.run'))
     ) {
       return 'Sign-in is not reachable right now. Try again in a moment or keep browsing in guest mode.';
     }

@@ -1,23 +1,35 @@
 import { GraphQLClient } from 'graphql-request';
-import { getGraphqlUrl, nhost } from './nhostClient';
+import { getGraphqlUrl, nhost, nhostConfig } from './nhostClient';
 
-const graphqlUrl = getGraphqlUrl();
-const graphqlClient = new GraphQLClient(graphqlUrl);
+let graphqlClient: GraphQLClient | null = null;
+
+function getGraphqlClient() {
+  if (!nhostConfig.isConfigured) {
+    throw new Error('Secret Run is not connected to an Nhost Cloud project yet.');
+  }
+
+  if (!graphqlClient) {
+    graphqlClient = new GraphQLClient(getGraphqlUrl());
+  }
+
+  return graphqlClient;
+}
 
 export async function requestGraphql<TData>(
   query: string,
   variables: Record<string, unknown> = {},
 ): Promise<TData> {
   const accessToken = nhost.auth.getAccessToken();
+  const client = getGraphqlClient();
 
   try {
     if (accessToken) {
-      return await graphqlClient.request<TData, Record<string, unknown>>(query, variables, {
+      return await client.request<TData, Record<string, unknown>>(query, variables, {
         Authorization: `Bearer ${accessToken}`,
       });
     }
 
-    return await graphqlClient.request<TData, Record<string, unknown>>(query, variables);
+    return await client.request<TData, Record<string, unknown>>(query, variables);
   } catch (error) {
     if (error instanceof Error) {
       const message = error.message.toLowerCase();
