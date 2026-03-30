@@ -1,7 +1,3 @@
 [hasura]
-version = "v2.48.5-ce"
 adminSecret = "nhost-admin-secret"
 webhookSecret = "nhost-webhook-secret"
-
-[functions]
-node_version = "20"
