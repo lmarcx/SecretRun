@@ -1,4 +1,4 @@
-﻿project = "secret-run"
+project = "secret-run"
 
 [hasura]
 version = "v2.44.0"
