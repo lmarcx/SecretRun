@@ -1,4 +1,4 @@
-﻿ALTER TABLE public.events
+ALTER TABLE public.events
 ADD COLUMN IF NOT EXISTS is_private boolean NOT NULL DEFAULT false,
 ADD COLUMN IF NOT EXISTS max_participants integer;
 

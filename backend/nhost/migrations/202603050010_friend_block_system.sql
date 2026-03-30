@@ -1,4 +1,4 @@
-﻿DROP TABLE IF EXISTS public.friendships CASCADE;
+DROP TABLE IF EXISTS public.friendships CASCADE;
 
 CREATE TABLE public.friendships (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

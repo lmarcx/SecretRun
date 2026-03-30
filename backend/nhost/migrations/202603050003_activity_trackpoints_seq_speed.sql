@@ -1,4 +1,4 @@
-﻿ALTER TABLE public.activity_trackpoints
+ALTER TABLE public.activity_trackpoints
 ADD COLUMN IF NOT EXISTS seq integer,
 ADD COLUMN IF NOT EXISTS speed_mps numeric(10,3);
 

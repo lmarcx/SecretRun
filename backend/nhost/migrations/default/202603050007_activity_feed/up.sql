@@ -1,4 +1,4 @@
-﻿CREATE TABLE IF NOT EXISTS public.friendships (
+CREATE TABLE IF NOT EXISTS public.friendships (
   user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   friend_user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL DEFAULT now(),

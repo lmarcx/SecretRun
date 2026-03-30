@@ -1,4 +1,4 @@
-﻿DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'notification_job_status') THEN
     CREATE TYPE public.notification_job_status AS ENUM ('pending', 'sent', 'failed');

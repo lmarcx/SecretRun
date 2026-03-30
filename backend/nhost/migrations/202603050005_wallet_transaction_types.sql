@@ -1,4 +1,4 @@
-﻿DO $$
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'wallet_transaction_type') THEN
     CREATE TYPE public.wallet_transaction_type AS ENUM (

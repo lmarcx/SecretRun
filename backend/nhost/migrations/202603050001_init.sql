@@ -1,4 +1,4 @@
-﻿-- Secret Run initial schema
+-- Secret Run initial schema
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
