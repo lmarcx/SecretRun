@@ -1,5 +1,9 @@
 -- Secret Run initial schema
 -- Cloud deploy must not create extensions here because the migration role is not superuser.
+SET ROLE postgres;
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+RESET ROLE;
 -- This schema still requires postgis (for geography) and pgcrypto (for gen_random_uuid()) to be enabled separately.
 
 CREATE TYPE public.activity_status AS ENUM ('pending', 'validated', 'rejected');
