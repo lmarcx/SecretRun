@@ -5,6 +5,3 @@ version = "v2.44.0"
 
 [functions]
 node_version = "20"
-
-[seeds]
-directory = "seeds"
