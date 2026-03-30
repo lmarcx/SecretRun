@@ -154,27 +154,3 @@ CREATE INDEX idx_event_routes_revealed ON public.event_routes (revealed, reveale
 CREATE INDEX idx_trackpoints_activity_recorded ON public.activity_trackpoints (activity_id, recorded_at);
 CREATE INDEX idx_trackpoints_point ON public.activity_trackpoints USING GIST (point);
 CREATE INDEX idx_activities_user_event ON public.activities (user_id, event_id);
-
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.event_routes ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY profiles_select_own ON public.profiles
-  FOR SELECT
-  USING (id = auth.uid());
-
-CREATE POLICY profiles_update_own ON public.profiles
-  FOR UPDATE
-  USING (id = auth.uid())
-  WITH CHECK (id = auth.uid());
-
-CREATE POLICY event_routes_select_revealed_or_participant ON public.event_routes
-  FOR SELECT
-  USING (
-    revealed = true
-    OR EXISTS (
-      SELECT 1
-      FROM public.event_participants ep
-      WHERE ep.event_id = event_routes.event_id
-      AND ep.user_id = auth.uid()
-    )
-  );
