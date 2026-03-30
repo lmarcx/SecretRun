@@ -10,7 +10,7 @@ array_relationships:
           name: event_participants
           schema: public
 select_permissions:
-  - role: anonymous
+  - role: public
     permission:
       columns:
         [

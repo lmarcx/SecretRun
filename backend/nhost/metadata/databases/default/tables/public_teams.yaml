@@ -2,7 +2,7 @@ table:
   name: teams
   schema: public
 select_permissions:
-  - role: anonymous
+  - role: public
     permission:
       columns: [id, name, created_by, created_at]
       filter: {}
