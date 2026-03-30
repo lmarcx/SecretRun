@@ -1,0 +1,63 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { createRateLimitPreHandler } from '../../lib/rate-limit';
+import { requireAuth } from '../auth/plugin';
+import { finishRun, startRun } from './service';
+
+const startRunBodySchema = z.object({
+  eventId: z.string().uuid(),
+  startedAt: z.string().datetime().optional(),
+}).strict();
+
+const finishRunBodySchema = z.object({
+  activityId: z.string().uuid(),
+  trackpoints: z
+    .array(
+      z.object({
+        lat: z.number().finite().min(-90).max(90),
+        lng: z.number().finite().min(-180).max(180),
+        timestamp: z.string().datetime(),
+        speed_kmh: z.number().finite().nullable().optional(),
+      }).strict(),
+    )
+    .max(5000)
+    .default([]),
+}).strict();
+
+export async function runsRoutes(app: FastifyInstance) {
+  app.post(
+    '/runs/start',
+    {
+      preHandler: [
+        requireAuth,
+        createRateLimitPreHandler({
+          routeId: 'runs-start',
+          maxRequests: 10,
+          windowMs: 60_000,
+        }),
+      ],
+    },
+    async (request) => {
+    const body = startRunBodySchema.parse(request.body);
+    return startRun(request.auth!.userId, body.eventId, body.startedAt);
+    },
+  );
+
+  app.post(
+    '/runs/finish',
+    {
+      preHandler: [
+        requireAuth,
+        createRateLimitPreHandler({
+          routeId: 'runs-finish',
+          maxRequests: 8,
+          windowMs: 60_000,
+        }),
+      ],
+    },
+    async (request) => {
+    const body = finishRunBodySchema.parse(request.body);
+    return finishRun(request.auth!.userId, body.activityId, body.trackpoints);
+    },
+  );
+}

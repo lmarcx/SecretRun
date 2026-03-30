@@ -1,5 +1,6 @@
 import { ClientError, gql } from 'graphql-request';
 import type { LatLng } from 'react-native-maps';
+import { requestBackendApi } from './backendApiClient';
 import { getDevJoinedEvent, markDevJoinedEvent } from './devRunnerMode';
 import { nhost } from './nhostClient';
 import { requestGraphql } from './graphqlClient';
@@ -274,18 +275,11 @@ export async function joinEvent(eventId: string): Promise<'joined' | 'already_jo
     return markDevJoinedEvent(eventId);
   }
 
-  const existingParticipation = await requestGraphql<EventParticipationQuery>(EVENT_PARTICIPATION_QUERY, {
-    eventId,
-    viewerId,
-  });
-
-  if (existingParticipation.event_participants.length > 0) {
-    return 'already_joined';
-  }
-
   try {
-    await requestGraphql<JoinEventMutation>(JOIN_EVENT_MUTATION, { eventId });
-    return 'joined';
+    const response = await requestBackendApi<{ status: 'joined' | 'already_joined' }>(`/events/${eventId}/join`, {
+      method: 'POST',
+    });
+    return response.status;
   } catch (error) {
     if (isAlreadyJoinedError(error)) {
       return 'already_joined';

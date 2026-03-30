@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: secret-run-backend-api
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @secret-run/backend-api build
+    startCommand: pnpm --filter @secret-run/backend-api start
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - backend-api/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml

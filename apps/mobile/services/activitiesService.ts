@@ -1,7 +1,8 @@
 import { ClientError } from 'graphql-request';
 import { recordActivityDiagnostic } from './betaDiagnostics';
+import { requestBackendApi } from './backendApiClient';
 import { getEffectiveRunner } from './devRunnerMode';
-import { getFunctionsBaseUrl, nhost } from './nhostClient';
+import { nhost } from './nhostClient';
 
 export interface LocalTrackpoint {
   latitude: number;
@@ -45,18 +46,10 @@ export interface TrackpointBatchResult {
 interface WorkflowResponse<TPayload> {
   success?: boolean;
   error?: string;
+  message?: string;
   activity?: TPayload;
   reason?: string | null;
   reused?: boolean;
-}
-
-interface TrackpointsWorkflowResponse {
-  success?: boolean;
-  error?: string;
-  inserted_count?: number;
-  skipped_count?: number;
-  suspicious_points?: number;
-  warning?: string | null;
 }
 
 interface WorkflowActivityPayload {
@@ -126,68 +119,15 @@ export async function startRunActivity(eventId: string, startedAt: string): Prom
 }
 
 export async function ingestTrackpoints(
-  activityId: string,
+  _activityId: string,
   trackpoints: LocalTrackpoint[],
 ): Promise<TrackpointBatchResult> {
-  if (trackpoints.length === 0) {
-    return {
-      insertedCount: 0,
-      skippedCount: 0,
-      suspiciousPoints: 0,
-      warning: null,
-    };
-  }
-
-  const accessToken = nhost.auth.getAccessToken();
-  recordActivityDiagnostic({
-    phase: 'ingesting',
-    activityId,
-    message: 'Uploading filtered trackpoints to the beta backend.',
-  });
-
-  const response = await fetch(`${getFunctionsBaseUrl()}/trackpoints`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: JSON.stringify({
-      activity_id: activityId,
-      trackpoints: trackpoints.map((point) => ({
-        lat: point.latitude,
-        lng: point.longitude,
-        timestamp: point.recordedAt,
-        speed_kmh: point.speedKmh,
-      })),
-    }),
-  });
-
-  const payload = (await response.json().catch(() => null)) as TrackpointsWorkflowResponse | null;
-  if (!response.ok || !payload?.success) {
-    recordActivityDiagnostic({
-      phase: 'sync_failed',
-      activityId,
-      message: getActivityErrorMessage(payload?.error ?? `trackpoints failed with status ${response.status}.`),
-    });
-    throw new Error(payload?.error ?? `trackpoints failed with status ${response.status}.`);
-  }
-
-  const result = {
-    insertedCount: payload.inserted_count ?? 0,
-    skippedCount: payload.skipped_count ?? 0,
-    suspiciousPoints: payload.suspicious_points ?? 0,
-    warning: payload.warning ?? null,
+  return {
+    insertedCount: trackpoints.length,
+    skippedCount: 0,
+    suspiciousPoints: 0,
+    warning: null,
   };
-
-  recordActivityDiagnostic({
-    phase: 'ingesting',
-    activityId,
-    message: 'Trackpoints uploaded for backend validation.',
-    acceptedTrackpoints: result.insertedCount,
-    rejectedTrackpoints: result.skippedCount,
-  });
-
-  return result;
 }
 
 export async function persistCompletedRun(payload: CompletedRunPayload): Promise<UploadedActivity> {
@@ -224,8 +164,14 @@ export async function persistCompletedRun(payload: CompletedRunPayload): Promise
   }
 
   try {
-    await ingestTrackpoints(activity.id, payload.trackpoints);
-    return await finishActivityWorkflow(activity.id);
+    recordActivityDiagnostic({
+      phase: 'ingesting',
+      eventId: payload.eventId,
+      activityId: activity.id,
+      message: 'Uploading filtered trackpoints to the standalone backend API.',
+    });
+
+    return await finishActivityWorkflow(activity.id, payload.trackpoints);
   } catch (error) {
     recordActivityDiagnostic({
       phase: 'sync_failed',
@@ -237,7 +183,7 @@ export async function persistCompletedRun(payload: CompletedRunPayload): Promise
   }
 }
 
-async function finishActivityWorkflow(activityId: string): Promise<UploadedActivity> {
+async function finishActivityWorkflow(activityId: string, trackpoints: LocalTrackpoint[]): Promise<UploadedActivity> {
   try {
     recordActivityDiagnostic({
       phase: 'finish_requested',
@@ -245,9 +191,26 @@ async function finishActivityWorkflow(activityId: string): Promise<UploadedActiv
       message: 'Finishing this run on the beta backend.',
     });
 
-    const response = await callActivityWorkflow('finish-activity', {
-      activity_id: activityId,
-    });
+    const response = await requestBackendApi<WorkflowResponse<WorkflowActivityPayload> & { activity?: WorkflowActivityPayload }>(
+      '/runs/finish',
+      {
+        method: 'POST',
+        body: {
+          activityId,
+          trackpoints: trackpoints.map((point) => ({
+            lat: point.latitude,
+            lng: point.longitude,
+            timestamp: point.recordedAt,
+            speed_kmh: point.speedKmh,
+          })),
+        },
+      },
+    );
+
+    if (!response.success || !response.activity) {
+      throw new Error(response.error ?? response.message ?? 'finish failed.');
+    }
+
     const activity = mapWorkflowActivity(response.activity, response.reason ?? null);
 
     recordActivityDiagnostic({
@@ -275,22 +238,22 @@ async function finishActivityWorkflow(activityId: string): Promise<UploadedActiv
 }
 
 async function callActivityWorkflow(
-  name: 'start-activity' | 'finish-activity',
-  body: Record<string, unknown>,
+  name: 'start-activity',
+  body: { event_id: string; started_at?: string },
 ): Promise<WorkflowResponse<WorkflowActivityPayload> & { activity: WorkflowActivityPayload }> {
-  const accessToken = nhost.auth.getAccessToken();
-  const response = await fetch(`${getFunctionsBaseUrl()}/${name}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  const payload = await requestBackendApi<WorkflowResponse<WorkflowActivityPayload> & { activity?: WorkflowActivityPayload }>(
+    '/runs/start',
+    {
+      method: 'POST',
+      body: {
+        eventId: body.event_id,
+        startedAt: body.started_at,
+      },
     },
-    body: JSON.stringify(body),
-  });
+  );
 
-  const payload = (await response.json().catch(() => null)) as WorkflowResponse<WorkflowActivityPayload> | null;
-  if (!response.ok || !payload?.success || !payload.activity) {
-    throw new Error(payload?.error ?? `${name} failed with status ${response.status}.`);
+  if (!payload.success || !payload.activity) {
+    throw new Error(payload.error ?? payload.message ?? `${name} failed.`);
   }
 
   return payload as WorkflowResponse<WorkflowActivityPayload> & { activity: WorkflowActivityPayload };

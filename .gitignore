@@ -1,3 +1,4 @@
 .nhost
 .secrets
 node_modules
+backend-api/dist

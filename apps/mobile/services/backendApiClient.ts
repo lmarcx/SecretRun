@@ -1,0 +1,39 @@
+import { nhost } from './nhostClient';
+
+const configuredBackendApiUrl = process.env.EXPO_PUBLIC_BACKEND_API_URL?.trim().replace(/\/+$/, '') ?? '';
+
+function getBackendApiBaseUrl(): string {
+  if (!configuredBackendApiUrl) {
+    throw new Error('Set EXPO_PUBLIC_BACKEND_API_URL to enable the standalone backend API.');
+  }
+
+  return configuredBackendApiUrl;
+}
+
+export async function requestBackendApi<TResponse>(
+  path: string,
+  init: {
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    body?: unknown;
+  } = {},
+): Promise<TResponse> {
+  const accessToken = nhost.auth.getAccessToken();
+  const response = await fetch(`${getBackendApiBaseUrl()}${path}`, {
+    method: init.method ?? 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | ({ error?: string; message?: string } & TResponse)
+    | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.message ?? payload?.error ?? `Backend API failed with status ${response.status}.`);
+  }
+
+  return (payload ?? {}) as TResponse;
+}
