@@ -53,8 +53,10 @@ interface WorkflowResponse<TPayload> {
 interface TrackpointsWorkflowResponse {
   success?: boolean;
   error?: string;
-  accepted?: number;
-  rejected?: number;
+  inserted_count?: number;
+  skipped_count?: number;
+  suspicious_points?: number;
+  warning?: string | null;
 }
 
 interface WorkflowActivityPayload {
@@ -143,7 +145,7 @@ export async function ingestTrackpoints(
     message: 'Uploading filtered trackpoints to the beta backend.',
   });
 
-  const response = await fetch(`${getFunctionsBaseUrl()}/ingest-trackpoints`, {
+  const response = await fetch(`${getFunctionsBaseUrl()}/trackpoints`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -151,7 +153,7 @@ export async function ingestTrackpoints(
     },
     body: JSON.stringify({
       activity_id: activityId,
-      points: trackpoints.map((point) => ({
+      trackpoints: trackpoints.map((point) => ({
         lat: point.latitude,
         lng: point.longitude,
         timestamp: point.recordedAt,
@@ -171,10 +173,10 @@ export async function ingestTrackpoints(
   }
 
   const result = {
-    insertedCount: payload.accepted ?? 0,
-    skippedCount: payload.rejected ?? 0,
-    suspiciousPoints: 0,
-    warning: null,
+    insertedCount: payload.inserted_count ?? 0,
+    skippedCount: payload.skipped_count ?? 0,
+    suspiciousPoints: payload.suspicious_points ?? 0,
+    warning: payload.warning ?? null,
   };
 
   recordActivityDiagnostic({

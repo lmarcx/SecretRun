@@ -31,8 +31,8 @@ export const notificationCapabilities: NotificationCapability[] = [
   {
     key: 'route_reveal',
     label: 'Route reveal',
-    status: 'supported',
-    description: 'Route reveal alerts can reach this device once notifications are enabled.',
+    status: 'not_ready',
+    description: 'This device can be registered now, but route reveal delivery is paused in the current cloud setup.',
   },
   {
     key: 'event_start',
@@ -115,8 +115,8 @@ export async function getNotificationRegistrationState(): Promise<NotificationRe
   const state: NotificationRegistrationState = {
     kind: 'ready',
     message: permissionsGranted
-      ? 'This device is ready for route reveal alerts.'
-      : 'Notifications are off for this device. Enable them when you are ready.',
+      ? 'This device is ready to be registered for future alerts.'
+      : 'Notifications are off for this device. Enable them when you want to save this device for later alerts.',
     pushToken: null,
   };
   recordNotificationDiagnostic({ state: 'ready', message: state.message });
@@ -193,7 +193,7 @@ export async function enablePushNotifications(): Promise<NotificationRegistratio
 
     const state: NotificationRegistrationState = {
       kind: 'registered',
-      message: 'Route reveal alerts are enabled on this device.',
+      message: 'This device is registered, but alert delivery is still paused in the current cloud setup.',
       pushToken,
     };
     recordNotificationDiagnostic({ state: 'registered', message: state.message });
