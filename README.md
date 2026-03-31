@@ -61,14 +61,19 @@ EXPO_PUSH_API_URL=https://exp.host/--/api/v2/push/send
 ## Start Development
 
 1. `pnpm install`
-2. Start local development in two terminals:
+2. Copy `backend-api/.env.example` to `backend-api/.env` and point it at your local Hasura when you want the Node API in the loop.
+3. For full local mobile integration, use three processes:
    - Terminal 1: `pnpm dev:backend`
-   - Terminal 2: `pnpm dev:mobile`
+   - Terminal 2: `pnpm dev:api`
+   - Terminal 3: `pnpm dev:mobile`
+4. Or use `pnpm dev:full` to start Docker backend, backend-api, and Expo together.
 
 `pnpm dev` still starts backend and mobile together. The backend command uses `docker compose up -d` and exits once containers are started, so the root script is configured to keep Expo running after backend startup completes.
 
 Useful commands:
 - `pnpm dev:backend`
+- `pnpm dev:api`
+- `pnpm dev:full`
 - `pnpm dev:mobile`
 - `pnpm backend:stop`
 - `pnpm backend:logs`
@@ -102,7 +107,9 @@ Useful commands:
    - `EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://192.168.1.42:8080/v1/graphql`
    - `EXPO_PUBLIC_BACKEND_API_URL=http://192.168.1.42:10000`
    - `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://192.168.1.42:1337/v1/functions/trackpoints`
-4. Launch Expo (`pnpm dev:mobile`) and authenticate via Nhost Auth.
+4. Same machine web/simulator: prefer `EXPO_PUBLIC_BACKEND_API_URL=http://localhost:10000`.
+5. Real device / LAN testing: use the machine LAN IP, and keep `backend-api` bound on `HOST=0.0.0.0`.
+6. Launch Expo (`pnpm dev:mobile`) and authenticate via Nhost Auth.
 
 Mobile behavior without `EXPO_PUBLIC_BACKEND_API_URL`:
 - `events` list/detail still work through the public GraphQL fallback.

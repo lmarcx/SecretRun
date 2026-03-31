@@ -4,8 +4,10 @@
   "packageManager": "pnpm@10.6.0",
   "scripts": {
     "dev": "concurrently -n BACKEND,MOBILE \"pnpm --filter @secret-run/backend backend:start\" \"pnpm --filter @secret-run/mobile dev\"",
+    "dev:full": "concurrently -n BACKEND,API,MOBILE \"pnpm --filter @secret-run/backend backend:start\" \"pnpm --filter @secret-run/backend-api dev\" \"pnpm --filter @secret-run/mobile dev\"",
     "dev:mobile": "pnpm --filter @secret-run/mobile dev",
     "dev:backend": "pnpm --filter @secret-run/backend backend:start",
+    "dev:api": "pnpm --filter @secret-run/backend-api dev",
     "backend:stop": "pnpm --filter @secret-run/backend backend:stop",
     "backend:logs": "pnpm --filter @secret-run/backend backend:logs",
     "db:migrate": "pnpm --filter @secret-run/backend db:migrate",

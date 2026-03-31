@@ -114,13 +114,16 @@ describe('events routes guest access', () => {
         headers: {
           Origin: 'http://localhost:8081',
           'Access-Control-Request-Method': 'GET',
-          'Access-Control-Request-Headers': 'content-type',
+          'Access-Control-Request-Headers': 'content-type,authorization,accept,x-requested-with',
+          'Access-Control-Request-Private-Network': 'true',
         },
       });
 
       assert.equal(response.statusCode, 204);
       assert.equal(response.headers['access-control-allow-origin'], 'http://localhost:8081');
       assert.match(String(response.headers['access-control-allow-methods'] ?? ''), /GET/);
+      assert.match(String(response.headers['access-control-allow-headers'] ?? ''), /authorization/i);
+      assert.equal(response.headers['access-control-allow-private-network'], 'true');
     } finally {
       await app.close();
     }

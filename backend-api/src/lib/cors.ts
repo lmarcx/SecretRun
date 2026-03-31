@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { env } from '../config/env';
 
 const allowedMethods = 'GET,POST,PUT,PATCH,DELETE,OPTIONS';
-const allowedHeaders = 'Content-Type, Authorization';
+const defaultAllowedHeaders = ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'];
 const explicitOrigins = (env.CORS_ALLOWED_ORIGINS ?? '')
   .split(',')
   .map((value) => value.trim())
@@ -31,7 +31,7 @@ export function registerCors(app: FastifyInstance) {
       return;
     }
 
-    applyCorsHeaders(reply, origin);
+    applyCorsHeaders(request, reply, origin);
 
     if (request.method === 'OPTIONS') {
       return reply.code(204).send();
@@ -44,13 +44,18 @@ function getOrigin(request: FastifyRequest): string | null {
   return typeof header === 'string' && header.trim() ? header.trim() : null;
 }
 
-function applyCorsHeaders(reply: FastifyReply, origin: string) {
+function applyCorsHeaders(request: FastifyRequest, reply: FastifyReply, origin: string) {
   reply.header('Access-Control-Allow-Origin', origin);
   reply.header('Vary', 'Origin');
   reply.header('Access-Control-Allow-Credentials', 'true');
   reply.header('Access-Control-Allow-Methods', allowedMethods);
-  reply.header('Access-Control-Allow-Headers', allowedHeaders);
+  reply.header('Access-Control-Allow-Headers', getAllowedHeaders(request));
   reply.header('Access-Control-Max-Age', '86400');
+
+  const requestedPrivateNetwork = request.headers['access-control-request-private-network'];
+  if (requestedPrivateNetwork === 'true' && env.NODE_ENV !== 'production') {
+    reply.header('Access-Control-Allow-Private-Network', 'true');
+  }
 }
 
 function isAllowedOrigin(origin: string): boolean {
@@ -109,4 +114,20 @@ function isPrivateIpv4Host(hostname: string): boolean {
   }
 
   return false;
+}
+
+function getAllowedHeaders(request: FastifyRequest): string {
+  const requestedHeaders = request.headers['access-control-request-headers'];
+  const headerNames = new Set(defaultAllowedHeaders.map((value) => value.toLowerCase()));
+
+  if (typeof requestedHeaders === 'string') {
+    for (const value of requestedHeaders.split(',')) {
+      const trimmedValue = value.trim().toLowerCase();
+      if (trimmedValue) {
+        headerNames.add(trimmedValue);
+      }
+    }
+  }
+
+  return Array.from(headerNames).join(', ');
 }

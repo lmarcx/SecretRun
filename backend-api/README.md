@@ -41,8 +41,8 @@ Copier `.env.example` et renseigner:
 
 ```bash
 pnpm install
-pnpm --filter @secret-run/backend-api build
-pnpm --filter @secret-run/backend-api start
+cp .env.example .env
+pnpm --filter @secret-run/backend-api dev
 ```
 
 Notes CORS locales:
@@ -50,6 +50,9 @@ Notes CORS locales:
 - en `development` et `test`, l'API autorise automatiquement les origins web locales utiles a Expo/web: `localhost`, `127.0.0.1` et les IP LAN privees (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`)
 - les preflights `OPTIONS` sont repondus directement par l'API
 - en `production`, seules les origines listees dans `CORS_ALLOWED_ORIGINS` sont autorisees
+- le `HOST` par defaut est `0.0.0.0`, donc l'API est joignable en LAN si la machine et le firewall l'autorisent
+- web local sur la meme machine: utiliser `http://localhost:10000`
+- telephone / device reel: utiliser `http://<LAN_IP>:10000`
 
 ## Render
 
