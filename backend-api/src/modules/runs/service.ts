@@ -15,6 +15,8 @@ export interface ApiTrackpointInput {
 interface StartLocationInput {
   lat: number;
   lng: number;
+  accuracyMeters?: number;
+  timestamp?: string;
 }
 
 interface ActivityPayload {
@@ -68,6 +70,8 @@ const BASE_POINTS = 10;
 const MAX_STARTED_AT_FUTURE_SKEW_MS = 2 * 60 * 1000;
 const MAX_TRACKPOINT_FUTURE_SKEW_MS = 2 * 60 * 1000;
 const START_GRACE_MS = 15 * 1000;
+const MAX_START_GPS_ACCURACY_METERS = 80;
+const MAX_START_GPS_STARTED_AT_DELTA_MS = 15 * 1000;
 
 const GET_PARTICIPATION_AND_PENDING_QUERY = gql`
   query GetParticipationAndPending($eventId: uuid!, $userId: uuid!) {
@@ -295,6 +299,7 @@ const FINALIZE_VALIDATED_ACTIVITY_MUTATION = gql`
 
 export async function startRun(userId: string, eventId: string, startedAt?: string, startLocation?: StartLocationInput) {
   const normalizedStartedAt = normalizeStartedAt(startedAt);
+  const normalizedStartLocation = normalizeStartLocation(startLocation);
   const response = await requestHasura<{
     event_participants: Array<{ event_id: string }>;
     event: EventAccessSnapshot | null;
@@ -336,7 +341,7 @@ export async function startRun(userId: string, eventId: string, startedAt?: stri
     };
   }
 
-  assertStartLocationInZone(response.event, startLocation);
+  assertStartLocationInZone(response.event, normalizedStartedAt, normalizedStartLocation);
 
   const created = await requestHasura<{
     insert_activities_one: ActivityPayload;
@@ -631,6 +636,37 @@ function normalizeTrackpoints(trackpoints: ApiTrackpointInput[]) {
   });
 }
 
+function normalizeStartLocation(value?: StartLocationInput): StartLocationInput | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  let normalizedTimestamp: string | undefined;
+  if (value.timestamp) {
+    const timestamp = new Date(value.timestamp);
+    if (Number.isNaN(timestamp.getTime())) {
+      throw new AppError(400, 'invalid_start_location_timestamp', 'Start GPS timestamp must be a valid ISO timestamp.');
+    }
+
+    if (timestamp.getTime() > Date.now() + MAX_TRACKPOINT_FUTURE_SKEW_MS) {
+      throw new AppError(
+        400,
+        'invalid_start_location_timestamp',
+        'Start GPS timestamp cannot be meaningfully in the future.',
+      );
+    }
+
+    normalizedTimestamp = timestamp.toISOString();
+  }
+
+  return {
+    lat: value.lat,
+    lng: value.lng,
+    ...(value.accuracyMeters === undefined ? {} : { accuracyMeters: value.accuracyMeters }),
+    ...(normalizedTimestamp ? { timestamp: normalizedTimestamp } : {}),
+  };
+}
+
 function toRadians(value: number): number {
   return (value * Math.PI) / 180;
 }
@@ -819,9 +855,39 @@ function validateStartZone(event: EventAccessSnapshot, firstTrackpoint: Trackpoi
   return null;
 }
 
-function assertStartLocationInZone(event: EventAccessSnapshot, startLocation?: StartLocationInput) {
+function assertStartLocationInZone(
+  event: EventAccessSnapshot,
+  startedAt: string,
+  startLocation?: StartLocationInput,
+) {
   if (!startLocation) {
     return;
+  }
+
+  if (startLocation.accuracyMeters !== undefined && startLocation.accuracyMeters > MAX_START_GPS_ACCURACY_METERS) {
+    throw new AppError(409, 'start_gps_too_imprecise', 'Wait for a more precise GPS fix before starting this run.', {
+      accuracyMeters: Math.round(startLocation.accuracyMeters),
+      maxAllowedAccuracyMeters: MAX_START_GPS_ACCURACY_METERS,
+    });
+  }
+
+  if (startLocation.timestamp) {
+    const startedAtMs = new Date(startedAt).getTime();
+    const gpsTimestampMs = new Date(startLocation.timestamp).getTime();
+    const gpsDeltaMs = Math.abs(gpsTimestampMs - startedAtMs);
+
+    if (gpsDeltaMs > MAX_START_GPS_STARTED_AT_DELTA_MS) {
+      throw new AppError(
+        409,
+        'invalid_start_location_timestamp',
+        'Start GPS telemetry must be captured close to the run start time.',
+        {
+          startedAt,
+          timestamp: startLocation.timestamp,
+          maxAllowedDeltaMs: MAX_START_GPS_STARTED_AT_DELTA_MS,
+        },
+      );
+    }
   }
 
   const startZoneCheck = getStartZoneCheck(event, startLocation);

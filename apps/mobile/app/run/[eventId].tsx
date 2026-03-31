@@ -56,6 +56,7 @@ interface TrackpointDecision {
 const RUN_ACCESS_DENIED_MESSAGE =
   'Join this event before starting a run. Revealed routes are available only to participants.';
 const MAX_STALE_FIX_MS = 15000;
+const START_WARNING_ACCURACY_METERS = 40;
 const MAX_ACCURACY_METERS = 80;
 const MIN_DUPLICATE_DISTANCE_METERS = 2;
 const MIN_DUPLICATE_WINDOW_MS = 1500;
@@ -76,6 +77,7 @@ export default function RunScreen() {
   const [permissionState, setPermissionState] = useState<PermissionState>('loading');
   const [permissionMessage, setPermissionMessage] = useState<string | null>(null);
   const [gpsQualityMessage, setGpsQualityMessage] = useState<string | null>(null);
+  const [currentLocationSample, setCurrentLocationSample] = useState<LocationObject | null>(null);
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObjectCoords | null>(null);
   const [runPhase, setRunPhase] = useState<RunPhase>('ready');
   const [trackpoints, setTrackpoints] = useState<LocalTrackpoint[]>([]);
@@ -274,6 +276,7 @@ export default function RunScreen() {
 
         const initialLocation = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         if (active) {
+          setCurrentLocationSample(initialLocation);
           setCurrentLocation(initialLocation.coords);
         }
 
@@ -285,6 +288,7 @@ export default function RunScreen() {
         subscription = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.Balanced, timeInterval: 2000, distanceInterval: 3 },
           (location) => {
+            setCurrentLocationSample(location);
             setCurrentLocation(location.coords);
             if (runPhase === 'running') {
               appendTrackpoint(location);
@@ -332,12 +336,14 @@ export default function RunScreen() {
     currentLatLng && event?.startAreaCenter
       ? isWithinRadiusKm(currentLatLng, event.startAreaCenter, event.startAreaRadiusKm)
       : false;
+  const startGpsGuidance = getStartGpsGuidance(currentLocationSample);
   const canStart = Boolean(
     route &&
       event &&
       permissionState === 'granted' &&
       (currentLatLng || (isWeb && devRunnerActive)) &&
       (insideStartZone || devRunnerActive) &&
+      (!startGpsGuidance.blockingMessage || devRunnerActive) &&
       runPhase === 'ready',
   );
 
@@ -350,7 +356,12 @@ export default function RunScreen() {
     [distanceMeters, elapsedSeconds],
   );
 
-  function persistRunningDraft(nextTrackpoints: LocalTrackpoint[], nextDistanceMeters: number, nextStartedAt: string) {
+  function persistRunningDraft(
+    nextTrackpoints: LocalTrackpoint[],
+    nextDistanceMeters: number,
+    nextStartedAt: string,
+    nextUploadError: string | null = null,
+  ) {
     if (!resolvedEventId) {
       return;
     }
@@ -366,7 +377,7 @@ export default function RunScreen() {
       },
       result: null,
       uploadedActivity: uploadedActivityRef.current,
-      uploadError: null,
+      uploadError: nextUploadError,
     });
   }
 
@@ -412,11 +423,17 @@ export default function RunScreen() {
       return;
     }
 
-    const startLocation = currentLocation
-      ? mapLocationToTrackpoint({ coords: currentLocation, timestamp: Date.now() } as LocationObject)
+    if (startGpsGuidance.blockingMessage && !devRunnerActive) {
+      setGpsQualityMessage(startGpsGuidance.blockingMessage);
+      return;
+    }
+
+    const startLocation = currentLocationSample
+      ? mapLocationToTrackpoint(currentLocationSample)
       : createFallbackTrackpoint(route?.startPoint ?? event?.startAreaCenter ?? null);
 
     let nextUploadedActivity: UploadedActivity | null = null;
+    let nextStartUploadError: string | null = null;
 
     if (resolvedEventId) {
       setUploading(true);
@@ -428,20 +445,21 @@ export default function RunScreen() {
         nextUploadedActivity = await startRunActivity(resolvedEventId, startLocation.recordedAt, {
           latitude: startLocation.latitude,
           longitude: startLocation.longitude,
+          accuracyMeters: startLocation.accuracyMeters ?? null,
+          recordedAt: startLocation.recordedAt,
         });
       } catch (err) {
-        const nextUploadError = getActivityErrorMessage(err);
+        nextStartUploadError = getActivityErrorMessage(err);
 
         if (err instanceof ActivityUploadError && isBlockingStartSyncErrorCode(err.code)) {
-          setUploadError(nextUploadError);
-          if (err.code === 'outside_start_zone') {
-            setGpsQualityMessage(nextUploadError);
+          setUploadError(nextStartUploadError);
+          if (shouldSurfaceStartErrorAsGpsIssue(err.code)) {
+            setGpsQualityMessage(nextStartUploadError);
           }
           return;
         }
 
-        setUploadError(nextUploadError);
-        setFinishWarning('Saved locally. Retry sync.');
+        setUploadError(nextStartUploadError);
       } finally {
         setUploading(false);
       }
@@ -459,12 +477,12 @@ export default function RunScreen() {
     setStartedAt(startLocation.recordedAt);
     setElapsedSeconds(0);
     setResult(null);
-    setUploadError((current) => (nextUploadedActivity ? null : current));
+    setUploadError(nextUploadedActivity ? null : nextStartUploadError);
     setUploadedActivity(nextUploadedActivity);
     setSuspiciousWarning(null);
-    setGpsQualityMessage((current) => (nextUploadedActivity ? null : current));
-    setFinishWarning((current) => (nextUploadedActivity ? null : current));
-    persistRunningDraft([startLocation], 0, startLocation.recordedAt);
+    setGpsQualityMessage(nextUploadedActivity ? null : startGpsGuidance.warningMessage);
+    setFinishWarning(null);
+    persistRunningDraft([startLocation], 0, startLocation.recordedAt, nextUploadedActivity ? null : nextStartUploadError);
   }
 
   function handleAbandonRun() {
@@ -504,11 +522,13 @@ export default function RunScreen() {
     setFinishWarning(null);
 
     const finalPoint =
-      currentLocation === null
+      currentLocationSample === null && currentLocation === null
         ? isWeb
           ? createFallbackTrackpoint(route?.endPoint ?? route?.startPoint ?? event?.startAreaCenter ?? null)
           : null
-        : mapLocationToTrackpoint({ coords: currentLocation, timestamp: Date.now() } as LocationObject);
+        : currentLocationSample
+          ? mapLocationToTrackpoint(currentLocationSample)
+          : mapLocationToTrackpoint({ coords: currentLocation!, timestamp: Date.now() } as LocationObject);
 
     let allTrackpoints = trackpointsRef.current;
     let totalDistanceMeters = distanceMetersRef.current;
@@ -700,6 +720,7 @@ export default function RunScreen() {
     currentLatLng,
     finishWarning,
     gpsQualityMessage,
+    gpsReadyMessage: runPhase === 'ready' ? startGpsGuidance.blockingMessage ?? startGpsGuidance.warningMessage : null,
     isWeb,
     permissionMessage,
     permissionState,
@@ -937,6 +958,7 @@ function buildSystemRows({
   currentLatLng,
   finishWarning,
   gpsQualityMessage,
+  gpsReadyMessage,
   isWeb,
   permissionMessage,
   permissionState,
@@ -949,6 +971,7 @@ function buildSystemRows({
   currentLatLng: LatLng | null;
   finishWarning: string | null;
   gpsQualityMessage: string | null;
+  gpsReadyMessage: string | null;
   isWeb: boolean;
   permissionMessage: string | null;
   permissionState: PermissionState;
@@ -968,10 +991,11 @@ function buildSystemRows({
       label: 'GPS',
       value:
         gpsQualityMessage ??
+        gpsReadyMessage ??
         permissionMessage ??
         (permissionState === 'granted' ? (currentLatLng ? 'Locked' : 'Waiting for fix') : permissionState === 'loading' ? 'Requesting' : 'Location needed'),
       tone:
-        gpsQualityMessage || permissionState === 'denied' || permissionState === 'error'
+        gpsQualityMessage || gpsReadyMessage || permissionState === 'denied' || permissionState === 'error'
           ? ('warning' as const)
           : permissionState === 'granted'
             ? ('success' as const)
@@ -1053,11 +1077,53 @@ function getResultLine({
   return 'Run did not validate.';
 }
 
+function getStartGpsGuidance(location: LocationObject | null): {
+  blockingMessage: string | null;
+  warningMessage: string | null;
+} {
+  if (!location) {
+    return {
+      blockingMessage: null,
+      warningMessage: null,
+    };
+  }
+
+  const recordedAtMs = location.timestamp ?? NaN;
+  if (!Number.isNaN(recordedAtMs) && Date.now() - recordedAtMs > MAX_STALE_FIX_MS) {
+    return {
+      blockingMessage: 'Waiting for a fresher GPS fix before starting.',
+      warningMessage: null,
+    };
+  }
+
+  const accuracyMeters = location.coords.accuracy ?? null;
+  if (accuracyMeters != null && accuracyMeters > MAX_ACCURACY_METERS) {
+    return {
+      blockingMessage: `GPS too imprecise (${Math.round(accuracyMeters)} m). Wait for a better fix.`,
+      warningMessage: null,
+    };
+  }
+
+  if (accuracyMeters != null && accuracyMeters > START_WARNING_ACCURACY_METERS) {
+    return {
+      blockingMessage: null,
+      warningMessage: `GPS moderate (${Math.round(accuracyMeters)} m). Start allowed, but a better fix is safer.`,
+    };
+  }
+
+  return {
+    blockingMessage: null,
+    warningMessage: null,
+  };
+}
+
 function isBlockingStartSyncErrorCode(code: string | null): boolean {
   return Boolean(
     code &&
       [
         'outside_start_zone',
+        'start_gps_too_imprecise',
+        'invalid_start_location_timestamp',
         'participant_not_registered',
         'event_not_revealed',
         'event_not_started',
@@ -1065,6 +1131,10 @@ function isBlockingStartSyncErrorCode(code: string | null): boolean {
         'validation_error',
       ].includes(code),
   );
+}
+
+function shouldSurfaceStartErrorAsGpsIssue(code: string | null): boolean {
+  return Boolean(code && ['outside_start_zone', 'start_gps_too_imprecise', 'invalid_start_location_timestamp'].includes(code));
 }
 
 function mapLocationToTrackpoint(location: LocationObject): LocalTrackpoint {

@@ -15,6 +15,8 @@ export interface LocalTrackpoint {
 export interface StartRunLocation {
   latitude: number;
   longitude: number;
+  accuracyMeters?: number | null;
+  recordedAt?: string | null;
 }
 
 export interface CompletedRunPayload {
@@ -115,6 +117,8 @@ export async function startRunActivity(
         ? {
             lat: startLocation.latitude,
             lng: startLocation.longitude,
+            ...(startLocation.accuracyMeters == null ? {} : { accuracy_meters: startLocation.accuracyMeters }),
+            ...(startLocation.recordedAt ? { timestamp: startLocation.recordedAt } : {}),
           }
         : {}),
     });
@@ -275,7 +279,14 @@ async function finishActivityWorkflow(activityId: string, trackpoints: LocalTrac
 
 async function callActivityWorkflow(
   name: 'start-activity',
-  body: { event_id: string; started_at?: string; lat?: number; lng?: number },
+  body: {
+    event_id: string;
+    started_at?: string;
+    lat?: number;
+    lng?: number;
+    accuracy_meters?: number;
+    timestamp?: string;
+  },
 ): Promise<WorkflowResponse<WorkflowActivityPayload> & { activity: WorkflowActivityPayload }> {
   const payload = await requestBackendApi<WorkflowResponse<WorkflowActivityPayload> & { activity?: WorkflowActivityPayload }>(
     '/runs/start',
@@ -286,6 +297,8 @@ async function callActivityWorkflow(
         startedAt: body.started_at,
         lat: body.lat,
         lng: body.lng,
+        accuracy_meters: body.accuracy_meters,
+        timestamp: body.timestamp,
       },
     },
   );
@@ -306,6 +319,8 @@ function getStartLocation(trackpoints: LocalTrackpoint[]): StartRunLocation | un
   return {
     latitude: firstPoint.latitude,
     longitude: firstPoint.longitude,
+    accuracyMeters: firstPoint.accuracyMeters ?? null,
+    recordedAt: firstPoint.recordedAt,
   };
 }
 
@@ -334,6 +349,12 @@ export function getActivityErrorMessage(error: unknown): string {
         return 'This beta account is not registered for that event yet.';
       case 'outside_start_zone':
         return 'Move into the event start zone before starting this run.';
+      case 'start_gps_too_imprecise':
+        return 'GPS too imprecise. Wait for a better fix before starting.';
+      case 'invalid_start_location_timestamp':
+        return 'GPS timing looked inconsistent. Wait for a fresh fix before starting.';
+      case 'validation_error':
+        return 'The start payload was invalid. Refresh GPS and try again.';
       case 'activity_not_found':
         return 'We could not find this run on the beta backend.';
       case 'activity_owner_mismatch':
@@ -383,11 +404,11 @@ export function getActivityErrorMessage(error: unknown): string {
     }
 
     if (lowerMessage.includes('fetch failed') || lowerMessage.includes('network request failed')) {
-      return 'We could not sync this run right now. The result stays saved on this device.';
+      return 'Backend unavailable right now. This run stays local on this device.';
     }
 
     if (lowerMessage.includes('status 5') || lowerMessage.includes('failed with status 5')) {
-      return 'The beta backend is unavailable right now. Your result stays saved on this device.';
+      return 'The beta backend is unavailable right now. This run stays local on this device.';
     }
   }
 

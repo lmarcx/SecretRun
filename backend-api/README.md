@@ -78,4 +78,21 @@ Les statuts, points et vitesses persistés ne sont pas acceptes tels quels depui
 - Fenetre de join: `reveal_at <= now < starts_at`
 - Fenetre de start: `starts_at <= now <= ends_at` si `ends_at` existe
 - Fenetre de finish: meme fenetre que start, sauf qu'un retry sur une activite deja finalisee renvoie le resultat existant
-- Controle geographique MVP: la zone de depart est verifiee au `finish` sur le premier trackpoint retenu. Si `start_area_center` ou `start_area_radius_km` manque, le controle est saute.
+- Controle geographique MVP: la zone de depart est verifiee au `start` quand le client envoie `lat/lng`, puis re-verifiee au `finish` sur le premier trackpoint retenu. Si `start_area_center` ou `start_area_radius_km` manque, le controle est saute.
+
+## Payload MVP de `POST /runs/start`
+
+Champs optionnels acceptes en plus de `eventId` / `startedAt`:
+
+- `lat` et `lng` pour la position de depart
+- `accuracy_meters` pour la precision GPS fournie par le device
+- `timestamp` pour l'horodatage natif du fix GPS
+
+Regles minimales retenues:
+
+- compatibilite ascendante: si ces champs sont absents, le start reste accepte
+- `lat` et `lng` doivent toujours etre fournis ensemble
+- `accuracy_meters` et `timestamp` ne sont utilises que s'ils sont presents
+- si `accuracy_meters > 80`, le start est refuse avec `start_gps_too_imprecise`
+- si `timestamp` est fourni mais trop eloigne de `startedAt` (> 15 s), le start est refuse avec `invalid_start_location_timestamp`
+- cote mobile closed beta, une precision moyenne peut seulement declencher un warning; le blocage dur est reserve aux cas nettement mauvais

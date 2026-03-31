@@ -9,6 +9,8 @@ const startRunBodySchema = z.object({
   startedAt: z.string().datetime().optional(),
   lat: z.number().finite().min(-90).max(90).optional(),
   lng: z.number().finite().min(-180).max(180).optional(),
+  accuracy_meters: z.number().finite().min(0).max(5000).optional(),
+  timestamp: z.string().datetime().optional(),
 })
   .strict()
   .superRefine((body, context) => {
@@ -24,6 +26,14 @@ const startRunBodySchema = z.object({
       message: 'lat and lng must be provided together.',
       path: hasLat ? ['lng'] : ['lat'],
     });
+
+    if ((body.accuracy_meters !== undefined || body.timestamp !== undefined) && (!hasLat || !hasLng)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'lat and lng are required when GPS telemetry is provided.',
+        path: body.accuracy_meters !== undefined ? ['accuracy_meters'] : ['timestamp'],
+      });
+    }
   });
 
 const finishRunBodySchema = z.object({
@@ -60,7 +70,14 @@ export async function runsRoutes(app: FastifyInstance) {
         request.auth!.userId,
         body.eventId,
         body.startedAt,
-        body.lat !== undefined && body.lng !== undefined ? { lat: body.lat, lng: body.lng } : undefined,
+        body.lat !== undefined && body.lng !== undefined
+          ? {
+              lat: body.lat,
+              lng: body.lng,
+              accuracyMeters: body.accuracy_meters,
+              timestamp: body.timestamp,
+            }
+          : undefined,
       );
     },
   );
