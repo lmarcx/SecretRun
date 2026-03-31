@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Redirect, Stack, useRouter } from 'expo-router';
+import { Redirect, Stack, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { Text } from 'react-native';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { SecondaryButton } from '@/components/ui/SecondaryButton';
@@ -12,12 +12,14 @@ import {
 import { SectionCard } from '@/components/ui/SectionCard';
 import { getAuthErrorMessage, useAuth, type BetaAccessState } from '@/hooks/useAuth';
 import { debugAuth, debugAuthError } from '@/services/authDebug';
+import { resolveAuthRedirectTarget } from '@/services/authRedirect';
 import { colors, typography } from '@/theme/tokens';
 
 type FocusedField = 'email' | 'password' | null;
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ redirectTo?: string }>();
   const { isAuthenticated, isAvailable, disabledMessage, signIn, loading, betaAccessState, betaAccessMessage, clearBetaAccessMessage } =
     useAuth();
   const [email, setEmail] = useState('');
@@ -25,8 +27,11 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<FocusedField>(null);
 
+  const redirectTarget = resolveAuthRedirectTarget(params.redirectTo, '/feed');
+  const redirectHref = redirectTarget as Href;
+
   if (isAuthenticated) {
-    return <Redirect href="/events" />;
+    return <Redirect href={redirectHref} />;
   }
 
   const handleLogin = async () => {
@@ -63,7 +68,7 @@ export default function LoginScreen() {
         return;
       }
 
-      router.replace('/feed');
+      router.replace(redirectHref);
     } catch (err) {
       debugAuthError('login.catch', err, {
         email: normalizedEmail,
@@ -135,7 +140,10 @@ export default function LoginScreen() {
 
         <AuthDivider />
 
-        <SecondaryButton label="Create account" onPress={() => router.push('/(auth)/register')} />
+        <SecondaryButton
+          label="Create account"
+          onPress={() => router.push({ pathname: '/(auth)/register', params: { redirectTo: redirectTarget } })}
+        />
       </AuthScreenLayout>
     </>
   );

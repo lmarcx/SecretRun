@@ -109,7 +109,7 @@ export default function FeedScreen() {
               authenticated={isSignedIn}
               avatarUrl={menuIdentity.avatarUrl}
               label={menuIdentity.label}
-              onLogin={() => router.push('/(auth)/login')}
+              onLogin={() => router.push({ pathname: '/(auth)/login', params: { redirectTo: '/feed' } })}
               onProfile={() => router.push('/profile')}
               onSettings={() => router.push('/settings')}
               onSignOut={() => void handleSignOut()}
@@ -168,7 +168,14 @@ export default function FeedScreen() {
               </View>
               {isAvailable ? (
                 <View style={styles.emptyStateActions}>
-                  <ActionBar primary={<PrimaryButton label="Sign in" onPress={() => router.push('/(auth)/login')} />} />
+                  <ActionBar
+                    primary={
+                      <PrimaryButton
+                        label="Sign in"
+                        onPress={() => router.push({ pathname: '/(auth)/login', params: { redirectTo: '/feed' } })}
+                      />
+                    }
+                  />
                 </View>
               ) : null}
             </View>

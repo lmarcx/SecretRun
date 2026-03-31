@@ -1,6 +1,6 @@
 import { ClientError, gql } from 'graphql-request';
 import { AppError } from '../../lib/errors';
-import { requestHasura } from '../../lib/hasura';
+import * as hasura from '../../lib/hasura';
 import { assertEventWindow } from './policy';
 
 const EVENT_FIELDS = gql`
@@ -264,11 +264,11 @@ interface JoinEventMutation {
 
 export async function listEvents(userId: string | null): Promise<EventReadModel[]> {
   if (!userId) {
-    const response = await requestHasura<PublicEventsQuery>(PUBLIC_EVENTS_QUERY);
+    const response = await hasura.requestHasura<PublicEventsQuery>(PUBLIC_EVENTS_QUERY);
     return response.events.filter((event) => isPublicEvent(event)).map((event) => mapEventReadModel(event, null, false));
   }
 
-  const response = await requestHasura<AuthenticatedEventsQuery>(AUTHENTICATED_EVENTS_QUERY, {
+  const response = await hasura.requestHasura<AuthenticatedEventsQuery>(AUTHENTICATED_EVENTS_QUERY, {
     userId,
   });
 
@@ -284,7 +284,7 @@ export async function listEvents(userId: string | null): Promise<EventReadModel[
 
 export async function getEvent(userId: string | null, eventId: string): Promise<EventDetailReadModel | null> {
   if (!userId) {
-    const response = await requestHasura<PublicEventDetailQuery>(PUBLIC_EVENT_DETAIL_QUERY, {
+    const response = await hasura.requestHasura<PublicEventDetailQuery>(PUBLIC_EVENT_DETAIL_QUERY, {
       eventId,
     });
 
@@ -295,7 +295,7 @@ export async function getEvent(userId: string | null, eventId: string): Promise<
     return mapEventDetailReadModel(response.event, null, response.participant_count.aggregate?.count ?? null, false);
   }
 
-  const response = await requestHasura<AuthenticatedEventDetailQuery>(AUTHENTICATED_EVENT_DETAIL_QUERY, {
+  const response = await hasura.requestHasura<AuthenticatedEventDetailQuery>(AUTHENTICATED_EVENT_DETAIL_QUERY, {
     eventId,
     userId,
   });
@@ -320,7 +320,7 @@ export async function getEvent(userId: string | null, eventId: string): Promise<
 }
 
 export async function getEventRoute(userId: string, eventId: string): Promise<{ routePolyline: string }> {
-  const response = await requestHasura<EventRouteQuery>(EVENT_ROUTE_QUERY, {
+  const response = await hasura.requestHasura<EventRouteQuery>(EVENT_ROUTE_QUERY, {
     eventId,
     userId,
   });
@@ -348,7 +348,7 @@ export async function getEventRoute(userId: string, eventId: string): Promise<{ 
 }
 
 export async function joinEvent(userId: string, eventId: string): Promise<'joined' | 'already_joined'> {
-  const guard = await requestHasura<JoinEventGuardQuery>(JOIN_EVENT_GUARD_QUERY, {
+  const guard = await hasura.requestHasura<JoinEventGuardQuery>(JOIN_EVENT_GUARD_QUERY, {
     eventId,
     userId,
   });
@@ -377,7 +377,7 @@ export async function joinEvent(userId: string, eventId: string): Promise<'joine
   }
 
   try {
-    await requestHasura<JoinEventMutation>(JOIN_EVENT_MUTATION, {
+    await hasura.requestHasura<JoinEventMutation>(JOIN_EVENT_MUTATION, {
       eventId,
       userId,
     });

@@ -264,7 +264,7 @@ export default function EventDetailsScreen() {
     }
 
     if (primaryAction.kind === 'login') {
-      router.push('/(auth)/login');
+      router.push({ pathname: '/(auth)/login', params: { redirectTo: `/events/${event.id}` } });
       return;
     }
 

@@ -177,7 +177,7 @@ export default function LeaderboardScreen() {
               label={board === 'runners' ? 'Your rank' : 'Your team'}
               onAction={
                 betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked'
-                  ? () => router.push('/(auth)/login')
+                  ? () => router.push({ pathname: '/(auth)/login', params: { redirectTo: '/leaderboard' } })
                   : undefined
               }
               points={currentEntry?.points}

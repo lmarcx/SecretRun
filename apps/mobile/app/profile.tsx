@@ -273,7 +273,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (guestGuardActive && isAvailable) {
-      router.replace('/(auth)/login');
+      router.replace({ pathname: '/(auth)/login', params: { redirectTo: '/profile' } });
     }
   }, [guestGuardActive, isAvailable, router]);
 

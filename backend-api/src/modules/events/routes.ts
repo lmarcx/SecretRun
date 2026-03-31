@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createRateLimitPreHandler } from '../../lib/rate-limit';
 import { getBetaAccess } from '../auth/beta-access';
 import { optionalAuth, requireBetaAccess } from '../auth/plugin';
-import { getEvent, getEventRoute, joinEvent, listEvents } from './service';
+import * as eventsService from './service';
 
 const paramsSchema = z.object({
   id: z.string().uuid(),
@@ -16,7 +16,7 @@ export async function eventsRoutes(app: FastifyInstance) {
       preHandler: [optionalAuth],
     },
     async (request) => {
-      const events = await listEvents(getPublicViewerUserId(request.auth));
+      const events = await eventsService.listEvents(getPublicViewerUserId(request.auth));
 
       return {
         events,
@@ -31,7 +31,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const params = paramsSchema.parse(request.params);
-      const event = await getEvent(getPublicViewerUserId(request.auth), params.id);
+      const event = await eventsService.getEvent(getPublicViewerUserId(request.auth), params.id);
 
       if (!event) {
         return reply.status(404).send({
@@ -52,7 +52,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const params = paramsSchema.parse(request.params);
-      return getEventRoute(request.auth!.userId, params.id);
+      return eventsService.getEventRoute(request.auth!.userId, params.id);
     },
   );
 
@@ -70,7 +70,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const params = paramsSchema.parse(request.params);
-      const status = await joinEvent(request.auth!.userId, params.id);
+      const status = await eventsService.joinEvent(request.auth!.userId, params.id);
 
       return {
         status,

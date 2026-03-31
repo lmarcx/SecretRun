@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Redirect, Stack, useRouter } from 'expo-router';
+import { Redirect, Stack, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { Text } from 'react-native';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { SecondaryButton } from '@/components/ui/SecondaryButton';
@@ -12,12 +12,14 @@ import {
 import { SectionCard } from '@/components/ui/SectionCard';
 import { getAuthErrorMessage, useAuth, type BetaAccessState } from '@/hooks/useAuth';
 import { debugAuth, debugAuthError } from '@/services/authDebug';
+import { resolveAuthRedirectTarget } from '@/services/authRedirect';
 import { colors, typography } from '@/theme/tokens';
 
 type FocusedField = 'username' | 'email' | 'password' | 'invite' | null;
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ redirectTo?: string }>();
   const {
     isAuthenticated,
     isAvailable,
@@ -36,9 +38,11 @@ export default function RegisterScreen() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<FocusedField>(null);
+  const redirectTarget = resolveAuthRedirectTarget(params.redirectTo, '/events');
+  const redirectHref = redirectTarget as Href;
 
   if (isAuthenticated) {
-    return <Redirect href="/events" />;
+    return <Redirect href={redirectHref} />;
   }
 
   const handleRegister = async () => {
@@ -97,7 +101,7 @@ export default function RegisterScreen() {
         return;
       }
 
-      router.replace('/events');
+      router.replace(redirectHref);
     } catch (err) {
       debugAuthError('register.catch', err, {
         username: normalizedUsername,
@@ -198,7 +202,10 @@ export default function RegisterScreen() {
 
         <AuthDivider />
 
-        <SecondaryButton label="Sign in" onPress={() => router.replace('/(auth)/login')} />
+        <SecondaryButton
+          label="Sign in"
+          onPress={() => router.replace({ pathname: '/(auth)/login', params: { redirectTo: redirectTarget } })}
+        />
       </AuthScreenLayout>
     </>
   );

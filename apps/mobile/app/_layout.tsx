@@ -59,7 +59,7 @@ function AppChrome() {
     }
 
     if ((betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked') && !authRoute && !guestRoute) {
-      router.replace('/(auth)/login');
+      router.replace({ pathname: '/(auth)/login', params: { redirectTo: pathname } });
       return;
     }
 
