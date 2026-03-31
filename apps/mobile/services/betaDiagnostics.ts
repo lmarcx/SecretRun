@@ -49,11 +49,19 @@ export interface StartCalibrationSummary {
   localFallbackCount: number;
 }
 
+export interface LastStartDiagnostic {
+  status: 'accepted' | 'warning' | 'blocked' | 'local_fallback' | null;
+  reason: string | null;
+  note: string | null;
+  updatedAt: string | null;
+}
+
 export interface BetaDiagnosticsSnapshot {
   currentScreen: string | null;
   activity: ActivityDiagnostic;
   notification: NotificationDiagnostic;
   startCalibration: StartCalibrationSummary;
+  lastStart: LastStartDiagnostic;
 }
 
 const defaultSnapshot: BetaDiagnosticsSnapshot = {
@@ -81,6 +89,12 @@ const defaultSnapshot: BetaDiagnosticsSnapshot = {
     blockedOutsideZoneCount: 0,
     blockedOtherCount: 0,
     localFallbackCount: 0,
+  },
+  lastStart: {
+    status: null,
+    reason: null,
+    note: null,
+    updatedAt: null,
   },
 };
 
@@ -119,13 +133,25 @@ export function setCurrentBetaScreen(screen: string | null): void {
 }
 
 export function recordActivityDiagnostic(update: Partial<ActivityDiagnostic>): void {
+  const updatedAt = update.updatedAt ?? new Date().toISOString();
+
   snapshot = {
     ...snapshot,
     activity: {
       ...snapshot.activity,
       ...update,
-      updatedAt: update.updatedAt ?? new Date().toISOString(),
+      updatedAt,
     },
+    ...(isStartActivityPhase(update.phase)
+      ? {
+          lastStart: {
+            status: mapActivityPhaseToStartStatus(update.phase),
+            reason: update.validationReason ?? null,
+            note: update.message ?? null,
+            updatedAt,
+          },
+        }
+      : {}),
   };
   emit();
 }
@@ -207,7 +233,11 @@ export function buildBetaIssueMailto(current: BetaDiagnosticsSnapshot): string {
         current.activity.rejectedTrackpoints ?? 'n/a'
       }`,
       `Run note: ${current.activity.message ?? 'n/a'}`,
-      `Start calibration: accepted=${current.startCalibration.acceptedCount}, warnings=${current.startCalibration.warningCount}, blocked_gps=${current.startCalibration.blockedGpsTooImpreciseCount}, blocked_zone=${current.startCalibration.blockedOutsideZoneCount}, blocked_other=${current.startCalibration.blockedOtherCount}, local_fallback=${current.startCalibration.localFallbackCount}`,
+      '',
+      'Start session summary:',
+      `- ${formatStartCalibrationSummary(current.startCalibration)}`,
+      `- ${formatStartBlockSummary(current.startCalibration)}`,
+      `- Last start: ${formatLastStartDiagnostic(current.lastStart)}`,
       '',
       `Notification state: ${current.notification.state}`,
       `Notification note: ${current.notification.message ?? 'n/a'}`,
@@ -218,6 +248,55 @@ export function buildBetaIssueMailto(current: BetaDiagnosticsSnapshot): string {
   );
 
   return `mailto:${recipient}?subject=${subject}&body=${body}`;
+}
+
+export function formatStartCalibrationSummary(summary: StartCalibrationSummary): string {
+  return `Starts accepted ${summary.acceptedCount}, warned ${summary.warningCount}, local fallback ${summary.localFallbackCount}`;
+}
+
+export function formatStartBlockSummary(summary: StartCalibrationSummary): string {
+  return `Starts blocked GPS ${summary.blockedGpsTooImpreciseCount}, zone ${summary.blockedOutsideZoneCount}, other ${summary.blockedOtherCount}`;
+}
+
+export function formatLastStartDiagnostic(lastStart: LastStartDiagnostic): string {
+  if (!lastStart.status) {
+    return 'No recent start';
+  }
+
+  const baseLabel =
+    lastStart.status === 'accepted'
+      ? 'Accepted'
+      : lastStart.status === 'warning'
+        ? 'Warning'
+        : lastStart.status === 'blocked'
+          ? 'Blocked'
+          : 'Local fallback';
+
+  const reason = formatValidationReason(lastStart.reason) ?? lastStart.note;
+  return reason ? `${baseLabel}: ${reason}` : baseLabel;
+}
+
+function isStartActivityPhase(phase: ActivityDiagnosticPhase | undefined): boolean {
+  return Boolean(
+    phase && ['start_accepted', 'start_warning', 'start_blocked', 'start_local_fallback'].includes(phase),
+  );
+}
+
+function mapActivityPhaseToStartStatus(
+  phase: ActivityDiagnosticPhase | undefined,
+): LastStartDiagnostic['status'] {
+  switch (phase) {
+    case 'start_accepted':
+      return 'accepted';
+    case 'start_warning':
+      return 'warning';
+    case 'start_blocked':
+      return 'blocked';
+    case 'start_local_fallback':
+      return 'local_fallback';
+    default:
+      return null;
+  }
 }
 
 export function formatValidationReason(reason: string | null | undefined): string | null {

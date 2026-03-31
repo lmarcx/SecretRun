@@ -17,6 +17,9 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   buildBetaIssueMailto,
   formatBetaTimestamp,
+  formatLastStartDiagnostic,
+  formatStartBlockSummary,
+  formatStartCalibrationSummary,
   formatValidationReason,
   getBetaBuildLabel,
   useBetaDiagnostics,
@@ -477,14 +480,9 @@ function SupportSection({
         {profileCreatedAt ? <InfoRow label="Joined" value={formatDate(profileCreatedAt)} /> : null}
         <InfoRow label="Run sync" value={formatActivityDiagnostic(diagnostics.activity)} />
         <InfoRow label="Run update" value={formatBetaTimestamp(diagnostics.activity.updatedAt)} />
-        <InfoRow
-          label="Start beta"
-          value={`${diagnostics.startCalibration.acceptedCount} ok / ${diagnostics.startCalibration.warningCount} warned / ${diagnostics.startCalibration.localFallbackCount} local`}
-        />
-        <InfoRow
-          label="Start blocks"
-          value={`GPS ${diagnostics.startCalibration.blockedGpsTooImpreciseCount} / Zone ${diagnostics.startCalibration.blockedOutsideZoneCount} / Other ${diagnostics.startCalibration.blockedOtherCount}`}
-        />
+        <InfoRow label="Starts" value={formatStartCalibrationSummary(diagnostics.startCalibration)} />
+        <InfoRow label="Blocked" value={formatStartBlockSummary(diagnostics.startCalibration)} />
+        <InfoRow label="Last start" value={formatLastStartDiagnostic(diagnostics.lastStart)} />
         <InfoRow label="Push" value={formatNotificationDiagnostic(diagnostics.notification)} />
         {diagnostics.activity.eventId ? <InfoRow label="Event ID" value={diagnostics.activity.eventId} /> : null}
         {diagnostics.activity.activityId ? <InfoRow label="Activity ID" value={diagnostics.activity.activityId} /> : null}
