@@ -18,9 +18,11 @@ import {
   buildBetaIssueMailto,
   formatBetaTimestamp,
   formatLastStartDiagnostic,
+  formatStartRateSummary,
   formatStartBlockSummary,
   formatStartCalibrationSummary,
   formatValidationReason,
+  getStartCalibrationHint,
   getBetaBuildLabel,
   useBetaDiagnostics,
 } from '@/services/betaDiagnostics';
@@ -467,6 +469,7 @@ function SupportSection({
   profileCreatedAt?: string;
 }) {
   const validationMessage = formatValidationReason(diagnostics.activity.validationReason);
+  const startHint = getStartCalibrationHint(diagnostics.startCalibration);
 
   return (
     <View style={styles.section}>
@@ -481,6 +484,7 @@ function SupportSection({
         <InfoRow label="Run sync" value={formatActivityDiagnostic(diagnostics.activity)} />
         <InfoRow label="Run update" value={formatBetaTimestamp(diagnostics.activity.updatedAt)} />
         <InfoRow label="Starts" value={formatStartCalibrationSummary(diagnostics.startCalibration)} />
+        <InfoRow label="Start rates" value={formatStartRateSummary(diagnostics.startCalibration)} />
         <InfoRow label="Blocked" value={formatStartBlockSummary(diagnostics.startCalibration)} />
         <InfoRow label="Last start" value={formatLastStartDiagnostic(diagnostics.lastStart)} />
         <InfoRow label="Push" value={formatNotificationDiagnostic(diagnostics.notification)} />
@@ -493,6 +497,7 @@ function SupportSection({
           />
         ) : null}
         {validationMessage ? <Text style={styles.quietNote}>Validation: {validationMessage}</Text> : null}
+        {startHint ? <Text style={styles.quietNote}>Hint: {startHint}</Text> : null}
         {diagnostics.activity.message ? <Text style={styles.quietNote}>Note: {diagnostics.activity.message}</Text> : null}
       </SectionCard>
     </View>

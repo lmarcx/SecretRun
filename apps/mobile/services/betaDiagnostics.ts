@@ -235,9 +235,12 @@ export function buildBetaIssueMailto(current: BetaDiagnosticsSnapshot): string {
       `Run note: ${current.activity.message ?? 'n/a'}`,
       '',
       'Start session summary:',
-      `- ${formatStartCalibrationSummary(current.startCalibration)}`,
-      `- ${formatStartBlockSummary(current.startCalibration)}`,
+      `- Totals: ${formatStartCalibrationSummary(current.startCalibration)}`,
+      `- Rates: ${formatStartRateSummary(current.startCalibration)}`,
+      `- Blocks: ${formatStartBlockSummary(current.startCalibration)}`,
+      `- Local fallback: ${current.startCalibration.localFallbackCount}`,
       `- Last start: ${formatLastStartDiagnostic(current.lastStart)}`,
+      `- Hint: ${getStartCalibrationHint(current.startCalibration) ?? 'No strong pattern yet.'}`,
       '',
       `Notification state: ${current.notification.state}`,
       `Notification note: ${current.notification.message ?? 'n/a'}`,
@@ -258,6 +261,19 @@ export function formatStartBlockSummary(summary: StartCalibrationSummary): strin
   return `Starts blocked GPS ${summary.blockedGpsTooImpreciseCount}, zone ${summary.blockedOutsideZoneCount}, other ${summary.blockedOtherCount}`;
 }
 
+export function formatStartRateSummary(summary: StartCalibrationSummary): string {
+  const accepted = summary.acceptedCount;
+  const warned = summary.warningCount;
+  const blocked = getBlockedStartCount(summary);
+  const total = accepted + warned + blocked;
+
+  if (total === 0) {
+    return 'Accepted 0% · Warned 0% · Blocked 0%';
+  }
+
+  return `Accepted ${formatPercent(accepted, total)} · Warned ${formatPercent(warned, total)} · Blocked ${formatPercent(blocked, total)}`;
+}
+
 export function formatLastStartDiagnostic(lastStart: LastStartDiagnostic): string {
   if (!lastStart.status) {
     return 'No recent start';
@@ -274,6 +290,29 @@ export function formatLastStartDiagnostic(lastStart: LastStartDiagnostic): strin
 
   const reason = formatValidationReason(lastStart.reason) ?? lastStart.note;
   return reason ? `${baseLabel}: ${reason}` : baseLabel;
+}
+
+export function getStartCalibrationHint(summary: StartCalibrationSummary): string | null {
+  const blocked = getBlockedStartCount(summary);
+  const classifiedTotal = summary.acceptedCount + summary.warningCount + blocked;
+
+  if (summary.localFallbackCount >= 2 && summary.localFallbackCount >= summary.acceptedCount + summary.warningCount) {
+    return 'Frequent local fallback (network?)';
+  }
+
+  if (summary.blockedGpsTooImpreciseCount >= 2 && blocked * 2 >= Math.max(1, classifiedTotal)) {
+    return 'Many GPS blocks detected';
+  }
+
+  if (summary.blockedOutsideZoneCount >= 2) {
+    return 'Several zone blocks detected';
+  }
+
+  if (summary.warningCount >= 3 && summary.warningCount >= summary.acceptedCount) {
+    return 'Many starts were warned';
+  }
+
+  return null;
 }
 
 function isStartActivityPhase(phase: ActivityDiagnosticPhase | undefined): boolean {
@@ -297,6 +336,14 @@ function mapActivityPhaseToStartStatus(
     default:
       return null;
   }
+}
+
+function getBlockedStartCount(summary: StartCalibrationSummary): number {
+  return summary.blockedGpsTooImpreciseCount + summary.blockedOutsideZoneCount + summary.blockedOtherCount;
+}
+
+function formatPercent(value: number, total: number): string {
+  return `${Math.round((value / total) * 100)}%`;
 }
 
 export function formatValidationReason(reason: string | null | undefined): string | null {
