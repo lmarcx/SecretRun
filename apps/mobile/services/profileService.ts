@@ -1,6 +1,5 @@
-import { ClientError, gql } from 'graphql-request';
+import { BackendApiError, requestBackendApi } from './backendApiClient';
 import { nhost } from './nhostClient';
-import { requestGraphql } from './graphqlClient';
 
 export interface CurrentProfile {
   id: string;
@@ -20,68 +19,12 @@ export interface CreateCurrentProfileInput {
   avatarUrl?: string | null;
 }
 
-const CURRENT_PROFILE_QUERY = gql`
-  query CurrentProfile($userId: uuid!) {
-    profiles_by_pk(id: $userId) {
-      id
-      username
-      display_name
-      avatar_url
-      created_at
-    }
-  }
-`;
-
-const CREATE_PROFILE_MUTATION = gql`
-  mutation CreateCurrentProfile($username: String!, $displayName: String!, $avatarUrl: String) {
-    insert_profiles_one(
-      object: { username: $username, display_name: $displayName, avatar_url: $avatarUrl }
-    ) {
-      id
-      username
-      display_name
-      avatar_url
-      created_at
-    }
-  }
-`;
-
-const CURRENT_PROFILE_STATS_QUERY = gql`
-  query CurrentProfileStats($userId: uuid!) {
-    validated_runs: activities_aggregate(where: { user_id: { _eq: $userId }, status: { _eq: validated } }) {
-      aggregate {
-        count
-      }
-    }
-  }
-`;
-
-interface CurrentProfileQuery {
-  profiles_by_pk: {
-    id: string;
-    username: string;
-    display_name: string;
-    avatar_url: string | null;
-    created_at: string;
-  } | null;
-}
-
-interface CreateCurrentProfileMutation {
-  insert_profiles_one: {
-    id: string;
-    username: string;
-    display_name: string;
-    avatar_url: string | null;
-    created_at: string;
-  } | null;
-}
-
-interface CurrentProfileStatsQuery {
-  validated_runs: {
-    aggregate: {
-      count: number;
-    } | null;
-  };
+interface BackendProfile {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  createdAt: string;
 }
 
 export async function fetchCurrentProfile(): Promise<CurrentProfile | null> {
@@ -90,87 +33,67 @@ export async function fetchCurrentProfile(): Promise<CurrentProfile | null> {
     return null;
   }
 
-  const response = await requestGraphql<CurrentProfileQuery>(CURRENT_PROFILE_QUERY, {
-    userId,
-  });
-
-  if (!response.profiles_by_pk) {
-    return null;
-  }
-
-  return mapProfile(response.profiles_by_pk);
+  const response = await requestBackendApi<{ profile: BackendProfile | null }>('/profile');
+  return response.profile ? mapProfile(response.profile) : null;
 }
 
 export async function createCurrentProfile(input: CreateCurrentProfileInput): Promise<CurrentProfile> {
-  const userId = nhost.auth.getUser()?.id;
-  if (!userId) {
+  if (!nhost.auth.getUser()?.id) {
     throw new Error('Sign in before creating a profile.');
   }
 
-  const existingProfile = await fetchCurrentProfile();
-  if (existingProfile) {
-    return existingProfile;
-  }
-
-  const response = await requestGraphql<CreateCurrentProfileMutation>(CREATE_PROFILE_MUTATION, {
-    username: input.username,
-    displayName: input.displayName,
-    avatarUrl: input.avatarUrl ?? null,
+  const response = await requestBackendApi<{ profile: BackendProfile }>('/profile', {
+    method: 'POST',
+    body: {
+      username: input.username,
+      displayName: input.displayName,
+      avatarUrl: input.avatarUrl ?? null,
+    },
   });
 
-  if (!response.insert_profiles_one) {
-    throw new Error('Could not create the profile record.');
-  }
-
-  return mapProfile(response.insert_profiles_one);
+  return mapProfile(response.profile);
 }
 
 export async function fetchCurrentProfileStats(): Promise<CurrentProfileStats> {
-  const userId = nhost.auth.getUser()?.id;
-  if (!userId) {
+  if (!nhost.auth.getUser()?.id) {
     return {
       validatedRuns: 0,
     };
   }
 
-  const response = await requestGraphql<CurrentProfileStatsQuery>(CURRENT_PROFILE_STATS_QUERY, {
-    userId,
-  });
-
-  return {
-    validatedRuns: response.validated_runs.aggregate?.count ?? 0,
-  };
+  return requestBackendApi<CurrentProfileStats>('/profile/stats');
 }
 
-function mapProfile(profile: NonNullable<CurrentProfileQuery['profiles_by_pk']>): CurrentProfile {
+function mapProfile(profile: BackendProfile): CurrentProfile {
   return {
     id: profile.id,
     username: profile.username,
-    displayName: profile.display_name,
-    avatarUrl: profile.avatar_url,
-    createdAt: profile.created_at,
+    displayName: profile.displayName,
+    avatarUrl: profile.avatarUrl,
+    createdAt: profile.createdAt,
   };
 }
 
 export function getProfileErrorMessage(error: unknown): string {
-  if (error instanceof ClientError) {
-    const firstMessage = error.response.errors?.[0]?.message;
-    if (firstMessage) {
-      const lowerMessage = firstMessage.toLowerCase();
-      if (lowerMessage.includes('profiles_username_key') || lowerMessage.includes('duplicate key value')) {
+  if (error instanceof BackendApiError) {
+    switch (error.code) {
+      case 'username_taken':
         return 'This username is already taken.';
-      }
-
-      return 'We could not finish your profile right now.';
+      case 'beta_access_denied':
+        return 'This account does not have closed beta access yet.';
+      case 'missing_authorization':
+      case 'invalid_authorization':
+      case 'invalid_token':
+        return 'Sign in before finishing your profile.';
+      case 'validation_error':
+        return 'Profile details look invalid. Check the username and display name.';
+      default:
+        break;
     }
   }
 
   if (error instanceof Error) {
     const lowerMessage = error.message.toLowerCase();
-    if (lowerMessage.includes('profiles_username_key') || lowerMessage.includes('duplicate key value')) {
-      return 'This username is already taken.';
-    }
-
     if (lowerMessage.includes('fetch failed') || lowerMessage.includes('network request failed')) {
       return 'Profile details are unavailable right now. Try again in a moment.';
     }

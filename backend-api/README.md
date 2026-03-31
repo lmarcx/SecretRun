@@ -9,7 +9,14 @@ API Node minimale pour sortir la logique metier sensible des Nhost Functions tou
 - routes MVP:
   - `GET /health`
   - `GET /me`
+  - `GET /events`
+  - `GET /events/:id`
+  - `GET /events/:id/route`
   - `POST /events/:id/join`
+  - `GET /profile`
+  - `POST /profile`
+  - `GET /profile/stats`
+  - `GET /feed`
   - `POST /runs/start`
   - `POST /runs/finish`
 

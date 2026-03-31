@@ -7,6 +7,8 @@ import { eventsRoutes } from './modules/events/routes';
 import { healthRoutes } from './modules/health/routes';
 import { leaderboardRoutes } from './modules/leaderboard/routes';
 import { notificationsRoutes } from './modules/notifications/routes';
+import { feedRoutes } from './modules/feed/routes';
+import { profileRoutes } from './modules/profile/routes';
 import { runsRoutes } from './modules/runs/routes';
 
 export function buildApp() {
@@ -44,6 +46,8 @@ export function buildApp() {
   app.register(authRoutes);
   app.register(eventsRoutes);
   app.register(runsRoutes);
+  app.register(profileRoutes);
+  app.register(feedRoutes);
   app.register(leaderboardRoutes);
   app.register(notificationsRoutes);
 
