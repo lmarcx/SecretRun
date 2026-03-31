@@ -82,7 +82,9 @@ export default function TeamDetailsScreen() {
     return [
       ...(team.standing?.seasonName ? [{ label: team.standing.seasonName, tone: 'accent' as const }] : []),
       ...(team.supportsMembershipDetails ? [{ label: 'Members live', tone: 'info' as const }] : []),
-      ...(betaAccessState === 'signed_out' ? [{ label: 'Guest view', tone: 'neutral' as const }] : []),
+      ...(betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked'
+        ? [{ label: 'Sign in required', tone: 'neutral' as const }]
+        : []),
     ];
   }, [betaAccessState, team]);
 
@@ -91,7 +93,7 @@ export default function TeamDetailsScreen() {
       getPrimaryAction({
         membershipState: team?.membershipState ?? 'not_member',
         onRequest: () => {
-          if (betaAccessState === 'signed_out') {
+          if (betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked') {
             router.push('/(auth)/login');
             return;
           }
@@ -208,7 +210,7 @@ export default function TeamDetailsScreen() {
           ) : (
             <SectionCard tone="muted">
               <EmptyState title="Sign in to view members" />
-              {betaAccessState === 'signed_out' ? (
+              {betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked' ? (
                 <ActionBar primary={<PrimaryButton label="Sign in" onPress={() => router.push('/(auth)/login')} />} />
               ) : null}
             </SectionCard>
@@ -353,8 +355,8 @@ function getInfoTone(membershipState: TeamMembershipState) {
 }
 
 function getAccessLabel(team: TeamDetailsData, betaAccessState: BetaAccessState) {
-  if (!team.supportsMembershipDetails && betaAccessState === 'signed_out') {
-    return 'Guest view keeps the roster private';
+  if (!team.supportsMembershipDetails && (betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked')) {
+    return 'Closed beta sign-in keeps the roster private';
   }
 
   if (team.membershipState === 'member') {

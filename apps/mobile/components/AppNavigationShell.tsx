@@ -37,6 +37,10 @@ export function AppNavigationShell() {
   const pathname = usePathname() || '/';
   const insets = useSafeAreaInsets();
 
+  if (pathname === '/login' || pathname === '/register') {
+    return null;
+  }
+
   return (
     <View style={[styles.shell, { paddingBottom: Math.max(insets.bottom, APP_NAVIGATION_BOTTOM_PADDING) }]}>
       {navigationItems.map((item) => {

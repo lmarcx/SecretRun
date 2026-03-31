@@ -175,8 +175,10 @@ export default function TeamsScreen() {
         </SectionCard>
       ) : (
         <SectionCard title="My Team" tone="muted">
-          <EmptyState title={betaAccessState === 'signed_out' ? 'Sign in to link a team' : 'No team yet'} />
-          {betaAccessState === 'signed_out' ? (
+          <EmptyState
+            title={betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked' ? 'Sign in to link a team' : 'No team yet'}
+          />
+          {betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked' ? (
             <ActionBar primary={<PrimaryButton label="Sign in" onPress={() => router.push('/(auth)/login')} />} />
           ) : null}
         </SectionCard>
@@ -239,14 +241,16 @@ function getHeaderItems({
   seasonName,
   supportsMembershipDetails,
 }: {
-  betaAccessState: 'loading' | 'signed_in' | 'signed_out' | 'dev_runner' | 'auth_unavailable';
+  betaAccessState: 'loading' | 'signed_in' | 'signed_out' | 'beta_blocked' | 'dev_runner' | 'auth_unavailable';
   seasonName: string | null;
   supportsMembershipDetails: boolean;
 }) {
   return [
     ...(seasonName ? [{ label: seasonName, tone: 'accent' as const }] : []),
     ...(betaAccessState === 'dev_runner' ? [{ label: 'DEV local', tone: 'warning' as const }] : []),
-    ...(betaAccessState === 'signed_out' ? [{ label: 'Guest view', tone: 'neutral' as const }] : []),
+    ...(betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked'
+      ? [{ label: 'Sign in required', tone: 'neutral' as const }]
+      : []),
     ...(supportsMembershipDetails ? [{ label: 'Members live', tone: 'info' as const }] : []),
   ];
 }

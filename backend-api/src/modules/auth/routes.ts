@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { gql } from 'graphql-request';
 import { requestHasura } from '../../lib/hasura';
+import { getBetaAccess } from './beta-access';
 import { requireAuth } from './plugin';
 
 const ME_QUERY = gql`
@@ -28,6 +29,7 @@ interface MeQuery {
 export async function authRoutes(app: FastifyInstance) {
   app.get('/me', { preHandler: requireAuth }, async (request) => {
     const auth = request.auth!;
+    const betaAccess = getBetaAccess(auth);
     const response = await requestHasura<MeQuery>(ME_QUERY, {
       userId: auth.userId,
     });
@@ -39,6 +41,7 @@ export async function authRoutes(app: FastifyInstance) {
         roles: auth.hasuraClaims?.['x-hasura-allowed-roles'] ?? [],
         defaultRole: auth.hasuraClaims?.['x-hasura-default-role'] ?? null,
       },
+      betaAccess,
       profile: response.profiles_by_pk
         ? {
             id: response.profiles_by_pk.id,

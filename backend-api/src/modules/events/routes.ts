@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { createRateLimitPreHandler } from '../../lib/rate-limit';
-import { optionalAuth, requireAuth } from '../auth/plugin';
+import { requireBetaAccess, requireClosedBetaAccess } from '../auth/plugin';
 import { getEvent, getEventRoute, joinEvent, listEvents } from './service';
 
 const paramsSchema = z.object({
@@ -12,7 +12,7 @@ export async function eventsRoutes(app: FastifyInstance) {
   app.get(
     '/events',
     {
-      preHandler: [optionalAuth],
+      preHandler: [requireClosedBetaAccess],
     },
     async (request) => {
       const events = await listEvents(request.auth?.userId ?? null);
@@ -26,7 +26,7 @@ export async function eventsRoutes(app: FastifyInstance) {
   app.get(
     '/events/:id',
     {
-      preHandler: [optionalAuth],
+      preHandler: [requireClosedBetaAccess],
     },
     async (request, reply) => {
       const params = paramsSchema.parse(request.params);
@@ -47,7 +47,7 @@ export async function eventsRoutes(app: FastifyInstance) {
   app.get(
     '/events/:id/route',
     {
-      preHandler: [requireAuth],
+      preHandler: [requireBetaAccess],
     },
     async (request) => {
       const params = paramsSchema.parse(request.params);
@@ -59,7 +59,7 @@ export async function eventsRoutes(app: FastifyInstance) {
     '/events/:id/join',
     {
       preHandler: [
-        requireAuth,
+        requireBetaAccess,
         createRateLimitPreHandler({
           routeId: 'events-join',
           maxRequests: 12,

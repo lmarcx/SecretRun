@@ -8,7 +8,6 @@ import {
   AuthField,
   AuthNotice,
   AuthScreenLayout,
-  AuthTertiaryButton,
 } from '@/components/ui/AuthScreenLayout';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { getAuthErrorMessage, useAuth, type BetaAccessState } from '@/hooks/useAuth';
@@ -19,14 +18,15 @@ type FocusedField = 'email' | 'password' | null;
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { isAuthenticated, isAvailable, disabledMessage, signIn, loading, betaAccessState } = useAuth();
+  const { isAuthenticated, isAvailable, disabledMessage, signIn, loading, betaAccessState, betaAccessMessage, clearBetaAccessMessage } =
+    useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<FocusedField>(null);
 
   if (isAuthenticated) {
-    return <Redirect href="/feed" />;
+    return <Redirect href="/events" />;
   }
 
   const handleLogin = async () => {
@@ -36,6 +36,7 @@ export default function LoginScreen() {
       hasPassword: Boolean(password),
       isAvailable,
     });
+    clearBetaAccessMessage();
 
     if (!normalizedEmail || !password) {
       setError('Enter your email and password.');
@@ -79,9 +80,8 @@ export default function LoginScreen() {
       <AuthScreenLayout
         cardSubtitle="Use your beta account to continue."
         cardTitle="Sign in to your account"
-        footer={<AuthTertiaryButton label="Continue as guest" onPress={() => router.replace('/feed')} />}
         onBack={() => router.back()}
-        subtitle="Unlock your feed, profile, and team identity."
+        subtitle="Closed beta access now requires an invited account."
         support={
           devModeCopy ? (
             <SectionCard tone="muted">
@@ -124,6 +124,7 @@ export default function LoginScreen() {
         />
 
         {!isAvailable ? <AuthNotice description={disabledMessage ?? 'Sign-in is not connected in this environment yet.'} tone="muted" /> : null}
+        {!error && betaAccessMessage ? <AuthNotice description={betaAccessMessage} tone="danger" /> : null}
         {error ? <AuthNotice description={error} tone="danger" /> : null}
 
         <PrimaryButton
@@ -146,6 +147,11 @@ function getDeviceStateCopy(betaAccessState: BetaAccessState, disabledMessage: s
       return {
         title: 'DEV runner active',
         description: 'Local event testing stays available on this device. Sign in when you need synced account access.',
+      };
+    case 'beta_blocked':
+      return {
+        title: 'Beta access required',
+        description: 'Only invited accounts can open this build outside local DEV runner mode.',
       };
     case 'auth_unavailable':
       return {

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { createRateLimitPreHandler } from '../../lib/rate-limit';
-import { requireAuth } from '../auth/plugin';
+import { requireBetaAccess } from '../auth/plugin';
 import { finishRun, startRun } from './service';
 
 const startRunBodySchema = z.object({
@@ -54,7 +54,7 @@ export async function runsRoutes(app: FastifyInstance) {
     '/runs/start',
     {
       preHandler: [
-        requireAuth,
+        requireBetaAccess,
         createRateLimitPreHandler({
           routeId: 'runs-start',
           maxRequests: 10,
@@ -87,7 +87,7 @@ export async function runsRoutes(app: FastifyInstance) {
     '/runs/finish',
     {
       preHandler: [
-        requireAuth,
+        requireBetaAccess,
         createRateLimitPreHandler({
           routeId: 'runs-finish',
           maxRequests: 8,

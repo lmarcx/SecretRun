@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppError } from '../../lib/errors';
+import { assertBetaAccess, isBetaAccessEnforced } from './beta-access';
 import type { AuthContext } from './jwt';
 import { verifyAccessToken } from './jwt';
 
@@ -36,4 +37,18 @@ export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply
 
   const token = getBearerToken(request);
   request.auth = await verifyAccessToken(token);
+}
+
+export async function requireBetaAccess(request: FastifyRequest, reply: FastifyReply) {
+  await requireAuth(request, reply);
+  assertBetaAccess(request.auth!);
+}
+
+export async function requireClosedBetaAccess(request: FastifyRequest, reply: FastifyReply) {
+  if (!isBetaAccessEnforced()) {
+    await optionalAuth(request, reply);
+    return;
+  }
+
+  await requireBetaAccess(request, reply);
 }

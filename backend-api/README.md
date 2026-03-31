@@ -26,6 +26,7 @@ Copier `.env.example` et renseigner:
 - `NHOST_JWKS_URL` ou `NHOST_JWT_PUBLIC_KEY`
 - `NHOST_JWT_ISSUER` optionnel
 - `NHOST_JWT_AUDIENCE` optionnel
+- `BETA_ALLOWED_EMAILS` optionnel, liste CSV d'emails autorises pour fermer reellement la beta cote produit
 - `TEAM_EVENT_BONUS_POINTS` optionnel
 
 ## Local
@@ -52,6 +53,7 @@ Configuration manuelle conseillee pour ce monorepo:
 ## Notes d'architecture
 
 - L'API verifie le JWT Nhost avant toute action protegee.
+- Si `BETA_ALLOWED_EMAILS` est renseigne, la closed beta est verrouillee par allowlist email cote backend.
 - Les mutations metier passent par Hasura GraphQL avec secret serveur.
 - Le mobile envoie le token Nhost dans `Authorization: Bearer <token>`.
 - Les routes critiques ont un rate limiting memoire simple par IP et par user, pense pour un service Render free unique.
@@ -96,3 +98,14 @@ Regles minimales retenues:
 - si `accuracy_meters > 80`, le start est refuse avec `start_gps_too_imprecise`
 - si `timestamp` est fourni mais trop eloigne de `startedAt` (> 15 s), le start est refuse avec `invalid_start_location_timestamp`
 - cote mobile closed beta, une precision moyenne peut seulement declencher un warning; le blocage dur est reserve aux cas nettement mauvais
+
+## Regle d'acces closed beta
+
+Regle retenue pour durcir la beta sans refonte auth:
+
+- Nhost reste la source d'authentification
+- le backend derive l'email depuis le JWT verifie
+- si `BETA_ALLOWED_EMAILS` est vide, le mode reste ouvert pour le local/dev
+- si `BETA_ALLOWED_EMAILS` est renseigne, seuls ces emails peuvent utiliser les routes beta protegees
+- `GET /me` retourne aussi le verdict `betaAccess` pour que le mobile puisse refuser proprement une session Nhost non invitee
+- cote mobile, la creation de compte peut etre filtree en plus par un code d'invitation (`EXPO_PUBLIC_BETA_INVITE_CODE`) pour eviter l'inscription libre dans le produit

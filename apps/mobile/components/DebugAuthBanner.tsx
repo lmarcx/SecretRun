@@ -47,13 +47,21 @@ function getBannerContent(betaAccessState: BetaAccessState) {
         message:
           'Sign-in is not connected in this local environment yet. Guest browsing stays available while account features are offline.',
       };
+    case 'beta_blocked':
+      return {
+        badge: 'Blocked',
+        badgeStyle: styles.stateBadgeDev,
+        badgeTextStyle: styles.stateBadgeDevText,
+        message:
+          'This device is using an account without closed beta access. Sign in with an invited email or use local DEV runner mode.',
+      };
     case 'signed_out':
       return {
-        badge: 'Guest',
+        badge: 'Sign in required',
         badgeStyle: styles.stateBadgeGuest,
         badgeTextStyle: styles.stateBadgeGuestText,
         message:
-          'Browsing without a beta account. Events and leaderboard stay open; profile sync, feed access, team details, and notifications unlock after sign-in.',
+          'This closed beta now requires an invited account before entering the app outside local DEV runner mode.',
       };
     case 'loading':
     default:

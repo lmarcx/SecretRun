@@ -173,13 +173,17 @@ export default function LeaderboardScreen() {
               value={board}
             />
             <LeaderboardRankCard
-              actionLabel={betaAccessState === 'signed_out' ? 'Sign in' : undefined}
+              actionLabel={betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked' ? 'Sign in' : undefined}
               avatarUrl={currentEntry?.avatarUrl}
               contextLabel={scopeLabel}
               emptyMessage={getRankEmptyMessage({ betaAccessState, board, scopeSupported })}
               identity={currentEntry?.title}
               label={board === 'runners' ? 'Your rank' : 'Your team'}
-              onAction={betaAccessState === 'signed_out' ? () => router.push('/(auth)/login') : undefined}
+              onAction={
+                betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked'
+                  ? () => router.push('/(auth)/login')
+                  : undefined
+              }
               points={currentEntry?.points}
               rank={currentEntry?.rank}
               subtitle={currentEntry?.subtitle}
@@ -233,7 +237,9 @@ function getHeaderItems({
   return [
     ...(seasonName ? [{ label: seasonName, tone: 'accent' as const }] : []),
     ...(betaAccessState === 'dev_runner' ? [{ label: 'DEV local', tone: 'warning' as const }] : []),
-    ...(betaAccessState === 'signed_out' ? [{ label: 'Guest view', tone: 'neutral' as const }] : []),
+    ...(betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked'
+      ? [{ label: 'Sign in required', tone: 'neutral' as const }]
+      : []),
   ];
 }
 
@@ -251,10 +257,14 @@ function getRankEmptyMessage({
   }
 
   if (board === 'teams') {
-    return betaAccessState === 'signed_out' ? 'Sign in to pin your team.' : 'No linked team yet.';
+    return betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked'
+      ? 'Sign in with an invited beta account to pin your team.'
+      : 'No linked team yet.';
   }
 
-  return betaAccessState === 'signed_out' ? 'Sign in to pin your rank.' : 'No personal rank yet.';
+  return betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked'
+    ? 'Sign in with an invited beta account to pin your rank.'
+    : 'No personal rank yet.';
 }
 
 function getEmptyTitle({

@@ -7,14 +7,27 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppNavigationShell } from '@/components/AppNavigationShell';
 import { DebugAuthBanner } from '@/components/DebugAuthBanner';
+import { useAuth } from '@/hooks/useAuth';
 import { setCurrentBetaScreen } from '@/services/betaDiagnostics';
 import { nhost } from '@/services/nhostClient';
 import { configureNotificationHandling, getRouteFromNotificationData } from '@/services/notificationsService';
 import { colors } from '@/theme/tokens';
 
 export default function RootLayout() {
+  return (
+    <NhostProvider nhost={nhost}>
+      <SafeAreaProvider>
+        <AppChrome />
+      </SafeAreaProvider>
+    </NhostProvider>
+  );
+}
+
+function AppChrome() {
   const router = useRouter();
   const pathname = usePathname();
+  const { betaAccessState, isAvailable } = useAuth();
+  const authRoute = pathname === '/login' || pathname === '/register';
 
   useEffect(() => {
     configureNotificationHandling();
@@ -39,48 +52,61 @@ export default function RootLayout() {
     setCurrentBetaScreen(pathname ?? null);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!isAvailable || betaAccessState === 'loading' || betaAccessState === 'dev_runner' || betaAccessState === 'auth_unavailable') {
+      return;
+    }
+
+    if ((betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked') && !authRoute) {
+      router.replace('/(auth)/login');
+      return;
+    }
+
+    if (betaAccessState === 'signed_in' && authRoute) {
+      router.replace('/events');
+    }
+  }, [authRoute, betaAccessState, isAvailable, router]);
+
   return (
-    <NhostProvider nhost={nhost}>
-      <SafeAreaProvider>
-        <StatusBar style="light" />
-        <View style={styles.app}>
-          <DebugAuthBanner />
-          <View style={styles.stackContainer}>
-            <Stack
-              screenOptions={{
-                headerTitleAlign: 'center',
-                headerStyle: {
-                  backgroundColor: colors.backgroundRaised,
-                },
-                headerTintColor: colors.textPrimary,
-                headerShadowVisible: false,
-                headerTitleStyle: {
-                  color: colors.textPrimary,
-                },
-                contentStyle: {
-                  backgroundColor: colors.background,
-                },
-              }}
-            >
-              <Stack.Screen name="index" options={{ title: 'Secret Run' }} />
-              <Stack.Screen name="(auth)/login" options={{ title: 'Login' }} />
-              <Stack.Screen name="(auth)/register" options={{ title: 'Register' }} />
-              <Stack.Screen name="home" options={{ title: 'Home' }} />
-              <Stack.Screen name="events/index" options={{ title: 'Events' }} />
-              <Stack.Screen name="events/[id]" options={{ title: 'Event Details' }} />
-              <Stack.Screen name="run/[eventId]" options={{ title: 'Run' }} />
-              <Stack.Screen name="feed" options={{ title: 'Feed' }} />
-              <Stack.Screen name="profile" options={{ title: 'Profile' }} />
-              <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-              <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
-              <Stack.Screen name="teams/index" options={{ title: 'Teams' }} />
-              <Stack.Screen name="teams/[id]" options={{ title: 'Team' }} />
-            </Stack>
-          </View>
-          <AppNavigationShell />
+    <>
+      <StatusBar style="light" />
+      <View style={styles.app}>
+        <DebugAuthBanner />
+        <View style={styles.stackContainer}>
+          <Stack
+            screenOptions={{
+              headerTitleAlign: 'center',
+              headerStyle: {
+                backgroundColor: colors.backgroundRaised,
+              },
+              headerTintColor: colors.textPrimary,
+              headerShadowVisible: false,
+              headerTitleStyle: {
+                color: colors.textPrimary,
+              },
+              contentStyle: {
+                backgroundColor: colors.background,
+              },
+            }}
+          >
+            <Stack.Screen name="index" options={{ title: 'Secret Run' }} />
+            <Stack.Screen name="(auth)/login" options={{ title: 'Login' }} />
+            <Stack.Screen name="(auth)/register" options={{ title: 'Register' }} />
+            <Stack.Screen name="home" options={{ title: 'Home' }} />
+            <Stack.Screen name="events/index" options={{ title: 'Events' }} />
+            <Stack.Screen name="events/[id]" options={{ title: 'Event Details' }} />
+            <Stack.Screen name="run/[eventId]" options={{ title: 'Run' }} />
+            <Stack.Screen name="feed" options={{ title: 'Feed' }} />
+            <Stack.Screen name="profile" options={{ title: 'Profile' }} />
+            <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+            <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
+            <Stack.Screen name="teams/index" options={{ title: 'Teams' }} />
+            <Stack.Screen name="teams/[id]" options={{ title: 'Team' }} />
+          </Stack>
         </View>
-      </SafeAreaProvider>
-    </NhostProvider>
+        <AppNavigationShell />
+      </View>
+    </>
   );
 }
 

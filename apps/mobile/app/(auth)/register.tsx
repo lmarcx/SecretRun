@@ -14,20 +14,31 @@ import { getAuthErrorMessage, useAuth, type BetaAccessState } from '@/hooks/useA
 import { debugAuth, debugAuthError } from '@/services/authDebug';
 import { colors, typography } from '@/theme/tokens';
 
-type FocusedField = 'username' | 'email' | 'password' | null;
+type FocusedField = 'username' | 'email' | 'password' | 'invite' | null;
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { isAuthenticated, isAvailable, disabledMessage, signUp, loading, betaAccessState } = useAuth();
+  const {
+    isAuthenticated,
+    isAvailable,
+    disabledMessage,
+    signUp,
+    loading,
+    betaAccessState,
+    betaAccessMessage,
+    clearBetaAccessMessage,
+    inviteCodeRequired,
+  } = useAuth();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<FocusedField>(null);
 
   if (isAuthenticated) {
-    return <Redirect href="/feed" />;
+    return <Redirect href="/events" />;
   }
 
   const handleRegister = async () => {
@@ -46,7 +57,9 @@ export default function RegisterScreen() {
       hasPassword: Boolean(password),
       isAvailable,
       signUpOptions,
+      inviteCodeRequired,
     });
+    clearBetaAccessMessage();
 
     if (!normalizedUsername.match(/^[a-z0-9_]{3,20}$/)) {
       setError('Username must be 3-20 characters and use only letters, numbers, or underscores.');
@@ -63,6 +76,11 @@ export default function RegisterScreen() {
       return;
     }
 
+    if (inviteCodeRequired && !inviteCode.trim()) {
+      setError('Enter your invitation code.');
+      return;
+    }
+
     if (!isAvailable) {
       setError(disabledMessage ?? 'Sign-in is not connected in this environment yet.');
       return;
@@ -72,14 +90,14 @@ export default function RegisterScreen() {
     setSuccess(null);
 
     try {
-      const response = await signUp(normalizedEmail, password, signUpOptions);
+      const response = await signUp(normalizedEmail, password, signUpOptions, inviteCode);
 
       if (response.needsEmailVerification) {
         setSuccess('Account created. Verify your email, then sign in.');
         return;
       }
 
-      router.replace('/feed');
+      router.replace('/events');
     } catch (err) {
       debugAuthError('register.catch', err, {
         username: normalizedUsername,
@@ -96,10 +114,10 @@ export default function RegisterScreen() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <AuthScreenLayout
-        cardSubtitle="Create your beta account to continue."
+        cardSubtitle={inviteCodeRequired ? 'Invitation code required for this closed beta.' : 'Create your beta account to continue.'}
         cardTitle="Create your account"
         onBack={() => router.back()}
-        subtitle="Set your sign-in now. Runner profile details can wait."
+        subtitle="Only invited runners can create a beta account in this build."
         support={
           devModeCopy ? (
             <SectionCard tone="muted">
@@ -137,6 +155,20 @@ export default function RegisterScreen() {
           value={email}
         />
 
+        {inviteCodeRequired ? (
+          <AuthField
+            autoCapitalize="characters"
+            autoCorrect={false}
+            focused={focusedField === 'invite'}
+            label="Invitation code"
+            onBlur={() => setFocusedField((value) => (value === 'invite' ? null : value))}
+            onChangeText={setInviteCode}
+            onFocus={() => setFocusedField('invite')}
+            placeholder="BETA-INVITE"
+            value={inviteCode}
+          />
+        ) : null}
+
         <AuthField
           autoCapitalize="none"
           autoComplete="password"
@@ -154,6 +186,7 @@ export default function RegisterScreen() {
         />
 
         {!isAvailable ? <AuthNotice description={disabledMessage ?? 'Sign-in is not connected in this environment yet.'} tone="muted" /> : null}
+        {!error && betaAccessMessage ? <AuthNotice description={betaAccessMessage} tone="danger" /> : null}
         {error ? <AuthNotice description={error} tone="danger" /> : null}
         {success ? <AuthNotice description={success} tone="success" /> : null}
 
@@ -177,6 +210,11 @@ function getDeviceStateCopy(betaAccessState: BetaAccessState, disabledMessage: s
       return {
         title: 'DEV runner stays local',
         description: 'Local event testing still works here. Create an account when you need synced access.',
+      };
+    case 'beta_blocked':
+      return {
+        title: 'Invitation required',
+        description: 'Only invited accounts can use this build outside local DEV runner mode.',
       };
     case 'auth_unavailable':
       return {

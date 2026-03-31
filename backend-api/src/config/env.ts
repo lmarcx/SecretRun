@@ -12,6 +12,7 @@ const rawEnvSchema = z.object({
   NHOST_JWT_PUBLIC_KEY: z.string().min(1).optional(),
   NHOST_JWT_ISSUER: z.string().min(1).optional(),
   NHOST_JWT_AUDIENCE: z.string().min(1).optional(),
+  BETA_ALLOWED_EMAILS: z.string().optional(),
   TEAM_EVENT_BONUS_POINTS: z.coerce.number().int().default(5),
 });
 

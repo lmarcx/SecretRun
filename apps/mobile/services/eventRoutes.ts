@@ -29,6 +29,8 @@ export function getEventRouteErrorMessage(error: unknown): string {
         return 'Join this event to unlock the route.';
       case 'event_route_not_found':
         return 'Route not published yet.';
+      case 'beta_access_denied':
+        return 'This account does not have closed beta access yet.';
       case 'missing_authorization':
       case 'invalid_authorization':
       case 'invalid_token':

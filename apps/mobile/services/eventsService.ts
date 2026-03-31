@@ -144,6 +144,8 @@ export function getEventErrorMessage(error: unknown): string {
         return 'Finish setting up your runner profile before joining events.';
       case 'event_not_revealed':
         return 'This event is not open yet.';
+      case 'beta_access_denied':
+        return 'This account does not have closed beta access yet.';
       case 'missing_authorization':
       case 'invalid_authorization':
       case 'invalid_token':
