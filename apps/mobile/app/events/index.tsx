@@ -10,7 +10,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import type { StatusBadgeTone } from '@/components/ui/StatusBadge';
 import { isDevRunnerActive } from '@/services/devRunnerMode';
 import type { EventListItem } from '@/services/eventsService';
-import { fetchPublicEvents, getEventErrorMessage } from '@/services/eventsService';
+import { fetchPublicEvents, getEventsListErrorMessage } from '@/services/eventsService';
 import { getStoredRunSession } from '@/services/runSessionStore';
 import { colors, spacing, typography } from '@/theme/tokens';
 
@@ -62,7 +62,7 @@ export default function EventsScreen() {
           return;
         }
 
-        setError(getEventErrorMessage(err));
+        setError(getEventsListErrorMessage(err));
       } finally {
         if (active) {
           setLoading(false);

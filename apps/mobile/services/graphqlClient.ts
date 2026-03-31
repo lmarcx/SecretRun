@@ -41,3 +41,23 @@ export async function requestGraphql<TData>(
     throw error;
   }
 }
+
+export async function requestPublicGraphql<TData>(
+  query: string,
+  variables: Record<string, unknown> = {},
+): Promise<TData> {
+  const client = getGraphqlClient();
+
+  try {
+    return await client.request<TData, Record<string, unknown>>(query, variables);
+  } catch (error) {
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      if (message.includes('network request failed') || message.includes('fetch failed')) {
+        throw new Error('Secret Run could not reach the service right now. Try again in a moment.');
+      }
+    }
+
+    throw error;
+  }
+}

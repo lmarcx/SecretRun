@@ -24,6 +24,10 @@ function getBackendApiBaseUrl(): string {
   return configuredBackendApiUrl;
 }
 
+export function isBackendApiConfigured(): boolean {
+  return Boolean(configuredBackendApiUrl);
+}
+
 export async function requestBackendApi<TResponse>(
   path: string,
   init: {

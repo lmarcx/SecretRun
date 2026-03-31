@@ -1,8 +1,8 @@
 import type { LatLng } from 'react-native-maps';
 import { gql } from 'graphql-request';
-import { BackendApiError, requestBackendApi } from './backendApiClient';
+import { BackendApiError, isBackendApiConfigured, requestBackendApi } from './backendApiClient';
 import { getDevJoinedEvent, isDevRunnerActive, markDevJoinedEvent } from './devRunnerMode';
-import { requestGraphql } from './graphqlClient';
+import { requestPublicGraphql } from './graphqlClient';
 import { nhost } from './nhostClient';
 import { parseGeoPoint } from '@/utils/route';
 
@@ -117,6 +117,10 @@ function mapEventDetail(
 export async function fetchPublicEvents(): Promise<EventListItem[]> {
   const viewerId = nhost.auth.getUser()?.id;
 
+  if (!isBackendApiConfigured()) {
+    return fetchPublicEventsFallback();
+  }
+
   try {
     const response = await requestBackendApi<{ events: BackendEventRead[] }>('/events');
 
@@ -135,8 +139,7 @@ export async function fetchPublicEvents(): Promise<EventListItem[]> {
     });
   } catch (error) {
     if (shouldUseDevFallbackEvents(error)) {
-      const response = await requestGraphql<DevFallbackEventsQuery>(DEV_FALLBACK_EVENTS_QUERY, {});
-      return response.events.map(mapDevFallbackListItem);
+      return fetchPublicEventsFallback();
     }
 
     throw error;
@@ -146,6 +149,10 @@ export async function fetchPublicEvents(): Promise<EventListItem[]> {
 export async function fetchEventDetails(eventId: string): Promise<EventDetail | null> {
   const viewerId = nhost.auth.getUser()?.id;
   const devParticipation = !viewerId ? getDevJoinedEvent(eventId) : null;
+
+  if (!isBackendApiConfigured()) {
+    return fetchPublicEventDetailsFallback(eventId, devParticipation);
+  }
 
   try {
     const response = await requestBackendApi<BackendEventDetail>(`/events/${eventId}`);
@@ -164,15 +171,7 @@ export async function fetchEventDetails(eventId: string): Promise<EventDetail | 
     }
 
     if (shouldUseDevFallbackEvents(error)) {
-      const response = await requestGraphql<DevFallbackEventDetailQuery>(DEV_FALLBACK_EVENT_DETAIL_QUERY, {
-        eventId,
-      });
-
-      if (!response.event) {
-        return null;
-      }
-
-      return mapDevFallbackDetail(response, devParticipation);
+      return fetchPublicEventDetailsFallback(eventId, devParticipation);
     }
 
     throw error;
@@ -235,6 +234,19 @@ export function getEventErrorMessage(error: unknown): string {
   return 'We could not load this event right now.';
 }
 
+export function getEventsListErrorMessage(error: unknown): string {
+  const detailMessage = getEventErrorMessage(error);
+  if (detailMessage === 'We could not load this event right now.') {
+    return 'We could not load events right now.';
+  }
+
+  if (detailMessage === 'Sign in to access this event.') {
+    return 'Sign in to access events.';
+  }
+
+  return detailMessage;
+}
+
 function isAlreadyJoinedError(error: unknown): boolean {
   return error instanceof BackendApiError && error.code === 'already_joined';
 }
@@ -246,6 +258,26 @@ function shouldUseDevFallbackEvents(error: unknown): boolean {
       error instanceof BackendApiError &&
       ['missing_authorization', 'invalid_authorization', 'beta_access_denied'].includes(error.code),
   );
+}
+
+async function fetchPublicEventsFallback(): Promise<EventListItem[]> {
+  const response = await requestPublicGraphql<DevFallbackEventsQuery>(DEV_FALLBACK_EVENTS_QUERY, {});
+  return response.events.map(mapDevFallbackListItem);
+}
+
+async function fetchPublicEventDetailsFallback(
+  eventId: string,
+  devParticipation: { status: string; joinedAt: string } | null,
+): Promise<EventDetail | null> {
+  const response = await requestPublicGraphql<DevFallbackEventDetailQuery>(DEV_FALLBACK_EVENT_DETAIL_QUERY, {
+    eventId,
+  });
+
+  if (!response.event) {
+    return null;
+  }
+
+  return mapDevFallbackDetail(response, devParticipation);
 }
 
 function mapDevFallbackListItem(event: DevFallbackEventRow): EventListItem {
