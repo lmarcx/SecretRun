@@ -1,22 +1,7 @@
-import { ClientError, gql } from 'graphql-request';
 import type { EventRoute } from '@/utils/route';
 import { normalizeEventRoute } from '@/utils/route';
+import { BackendApiError, requestBackendApi } from './backendApiClient';
 import { nhost } from './nhostClient';
-import { requestGraphql } from './graphqlClient';
-
-const EVENT_ROUTE_QUERY = gql`
-  query EventRoute($eventId: uuid!) {
-    event_routes(where: { event_id: { _eq: $eventId } }, limit: 1) {
-      route_polyline
-    }
-  }
-`;
-
-interface EventRouteQuery {
-  event_routes: Array<{
-    route_polyline: string | null;
-  }>;
-}
 
 interface FetchEventRouteOptions {
   allowRequest?: boolean;
@@ -31,43 +16,36 @@ export async function fetchEventRoute(eventId: string, options: FetchEventRouteO
     return null;
   }
 
-  try {
-    const response = await requestGraphql<EventRouteQuery>(EVENT_ROUTE_QUERY, {
-      eventId,
-    });
-
-    const route = response.event_routes[0];
-    return normalizeEventRoute(route?.route_polyline ?? null);
-  } catch (error) {
-    if (isEventRouteUnavailableForRoleError(error)) {
-      return null;
-    }
-
-    throw error;
-  }
+  const response = await requestBackendApi<{ routePolyline: string | null }>(`/events/${eventId}/route`);
+  return normalizeEventRoute(response.routePolyline ?? null);
 }
 
-function isEventRouteUnavailableForRoleError(error: unknown): boolean {
-  if (error instanceof ClientError) {
-    return Boolean(error.response.errors?.some((entry) => isEventRouteUnavailableMessage(entry.message)));
+export function getEventRouteErrorMessage(error: unknown): string {
+  if (error instanceof BackendApiError) {
+    switch (error.code) {
+      case 'route_not_revealed':
+        return 'Route sealed until reveal.';
+      case 'route_participation_required':
+        return 'Join this event to unlock the route.';
+      case 'event_route_not_found':
+        return 'Route not published yet.';
+      case 'missing_authorization':
+      case 'invalid_authorization':
+      case 'invalid_token':
+        return 'Sign in to unlock the route.';
+      case 'event_not_found':
+        return 'Event not found.';
+      default:
+        break;
+    }
   }
 
   if (error instanceof Error) {
-    return isEventRouteUnavailableMessage(error.message);
+    const message = error.message.toLowerCase();
+    if (message.includes('fetch failed') || message.includes('network request failed')) {
+      return 'Route unavailable right now.';
+    }
   }
 
-  return false;
-}
-
-function isEventRouteUnavailableMessage(message: string): boolean {
-  const lowerMessage = message.toLowerCase();
-
-  return (
-    lowerMessage.includes('event_routes') &&
-    (lowerMessage.includes('query_root') ||
-      lowerMessage.includes('not found') ||
-      lowerMessage.includes('cannot query field') ||
-      lowerMessage.includes('field') ||
-      lowerMessage.includes('permission'))
-  );
+  return 'Route unavailable right now.';
 }

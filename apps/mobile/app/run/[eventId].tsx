@@ -24,9 +24,10 @@ import {
   type LocalTrackpoint,
   type UploadedActivity,
 } from '@/services/activitiesService';
+import { BackendApiError } from '@/services/backendApiClient';
 import { DEV_MODE_LABEL, isDevRunnerActive } from '@/services/devRunnerMode';
-import { canFetchProtectedEventRoute, fetchEventRoute } from '@/services/eventRoutes';
-import { fetchEventDetails, type EventDetail } from '@/services/eventsService';
+import { canFetchProtectedEventRoute, fetchEventRoute, getEventRouteErrorMessage } from '@/services/eventRoutes';
+import { fetchEventDetails, getEventErrorMessage, type EventDetail } from '@/services/eventsService';
 import { getStoredRunSession, setStoredRunSession } from '@/services/runSessionStore';
 import { colors, spacing, typography } from '@/theme/tokens';
 import type { EventRoute } from '@/utils/route';
@@ -224,7 +225,16 @@ export default function RunScreen() {
         }
       } catch (err) {
         if (active) {
-          setError(err instanceof Error ? err.message : 'Failed to load the run.');
+          if (
+            err instanceof BackendApiError &&
+            (err.code === 'route_not_revealed' ||
+              err.code === 'route_participation_required' ||
+              err.code === 'event_route_not_found')
+          ) {
+            setError(getEventRouteErrorMessage(err));
+          } else {
+            setError(getEventErrorMessage(err));
+          }
         }
       } finally {
         if (active) {

@@ -1,9 +1,7 @@
-import { ClientError, gql } from 'graphql-request';
 import type { LatLng } from 'react-native-maps';
-import { requestBackendApi } from './backendApiClient';
+import { BackendApiError, requestBackendApi } from './backendApiClient';
 import { getDevJoinedEvent, markDevJoinedEvent } from './devRunnerMode';
 import { nhost } from './nhostClient';
-import { requestGraphql } from './graphqlClient';
 import { parseGeoPoint } from '@/utils/route';
 
 export interface EventListItem {
@@ -23,250 +21,92 @@ export interface EventDetail extends EventListItem {
   participantCount: number | null;
 }
 
-const PUBLIC_EVENTS_QUERY = gql`
-  query PublicEvents {
-    events(order_by: [{ starts_at: asc }, { reveal_at: asc }]) {
-      id
-      title
-      description
-      starts_at
-      reveal_at
-      ends_at
-      start_area_radius_km
-      start_area_center
-    }
-  }
-`;
-
-const AUTHENTICATED_EVENTS_QUERY = gql`
-  query AuthenticatedEvents($viewerId: uuid!) {
-    events(order_by: [{ starts_at: asc }, { reveal_at: asc }]) {
-      id
-      title
-      description
-      starts_at
-      reveal_at
-      ends_at
-      start_area_radius_km
-      start_area_center
-    }
-    event_participants(where: { user_id: { _eq: $viewerId } }) {
-      event_id
-      status
-      joined_at
-    }
-  }
-`;
-
-const EVENT_DETAIL_QUERY = gql`
-  query EventDetail($eventId: uuid!, $viewerId: uuid!) {
-    events_by_pk(id: $eventId) {
-      id
-      title
-      description
-      starts_at
-      reveal_at
-      ends_at
-      start_area_radius_km
-      start_area_center
-    }
-    event_participants(where: { event_id: { _eq: $eventId }, user_id: { _eq: $viewerId } }, limit: 1) {
-      status
-      joined_at
-    }
-    event_participants_aggregate(where: { event_id: { _eq: $eventId } }) {
-      aggregate {
-        count
-      }
-    }
-  }
-`;
-
-const EVENT_PARTICIPATION_QUERY = gql`
-  query EventParticipation($eventId: uuid!, $viewerId: uuid!) {
-    event_participants(where: { event_id: { _eq: $eventId }, user_id: { _eq: $viewerId } }, limit: 1) {
-      status
-      joined_at
-    }
-  }
-`;
-
-const EVENT_DETAIL_QUERY_PUBLIC = gql`
-  query EventDetailPublic($eventId: uuid!) {
-    events_by_pk(id: $eventId) {
-      id
-      title
-      description
-      starts_at
-      reveal_at
-      ends_at
-      start_area_radius_km
-      start_area_center
-    }
-  }
-`;
-
-const JOIN_EVENT_MUTATION = gql`
-  mutation JoinEvent($eventId: uuid!) {
-    insert_event_participants_one(object: { event_id: $eventId }) {
-      event_id
-      status
-      joined_at
-    }
-  }
-`;
-
-interface PublicEventsQuery {
-  events: Array<{
-    id: string;
-    title: string;
-    description: string | null;
-    starts_at: string;
-    reveal_at: string;
-    ends_at: string | null;
-    start_area_radius_km: number | string;
-    start_area_center: unknown;
-  }>;
+interface BackendEventRead {
+  id: string;
+  title: string;
+  description: string | null;
+  startsAt: string;
+  revealAt: string;
+  endsAt: string | null;
+  startAreaRadiusKm: number;
+  startAreaCenter: unknown;
+  viewerParticipationStatus: string | null;
+  viewerJoinedAt: string | null;
 }
 
-interface AuthenticatedEventsQuery extends PublicEventsQuery {
-  event_participants: Array<{
-    event_id: string;
-    status: string;
-    joined_at: string;
-  }>;
-}
-
-interface EventDetailQuery {
-  events_by_pk: {
-    id: string;
-    title: string;
-    description: string | null;
-    starts_at: string;
-    reveal_at: string;
-    ends_at: string | null;
-    start_area_radius_km: number | string;
-    start_area_center: unknown;
-  } | null;
-  event_participants?: Array<{
-    status: string;
-    joined_at: string;
-  }>;
-  event_participants_aggregate?: {
-    aggregate: {
-      count: number;
-    } | null;
-  };
-}
-
-interface EventParticipationQuery {
-  event_participants: Array<{
-    status: string;
-    joined_at: string;
-  }>;
-}
-
-interface JoinEventMutation {
-  insert_event_participants_one: {
-    event_id: string;
-    status: string;
-    joined_at: string;
-  } | null;
+interface BackendEventDetail extends BackendEventRead {
+  participantCount: number | null;
 }
 
 function mapEventListItem(
-  event: PublicEventsQuery['events'][number],
-  participation?: { status: string; joined_at: string } | null,
+  event: BackendEventRead,
+  participation?: { status: string; joinedAt: string } | null,
 ): EventListItem {
   return {
     id: event.id,
     title: event.title,
     description: event.description,
-    startsAt: event.starts_at,
-    revealAt: event.reveal_at,
-    endsAt: event.ends_at,
-    startAreaRadiusKm: Number(event.start_area_radius_km),
-    startAreaCenter: parseGeoPoint(event.start_area_center),
-    viewerParticipationStatus: participation?.status ?? null,
-    viewerJoinedAt: participation?.joined_at ?? null,
+    startsAt: event.startsAt,
+    revealAt: event.revealAt,
+    endsAt: event.endsAt,
+    startAreaRadiusKm: Number(event.startAreaRadiusKm),
+    startAreaCenter: parseGeoPoint(event.startAreaCenter),
+    viewerParticipationStatus: participation?.status ?? event.viewerParticipationStatus ?? null,
+    viewerJoinedAt: participation?.joinedAt ?? event.viewerJoinedAt ?? null,
   };
 }
 
 function mapEventDetail(
-  event: NonNullable<EventDetailQuery['events_by_pk']>,
-  participation?: EventDetailQuery['event_participants'],
-  participantCount?: number | null,
+  event: BackendEventDetail,
+  participation?: { status: string; joinedAt: string } | null,
 ): EventDetail {
   return {
-    ...mapEventListItem(event, participation?.[0] ?? null),
-    participantCount: participantCount ?? null,
+    ...mapEventListItem(event, participation),
+    participantCount: event.participantCount ?? null,
   };
 }
 
 export async function fetchPublicEvents(): Promise<EventListItem[]> {
   const viewerId = nhost.auth.getUser()?.id;
+  const response = await requestBackendApi<{ events: BackendEventRead[] }>('/events');
 
-  if (!viewerId) {
-    const response = await requestGraphql<PublicEventsQuery>(PUBLIC_EVENTS_QUERY, {});
+  return response.events.map((event) => {
+    const devParticipation = !viewerId ? getDevJoinedEvent(event.id) : null;
 
-    return response.events.map((event) => {
-      const devParticipation = getDevJoinedEvent(event.id);
-      return mapEventListItem(
-        event,
-        devParticipation
-          ? {
-              status: devParticipation.status,
-              joined_at: devParticipation.joinedAt,
-            }
-          : null,
-      );
-    });
-  }
-
-  const response = await requestGraphql<AuthenticatedEventsQuery>(AUTHENTICATED_EVENTS_QUERY, {
-    viewerId,
+    return mapEventListItem(
+      event,
+      devParticipation
+        ? {
+            status: devParticipation.status,
+            joinedAt: devParticipation.joinedAt,
+          }
+        : null,
+    );
   });
-  const participationByEventId = new Map(
-    response.event_participants.map((entry) => [entry.event_id, { status: entry.status, joined_at: entry.joined_at }] as const),
-  );
-
-  return response.events.map((event) => mapEventListItem(event, participationByEventId.get(event.id) ?? null));
 }
 
 export async function fetchEventDetails(eventId: string): Promise<EventDetail | null> {
   const viewerId = nhost.auth.getUser()?.id;
-  const devParticipation = getDevJoinedEvent(eventId);
+  const devParticipation = !viewerId ? getDevJoinedEvent(eventId) : null;
 
-  if (!viewerId) {
-    const response = await requestGraphql<EventDetailQuery>(EVENT_DETAIL_QUERY_PUBLIC, {
-      eventId,
-    });
-
-    if (!response.events_by_pk) {
+  try {
+    const response = await requestBackendApi<BackendEventDetail>(`/events/${eventId}`);
+    return mapEventDetail(
+      response,
+      devParticipation
+        ? {
+            status: devParticipation.status,
+            joinedAt: devParticipation.joinedAt,
+          }
+        : null,
+    );
+  } catch (error) {
+    if (error instanceof BackendApiError && error.status === 404 && error.code === 'event_not_found') {
       return null;
     }
 
-    return {
-      ...mapEventDetail(response.events_by_pk),
-      viewerParticipationStatus: devParticipation?.status ?? null,
-      viewerJoinedAt: devParticipation?.joinedAt ?? null,
-    };
+    throw error;
   }
-
-  const response = await requestGraphql<EventDetailQuery>(EVENT_DETAIL_QUERY, {
-    eventId,
-    viewerId,
-  });
-
-  if (!response.events_by_pk) {
-    return null;
-  }
-
-  return mapEventDetail(
-    response.events_by_pk,
-    response.event_participants,
-    response.event_participants_aggregate?.aggregate?.count ?? null,
-  );
 }
 
 export async function joinEvent(eventId: string): Promise<'joined' | 'already_joined'> {
@@ -290,34 +130,31 @@ export async function joinEvent(eventId: string): Promise<'joined' | 'already_jo
 }
 
 export function getEventErrorMessage(error: unknown): string {
-  if (error instanceof ClientError) {
-    const firstMessage = error.response.errors?.[0]?.message;
-    if (firstMessage) {
-      const lowerMessage = firstMessage.toLowerCase();
-      if (lowerMessage.includes('event_participants_pkey')) {
-        return 'You already joined this event.';
-      }
-
-      if (lowerMessage.includes('event_participants_user_id_fkey')) {
+  if (error instanceof BackendApiError) {
+    switch (error.code) {
+      case 'event_not_found':
+        return 'Event not found.';
+      case 'team_membership_required':
+        return 'Only team members can join this event.';
+      case 'event_full':
+        return 'This event is full.';
+      case 'private_event_locked':
+        return 'This private event is not open for joining in the beta app.';
+      case 'profile_required':
         return 'Finish setting up your runner profile before joining events.';
-      }
-
-      if (lowerMessage.includes("field 'events' not found")) {
-        return 'Events are not ready in this build yet.';
-      }
+      case 'event_not_revealed':
+        return 'This event is not open yet.';
+      case 'missing_authorization':
+      case 'invalid_authorization':
+      case 'invalid_token':
+        return 'Sign in to access this event.';
+      default:
+        break;
     }
   }
 
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
-    if (message.includes('event_participants_pkey') || message.includes('already exists')) {
-      return 'You already joined this event.';
-    }
-
-    if (message.includes('event_participants_user_id_fkey') || message.includes('foreign key constraint')) {
-      return 'Finish setting up your runner profile before joining events.';
-    }
-
     if (message.includes('fetch failed') || message.includes('network request failed')) {
       return 'Events are unavailable right now. Try again in a moment.';
     }
@@ -327,9 +164,5 @@ export function getEventErrorMessage(error: unknown): string {
 }
 
 function isAlreadyJoinedError(error: unknown): boolean {
-  if (error instanceof ClientError) {
-    return Boolean(error.response.errors?.some((entry) => entry.message.toLowerCase().includes('event_participants_pkey')));
-  }
-
-  return error instanceof Error && error.message.toLowerCase().includes('event_participants_pkey');
+  return error instanceof BackendApiError && error.code === 'already_joined';
 }

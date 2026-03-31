@@ -15,7 +15,7 @@ import { StatusBadge, type StatusBadgeTone } from '@/components/ui/StatusBadge';
 import { StatusStrip } from '@/components/ui/StatusStrip';
 import { useAuth } from '@/hooks/useAuth';
 import { DEV_MODE_LABEL, getEffectiveRunner, isDevRunnerActive } from '@/services/devRunnerMode';
-import { canFetchProtectedEventRoute, fetchEventRoute } from '@/services/eventRoutes';
+import { canFetchProtectedEventRoute, fetchEventRoute, getEventRouteErrorMessage } from '@/services/eventRoutes';
 import type { EventDetail } from '@/services/eventsService';
 import { fetchEventDetails, getEventErrorMessage, joinEvent } from '@/services/eventsService';
 import { getStoredRunSession } from '@/services/runSessionStore';
@@ -149,13 +149,13 @@ export default function EventDetailsScreen() {
         } else {
           setRoute(nextRoute);
         }
-      } catch (_err) {
+      } catch (err) {
         if (!active) {
           return;
         }
 
         setRoute(null);
-        setRouteError('Route unavailable right now.');
+        setRouteError(getEventRouteErrorMessage(err));
       } finally {
         if (active) {
           setRouteLoading(false);

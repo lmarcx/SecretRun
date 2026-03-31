@@ -17,7 +17,7 @@ import { fetchLeaderboard, getLeaderboardErrorMessage } from '@/services/leaderb
 import { colors, spacing, typography } from '@/theme/tokens';
 
 type LeaderboardBoard = 'runners' | 'teams';
-type LeaderboardScope = 'season' | 'weekly' | 'global';
+type LeaderboardScope = 'season';
 
 interface LeaderboardListItem {
   id: string;
@@ -36,12 +36,12 @@ export default function LeaderboardScreen() {
   const params = useLocalSearchParams<{ board?: string; scope?: string }>();
   const { betaAccessState } = useAuth();
   const [board, setBoard] = useState<LeaderboardBoard>(resolveBoardParam(params.board));
-  const [scope, setScope] = useState<LeaderboardScope>(resolveScopeParam(params.scope));
   const [data, setData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const bottomContentPadding = useBottomContentPadding();
+  const scope: LeaderboardScope = 'season';
 
   useEffect(() => {
     let active = true;
@@ -81,10 +81,6 @@ export default function LeaderboardScreen() {
     setBoard(resolveBoardParam(params.board));
   }, [params.board]);
 
-  useEffect(() => {
-    setScope(resolveScopeParam(params.scope));
-  }, [params.scope]);
-
   const rows = useMemo<LeaderboardListItem[]>(() => {
     if (!data || scope !== 'season') {
       return [];
@@ -123,8 +119,8 @@ export default function LeaderboardScreen() {
 
   const currentEntry = useMemo(() => rows.find((item) => item.highlighted) ?? null, [rows]);
   const scopeSupported = scope === 'season';
-  const scopeLabel = getScopeLabel(scope);
-  const headerItems = getHeaderItems({ betaAccessState, seasonName: data?.seasonName ?? null, scope });
+  const scopeLabel = getScopeLabel();
+  const headerItems = getHeaderItems({ betaAccessState, seasonName: data?.seasonName ?? null });
 
   if (loading) {
     return (
@@ -167,15 +163,6 @@ export default function LeaderboardScreen() {
           <View style={styles.header}>
             <ScreenHeader title="Leaderboard" subtitle={getHeaderSubtitle(scope, board)} />
             {headerItems.length > 0 ? <StatusStrip compact muted items={headerItems} /> : null}
-            <SegmentedTabs
-              items={[
-                { key: 'season', label: 'Season' },
-                { key: 'weekly', label: 'Weekly' },
-                { key: 'global', label: 'Global' },
-              ]}
-              onChange={(nextValue) => setScope(nextValue as LeaderboardScope)}
-              value={scope}
-            />
             <SegmentedTabs
               compact
               items={[
@@ -224,11 +211,7 @@ export default function LeaderboardScreen() {
 }
 
 function getHeaderSubtitle(scope: LeaderboardScope, board: LeaderboardBoard) {
-  if (scope === 'season') {
-    return board === 'runners' ? 'Season standings' : 'Season team standings';
-  }
-
-  return `${getScopeLabel(scope)} ranking`;
+  return board === 'runners' ? 'Season standings' : 'Season team standings';
 }
 
 function resolveBoardParam(value: string | string[] | undefined): LeaderboardBoard {
@@ -236,38 +219,19 @@ function resolveBoardParam(value: string | string[] | undefined): LeaderboardBoa
   return resolved === 'teams' ? 'teams' : 'runners';
 }
 
-function resolveScopeParam(value: string | string[] | undefined): LeaderboardScope {
-  const resolved = Array.isArray(value) ? value[0] : value;
-
-  if (resolved === 'weekly' || resolved === 'global') {
-    return resolved;
-  }
-
-  return 'season';
-}
-
-function getScopeLabel(scope: LeaderboardScope) {
-  switch (scope) {
-    case 'weekly':
-      return 'Weekly';
-    case 'global':
-      return 'Global';
-    default:
-      return 'Season';
-  }
+function getScopeLabel() {
+  return 'Season';
 }
 
 function getHeaderItems({
   betaAccessState,
   seasonName,
-  scope,
 }: {
   betaAccessState: BetaAccessState;
   seasonName: string | null;
-  scope: LeaderboardScope;
 }) {
   return [
-    ...(scope === 'season' && seasonName ? [{ label: seasonName, tone: 'accent' as const }] : []),
+    ...(seasonName ? [{ label: seasonName, tone: 'accent' as const }] : []),
     ...(betaAccessState === 'dev_runner' ? [{ label: 'DEV local', tone: 'warning' as const }] : []),
     ...(betaAccessState === 'signed_out' ? [{ label: 'Guest view', tone: 'neutral' as const }] : []),
   ];
@@ -303,7 +267,7 @@ function getEmptyTitle({
   scopeSupported: boolean;
 }) {
   if (!scopeSupported) {
-    return `${getScopeLabel(scope)} ranking soon`;
+    return `${getScopeLabel()} ranking soon`;
   }
 
   return board === 'runners' ? 'No runners ranked yet' : 'No teams ranked yet';

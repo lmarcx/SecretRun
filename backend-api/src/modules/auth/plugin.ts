@@ -27,3 +27,13 @@ export async function requireAuth(request: FastifyRequest, _reply: FastifyReply)
   const token = getBearerToken(request);
   request.auth = await verifyAccessToken(token);
 }
+
+export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply) {
+  if (!request.headers.authorization) {
+    request.auth = null;
+    return;
+  }
+
+  const token = getBearerToken(request);
+  request.auth = await verifyAccessToken(token);
+}
