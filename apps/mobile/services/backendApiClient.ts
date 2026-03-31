@@ -2,6 +2,20 @@ import { nhost } from './nhostClient';
 
 const configuredBackendApiUrl = process.env.EXPO_PUBLIC_BACKEND_API_URL?.trim().replace(/\/+$/, '') ?? '';
 
+export class BackendApiError extends Error {
+  status: number;
+  code: string;
+  details: unknown;
+
+  constructor(status: number, code: string, message: string, details: unknown = null) {
+    super(message);
+    this.name = 'BackendApiError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
 function getBackendApiBaseUrl(): string {
   if (!configuredBackendApiUrl) {
     throw new Error('Set EXPO_PUBLIC_BACKEND_API_URL to enable the standalone backend API.');
@@ -28,11 +42,16 @@ export async function requestBackendApi<TResponse>(
   });
 
   const payload = (await response.json().catch(() => null)) as
-    | ({ error?: string; message?: string } & TResponse)
+    | ({ error?: string; message?: string; details?: unknown } & TResponse)
     | null;
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? payload?.error ?? `Backend API failed with status ${response.status}.`);
+    throw new BackendApiError(
+      response.status,
+      payload?.error ?? 'backend_api_error',
+      payload?.message ?? `Backend API failed with status ${response.status}.`,
+      payload?.details ?? null,
+    );
   }
 
   return (payload ?? {}) as TResponse;

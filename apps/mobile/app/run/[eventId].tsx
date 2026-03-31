@@ -20,6 +20,7 @@ import {
   ActivityUploadError,
   getActivityErrorMessage,
   persistCompletedRun,
+  startRunActivity,
   type LocalTrackpoint,
   type UploadedActivity,
 } from '@/services/activitiesService';
@@ -406,7 +407,7 @@ export default function RunScreen() {
     persistRunningDraft(nextTrackpoints, nextDistanceMeters, nextStartedAt);
   }
 
-  function handleStartRun() {
+  async function handleStartRun() {
     if (!canStart) {
       return;
     }
@@ -415,10 +416,41 @@ export default function RunScreen() {
       ? mapLocationToTrackpoint({ coords: currentLocation, timestamp: Date.now() } as LocationObject)
       : createFallbackTrackpoint(route?.startPoint ?? event?.startAreaCenter ?? null);
 
+    let nextUploadedActivity: UploadedActivity | null = null;
+
+    if (resolvedEventId) {
+      setUploading(true);
+      setUploadError(null);
+      setFinishWarning(null);
+      setGpsQualityMessage(null);
+
+      try {
+        nextUploadedActivity = await startRunActivity(resolvedEventId, startLocation.recordedAt, {
+          latitude: startLocation.latitude,
+          longitude: startLocation.longitude,
+        });
+      } catch (err) {
+        const nextUploadError = getActivityErrorMessage(err);
+
+        if (err instanceof ActivityUploadError && isBlockingStartSyncErrorCode(err.code)) {
+          setUploadError(nextUploadError);
+          if (err.code === 'outside_start_zone') {
+            setGpsQualityMessage(nextUploadError);
+          }
+          return;
+        }
+
+        setUploadError(nextUploadError);
+        setFinishWarning('Saved locally. Retry sync.');
+      } finally {
+        setUploading(false);
+      }
+    }
+
     trackpointsRef.current = [startLocation];
     distanceMetersRef.current = 0;
     startedAtRef.current = startLocation.recordedAt;
-    uploadedActivityRef.current = null;
+    uploadedActivityRef.current = nextUploadedActivity;
     suspiciousWarningRef.current = null;
 
     setRunPhase('running');
@@ -427,11 +459,11 @@ export default function RunScreen() {
     setStartedAt(startLocation.recordedAt);
     setElapsedSeconds(0);
     setResult(null);
-    setUploadError(null);
-    setUploadedActivity(null);
+    setUploadError((current) => (nextUploadedActivity ? null : current));
+    setUploadedActivity(nextUploadedActivity);
     setSuspiciousWarning(null);
-    setGpsQualityMessage(null);
-    setFinishWarning(null);
+    setGpsQualityMessage((current) => (nextUploadedActivity ? null : current));
+    setFinishWarning((current) => (nextUploadedActivity ? null : current));
     persistRunningDraft([startLocation], 0, startLocation.recordedAt);
   }
 
@@ -756,7 +788,7 @@ export default function RunScreen() {
       {runPhase === 'ready' ? (
         <ActionBar
           secondary={<SecondaryButton label="Back" onPress={() => router.replace(`/events/${event.id}`)} />}
-          primary={<PrimaryButton label="Start" onPress={handleStartRun} disabled={!canStart} />}
+          primary={<PrimaryButton label="Start" onPress={() => void handleStartRun()} disabled={!canStart || uploading} />}
         />
       ) : null}
 
@@ -1019,6 +1051,20 @@ function getResultLine({
   }
 
   return 'Run did not validate.';
+}
+
+function isBlockingStartSyncErrorCode(code: string | null): boolean {
+  return Boolean(
+    code &&
+      [
+        'outside_start_zone',
+        'participant_not_registered',
+        'event_not_revealed',
+        'event_not_started',
+        'event_finished',
+        'validation_error',
+      ].includes(code),
+  );
 }
 
 function mapLocationToTrackpoint(location: LocationObject): LocalTrackpoint {

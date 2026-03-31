@@ -176,6 +176,8 @@ export function formatValidationReason(reason: string | null | undefined): strin
   switch (reason) {
     case 'participant_not_registered':
       return 'This beta account was not registered for the event when the run was reviewed.';
+    case 'outside_start_zone':
+      return 'The run did not start inside the configured event start zone.';
     case 'insufficient_trackpoints':
       return 'The backend did not receive enough stable GPS points to validate this run.';
     case 'invalid_timestamps':

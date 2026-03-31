@@ -1,6 +1,6 @@
 import { ClientError } from 'graphql-request';
 import { recordActivityDiagnostic } from './betaDiagnostics';
-import { requestBackendApi } from './backendApiClient';
+import { BackendApiError, requestBackendApi } from './backendApiClient';
 import { getEffectiveRunner } from './devRunnerMode';
 import { nhost } from './nhostClient';
 
@@ -10,6 +10,11 @@ export interface LocalTrackpoint {
   recordedAt: string;
   speedKmh: number | null;
   accuracyMeters?: number | null;
+}
+
+export interface StartRunLocation {
+  latitude: number;
+  longitude: number;
 }
 
 export interface CompletedRunPayload {
@@ -65,15 +70,27 @@ interface WorkflowActivityPayload {
 
 export class ActivityUploadError extends Error {
   activity: UploadedActivity | null;
+  code: string | null;
+  status: number | null;
 
-  constructor(message: string, activity: UploadedActivity | null = null) {
+  constructor(
+    message: string,
+    activity: UploadedActivity | null = null,
+    options: { code?: string | null; status?: number | null } = {},
+  ) {
     super(message);
     this.name = 'ActivityUploadError';
     this.activity = activity;
+    this.code = options.code ?? null;
+    this.status = options.status ?? null;
   }
 }
 
-export async function startRunActivity(eventId: string, startedAt: string): Promise<UploadedActivity | null> {
+export async function startRunActivity(
+  eventId: string,
+  startedAt: string,
+  startLocation?: StartRunLocation,
+): Promise<UploadedActivity | null> {
   const realUser = nhost.auth.getUser();
   if (!realUser) {
     return null;
@@ -94,6 +111,12 @@ export async function startRunActivity(eventId: string, startedAt: string): Prom
     const response = await callActivityWorkflow('start-activity', {
       event_id: eventId,
       started_at: startedAt,
+      ...(startLocation
+        ? {
+            lat: startLocation.latitude,
+            lng: startLocation.longitude,
+          }
+        : {}),
     });
     const activity = mapWorkflowActivity(response.activity, response.reason ?? null);
 
@@ -108,13 +131,18 @@ export async function startRunActivity(eventId: string, startedAt: string): Prom
 
     return activity;
   } catch (error) {
+    if (error instanceof ActivityUploadError) {
+      throw error;
+    }
+
+    const activityError = toActivityUploadError(error);
     recordActivityDiagnostic({
       phase: 'sync_failed',
       eventId,
       activityId: null,
-      message: getActivityErrorMessage(error),
+      message: activityError.message,
     });
-    throw new ActivityUploadError(getActivityErrorMessage(error));
+    throw activityError;
   }
 }
 
@@ -158,7 +186,10 @@ export async function persistCompletedRun(payload: CompletedRunPayload): Promise
     throw new ActivityUploadError('Sign in to sync this run. The result stays saved on this device.');
   }
 
-  const activity = payload.activity ?? payload.existingActivity ?? (await startRunActivity(payload.eventId, payload.startedAt));
+  const activity =
+    payload.activity ??
+    payload.existingActivity ??
+    (await startRunActivity(payload.eventId, payload.startedAt, getStartLocation(payload.trackpoints)));
   if (!activity) {
     throw new ActivityUploadError('We could not start run sync right now.');
   }
@@ -228,18 +259,23 @@ async function finishActivityWorkflow(activityId: string, trackpoints: LocalTrac
 
     return activity;
   } catch (error) {
+    if (error instanceof ActivityUploadError) {
+      throw error;
+    }
+
+    const activityError = toActivityUploadError(error);
     recordActivityDiagnostic({
       phase: 'sync_failed',
       activityId,
-      message: getActivityErrorMessage(error),
+      message: activityError.message,
     });
-    throw new ActivityUploadError(getActivityErrorMessage(error));
+    throw activityError;
   }
 }
 
 async function callActivityWorkflow(
   name: 'start-activity',
-  body: { event_id: string; started_at?: string },
+  body: { event_id: string; started_at?: string; lat?: number; lng?: number },
 ): Promise<WorkflowResponse<WorkflowActivityPayload> & { activity: WorkflowActivityPayload }> {
   const payload = await requestBackendApi<WorkflowResponse<WorkflowActivityPayload> & { activity?: WorkflowActivityPayload }>(
     '/runs/start',
@@ -248,6 +284,8 @@ async function callActivityWorkflow(
       body: {
         eventId: body.event_id,
         startedAt: body.started_at,
+        lat: body.lat,
+        lng: body.lng,
       },
     },
   );
@@ -257,6 +295,18 @@ async function callActivityWorkflow(
   }
 
   return payload as WorkflowResponse<WorkflowActivityPayload> & { activity: WorkflowActivityPayload };
+}
+
+function getStartLocation(trackpoints: LocalTrackpoint[]): StartRunLocation | undefined {
+  const firstPoint = trackpoints[0];
+  if (!firstPoint) {
+    return undefined;
+  }
+
+  return {
+    latitude: firstPoint.latitude,
+    longitude: firstPoint.longitude,
+  };
 }
 
 function mapWorkflowActivity(activity: WorkflowActivityPayload, validationReason: string | null): UploadedActivity {
@@ -276,6 +326,30 @@ function mapWorkflowActivity(activity: WorkflowActivityPayload, validationReason
 export function getActivityErrorMessage(error: unknown): string {
   if (error instanceof ActivityUploadError) {
     return error.message;
+  }
+
+  if (error instanceof BackendApiError) {
+    switch (error.code) {
+      case 'participant_not_registered':
+        return 'This beta account is not registered for that event yet.';
+      case 'outside_start_zone':
+        return 'Move into the event start zone before starting this run.';
+      case 'activity_not_found':
+        return 'We could not find this run on the beta backend.';
+      case 'activity_owner_mismatch':
+      case 'forbidden':
+        return 'This beta action is not available in the current app state.';
+      case 'event_not_revealed':
+        return 'This event is not revealed yet on the beta backend.';
+      case 'event_not_started':
+        return 'This event has not started yet on the beta backend.';
+      case 'event_finished':
+        return 'This event is already closed on the beta backend.';
+      case 'trackpoints_closed':
+        return 'This run is already closed on the beta backend. Retry sync to refresh the latest result.';
+      default:
+        break;
+    }
   }
 
   if (error instanceof ClientError) {
@@ -324,6 +398,8 @@ function getRejectedRunMessage(reason: string | null | undefined): string {
   switch (reason) {
     case 'participant_not_registered':
       return 'This run was rejected because the beta account was not registered for the event.';
+    case 'outside_start_zone':
+      return 'This run was rejected because it did not start inside the event start zone.';
     case 'insufficient_trackpoints':
       return 'This run was rejected because the backend did not receive enough stable GPS points.';
     case 'invalid_timestamps':
@@ -342,4 +418,19 @@ function getRejectedRunMessage(reason: string | null | undefined): string {
     default:
       return 'This run was flagged during backend review and was not scored.';
   }
+}
+
+function toActivityUploadError(error: unknown, activity: UploadedActivity | null = null): ActivityUploadError {
+  if (error instanceof ActivityUploadError) {
+    return error;
+  }
+
+  if (error instanceof BackendApiError) {
+    return new ActivityUploadError(getActivityErrorMessage(error), activity, {
+      code: error.code,
+      status: error.status,
+    });
+  }
+
+  return new ActivityUploadError(getActivityErrorMessage(error), activity);
 }

@@ -7,7 +7,24 @@ import { finishRun, startRun } from './service';
 const startRunBodySchema = z.object({
   eventId: z.string().uuid(),
   startedAt: z.string().datetime().optional(),
-}).strict();
+  lat: z.number().finite().min(-90).max(90).optional(),
+  lng: z.number().finite().min(-180).max(180).optional(),
+})
+  .strict()
+  .superRefine((body, context) => {
+    const hasLat = body.lat !== undefined;
+    const hasLng = body.lng !== undefined;
+
+    if (hasLat === hasLng) {
+      return;
+    }
+
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'lat and lng must be provided together.',
+      path: hasLat ? ['lng'] : ['lat'],
+    });
+  });
 
 const finishRunBodySchema = z.object({
   activityId: z.string().uuid(),
@@ -38,8 +55,13 @@ export async function runsRoutes(app: FastifyInstance) {
       ],
     },
     async (request) => {
-    const body = startRunBodySchema.parse(request.body);
-    return startRun(request.auth!.userId, body.eventId, body.startedAt);
+      const body = startRunBodySchema.parse(request.body);
+      return startRun(
+        request.auth!.userId,
+        body.eventId,
+        body.startedAt,
+        body.lat !== undefined && body.lng !== undefined ? { lat: body.lat, lng: body.lng } : undefined,
+      );
     },
   );
 
@@ -56,8 +78,8 @@ export async function runsRoutes(app: FastifyInstance) {
       ],
     },
     async (request) => {
-    const body = finishRunBodySchema.parse(request.body);
-    return finishRun(request.auth!.userId, body.activityId, body.trackpoints);
+      const body = finishRunBodySchema.parse(request.body);
+      return finishRun(request.auth!.userId, body.activityId, body.trackpoints);
     },
   );
 }

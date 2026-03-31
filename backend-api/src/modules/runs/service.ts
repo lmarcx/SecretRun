@@ -12,6 +12,11 @@ export interface ApiTrackpointInput {
   speed_kmh?: number | null;
 }
 
+interface StartLocationInput {
+  lat: number;
+  lng: number;
+}
+
 interface ActivityPayload {
   id: string;
   user_id: string;
@@ -288,7 +293,7 @@ const FINALIZE_VALIDATED_ACTIVITY_MUTATION = gql`
   }
 `;
 
-export async function startRun(userId: string, eventId: string, startedAt?: string) {
+export async function startRun(userId: string, eventId: string, startedAt?: string, startLocation?: StartLocationInput) {
   const normalizedStartedAt = normalizeStartedAt(startedAt);
   const response = await requestHasura<{
     event_participants: Array<{ event_id: string }>;
@@ -330,6 +335,8 @@ export async function startRun(userId: string, eventId: string, startedAt?: stri
       serverStatus: 'running' as const,
     };
   }
+
+  assertStartLocationInZone(response.event, startLocation);
 
   const created = await requestHasura<{
     insert_activities_one: ActivityPayload;
@@ -795,6 +802,42 @@ function validateTrackpoints(
 }
 
 function validateStartZone(event: EventAccessSnapshot, firstTrackpoint: Trackpoint): ValidationSummary | null {
+  const firstPoint = parsePoint(firstTrackpoint.point);
+  if (!firstPoint) {
+    return buildRejectedSummary([firstTrackpoint], 'malformed_trackpoint');
+  }
+
+  const startZoneCheck = getStartZoneCheck(event, firstPoint);
+  if (!startZoneCheck) {
+    return null;
+  }
+
+  if (startZoneCheck.distanceMeters > startZoneCheck.allowedRadiusMeters) {
+    return buildRejectedSummary([firstTrackpoint], 'outside_start_zone');
+  }
+
+  return null;
+}
+
+function assertStartLocationInZone(event: EventAccessSnapshot, startLocation?: StartLocationInput) {
+  if (!startLocation) {
+    return;
+  }
+
+  const startZoneCheck = getStartZoneCheck(event, startLocation);
+  if (!startZoneCheck) {
+    return;
+  }
+
+  if (startZoneCheck.distanceMeters > startZoneCheck.allowedRadiusMeters) {
+    throw new AppError(409, 'outside_start_zone', 'Start this run from inside the event start zone.', {
+      distanceMeters: Math.round(startZoneCheck.distanceMeters),
+      allowedRadiusMeters: Math.round(startZoneCheck.allowedRadiusMeters),
+    });
+  }
+}
+
+function getStartZoneCheck(event: EventAccessSnapshot, point: StartLocationInput) {
   const center = parseGeoPoint(event.start_area_center);
   const radiusKm = Number(event.start_area_radius_km ?? 0);
 
@@ -802,19 +845,10 @@ function validateStartZone(event: EventAccessSnapshot, firstTrackpoint: Trackpoi
     return null;
   }
 
-  const firstPoint = parsePoint(firstTrackpoint.point);
-  if (!firstPoint) {
-    return buildRejectedSummary([firstTrackpoint], 'malformed_trackpoint');
-  }
-
-  const distanceFromStartMeters = haversineDistanceMeters(center.lat, center.lng, firstPoint.lat, firstPoint.lng);
-  const allowedRadiusMeters = radiusKm * 1000 + 50;
-
-  if (distanceFromStartMeters > allowedRadiusMeters) {
-    return buildRejectedSummary([firstTrackpoint], 'outside_start_zone');
-  }
-
-  return null;
+  return {
+    distanceMeters: haversineDistanceMeters(center.lat, center.lng, point.lat, point.lng),
+    allowedRadiusMeters: radiusKm * 1000 + 50,
+  };
 }
 
 function parseGeoPoint(raw: unknown): { lat: number; lng: number } | null {
