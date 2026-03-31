@@ -87,6 +87,9 @@ INSERT INTO public.events (
   end_point,
   start_area_center,
   start_area_radius_km,
+  team_id,
+  is_private,
+  max_participants,
   created_by,
   created_at
 )
@@ -102,6 +105,9 @@ VALUES
     ST_GeogFromText('SRID=4326;POINT(-6.2559 53.3512)'),
     ST_GeogFromText('SRID=4326;POINT(-6.2603 53.3498)'),
     1.50,
+    NULL,
+    false,
+    120,
     '11111111-1111-4111-8111-111111111111',
     now() - interval '2 days'
   ),
@@ -116,6 +122,9 @@ VALUES
     ST_GeogFromText('SRID=4326;POINT(-6.2620 53.3414)'),
     ST_GeogFromText('SRID=4326;POINT(-6.2675 53.3441)'),
     2.00,
+    NULL,
+    false,
+    90,
     '22222222-2222-4222-8222-222222222222',
     now() - interval '1 day'
   ),
@@ -130,8 +139,28 @@ VALUES
     ST_GeogFromText('SRID=4326;POINT(-6.2579 53.3489)'),
     ST_GeogFromText('SRID=4326;POINT(-6.2603 53.3498)'),
     0.35,
+    NULL,
+    false,
+    40,
     '11111111-1111-4111-8111-111111111111',
     now() - interval '12 hours'
+  ),
+  (
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4',
+    'Night Owls Relay Brief',
+    'A private squad briefing route reserved for Night Owls members.',
+    now() + interval '10 hours',
+    now() + interval '14 hours',
+    now() + interval '16 hours',
+    ST_GeogFromText('SRID=4326;POINT(-6.2721 53.3470)'),
+    ST_GeogFromText('SRID=4326;POINT(-6.2680 53.3458)'),
+    ST_GeogFromText('SRID=4326;POINT(-6.2721 53.3470)'),
+    0.80,
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+    true,
+    20,
+    '11111111-1111-4111-8111-111111111111',
+    now() - interval '10 hours'
   )
 ON CONFLICT (id) DO UPDATE
 SET
@@ -144,6 +173,9 @@ SET
   end_point = EXCLUDED.end_point,
   start_area_center = EXCLUDED.start_area_center,
   start_area_radius_km = EXCLUDED.start_area_radius_km,
+  team_id = EXCLUDED.team_id,
+  is_private = EXCLUDED.is_private,
+  max_participants = EXCLUDED.max_participants,
   created_by = EXCLUDED.created_by;
 
 INSERT INTO public.event_routes (

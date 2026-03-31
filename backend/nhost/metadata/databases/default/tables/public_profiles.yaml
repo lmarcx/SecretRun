@@ -2,7 +2,7 @@ table:
   name: profiles
   schema: public
 select_permissions:
-  - role: public
+  - role: anonymous
     permission:
       columns: [id, username, display_name, avatar_url, created_at, updated_at]
       filter: {}

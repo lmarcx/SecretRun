@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { createRateLimitPreHandler } from '../../lib/rate-limit';
-import { requireBetaAccess, requireClosedBetaAccess } from '../auth/plugin';
+import { getBetaAccess } from '../auth/beta-access';
+import { optionalAuth, requireBetaAccess } from '../auth/plugin';
 import { getEvent, getEventRoute, joinEvent, listEvents } from './service';
 
 const paramsSchema = z.object({
@@ -12,10 +13,10 @@ export async function eventsRoutes(app: FastifyInstance) {
   app.get(
     '/events',
     {
-      preHandler: [requireClosedBetaAccess],
+      preHandler: [optionalAuth],
     },
     async (request) => {
-      const events = await listEvents(request.auth?.userId ?? null);
+      const events = await listEvents(getPublicViewerUserId(request.auth));
 
       return {
         events,
@@ -26,11 +27,11 @@ export async function eventsRoutes(app: FastifyInstance) {
   app.get(
     '/events/:id',
     {
-      preHandler: [requireClosedBetaAccess],
+      preHandler: [optionalAuth],
     },
     async (request, reply) => {
       const params = paramsSchema.parse(request.params);
-      const event = await getEvent(request.auth?.userId ?? null, params.id);
+      const event = await getEvent(getPublicViewerUserId(request.auth), params.id);
 
       if (!event) {
         return reply.status(404).send({
@@ -76,4 +77,12 @@ export async function eventsRoutes(app: FastifyInstance) {
       };
     },
   );
+}
+
+function getPublicViewerUserId(auth: { userId: string; payload: Record<string, unknown> } | null) {
+  if (!auth) {
+    return null;
+  }
+
+  return getBetaAccess(auth).allowed ? auth.userId : null;
 }

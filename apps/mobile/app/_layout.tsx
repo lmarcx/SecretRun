@@ -28,6 +28,7 @@ function AppChrome() {
   const pathname = usePathname();
   const { betaAccessState, isAvailable } = useAuth();
   const authRoute = pathname === '/login' || pathname === '/register';
+  const guestRoute = isGuestAccessibleRoute(pathname);
 
   useEffect(() => {
     configureNotificationHandling();
@@ -57,7 +58,7 @@ function AppChrome() {
       return;
     }
 
-    if ((betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked') && !authRoute) {
+    if ((betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked') && !authRoute && !guestRoute) {
       router.replace('/(auth)/login');
       return;
     }
@@ -65,7 +66,7 @@ function AppChrome() {
     if (betaAccessState === 'signed_in' && authRoute) {
       router.replace('/events');
     }
-  }, [authRoute, betaAccessState, isAvailable, router]);
+  }, [authRoute, betaAccessState, guestRoute, isAvailable, router]);
 
   return (
     <>
@@ -108,6 +109,14 @@ function AppChrome() {
       </View>
     </>
   );
+}
+
+function isGuestAccessibleRoute(pathname: string | null | undefined) {
+  if (!pathname) {
+    return false;
+  }
+
+  return pathname === '/' || pathname === '/events' || pathname.startsWith('/events/');
 }
 
 const styles = StyleSheet.create({

@@ -60,6 +60,8 @@ Configuration manuelle conseillee pour ce monorepo:
 ## Notes d'architecture
 
 - L'API verifie le JWT Nhost avant toute action protegee.
+- `GET /events` et `GET /events/:id` restent publics pour les events publics, avec un viewer authentifie traite comme guest s'il n'a pas l'acces closed beta.
+- `POST /events/:id/join`, `GET /events/:id/route`, `POST /runs/start` et `POST /runs/finish` restent proteges par JWT + regles beta.
 - Si `BETA_ALLOWED_EMAILS` est renseigne, la closed beta est verrouillee par allowlist email cote backend.
 - Les mutations metier passent par Hasura GraphQL avec secret serveur.
 - Le mobile envoie le token Nhost dans `Authorization: Bearer <token>`.

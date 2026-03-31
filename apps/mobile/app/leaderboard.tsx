@@ -17,7 +17,6 @@ import { fetchLeaderboard, getLeaderboardErrorMessage } from '@/services/leaderb
 import { colors, spacing, typography } from '@/theme/tokens';
 
 type LeaderboardBoard = 'runners' | 'teams';
-type LeaderboardScope = 'season';
 
 interface LeaderboardListItem {
   id: string;
@@ -41,7 +40,6 @@ export default function LeaderboardScreen() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const bottomContentPadding = useBottomContentPadding();
-  const scope: LeaderboardScope = 'season';
 
   useEffect(() => {
     let active = true;
@@ -82,7 +80,7 @@ export default function LeaderboardScreen() {
   }, [params.board]);
 
   const rows = useMemo<LeaderboardListItem[]>(() => {
-    if (!data || scope !== 'season') {
+    if (!data) {
       return [];
     }
 
@@ -115,11 +113,9 @@ export default function LeaderboardScreen() {
       highlighted: data.currentTeamIds.includes(entry.id),
       ...(data.currentTeamIds.includes(entry.id) ? { badgeLabel: 'Your team' } : {}),
     }));
-  }, [board, data, scope]);
+  }, [board, data]);
 
   const currentEntry = useMemo(() => rows.find((item) => item.highlighted) ?? null, [rows]);
-  const scopeSupported = scope === 'season';
-  const scopeLabel = getScopeLabel();
   const headerItems = getHeaderItems({ betaAccessState, seasonName: data?.seasonName ?? null });
 
   if (loading) {
@@ -153,15 +149,15 @@ export default function LeaderboardScreen() {
   return (
     <AppScreen scrollable={false} contentContainerStyle={styles.screen}>
       <FlatList
-        data={scopeSupported ? rows : []}
-        key={`${scope}-${board}`}
+        data={rows}
+        key={board}
         keyExtractor={(item) => item.id}
         style={styles.list}
         contentContainerStyle={[styles.listContent, { paddingBottom: bottomContentPadding }]}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
-            <ScreenHeader title="Leaderboard" subtitle={getHeaderSubtitle(scope, board)} />
+            <ScreenHeader title="Leaderboard" subtitle={getHeaderSubtitle(board)} />
             {headerItems.length > 0 ? <StatusStrip compact muted items={headerItems} /> : null}
             <SegmentedTabs
               compact
@@ -175,8 +171,8 @@ export default function LeaderboardScreen() {
             <LeaderboardRankCard
               actionLabel={betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked' ? 'Sign in' : undefined}
               avatarUrl={currentEntry?.avatarUrl}
-              contextLabel={scopeLabel}
-              emptyMessage={getRankEmptyMessage({ betaAccessState, board, scopeSupported })}
+              contextLabel="Season"
+              emptyMessage={getRankEmptyMessage({ betaAccessState, board })}
               identity={currentEntry?.title}
               label={board === 'runners' ? 'Your rank' : 'Your team'}
               onAction={
@@ -190,13 +186,13 @@ export default function LeaderboardScreen() {
               variant={board === 'runners' ? 'user' : 'team'}
             />
             <SectionHeader
-              {...(scopeSupported ? { subtitle: board === 'runners' ? 'Season points' : 'Season team points' } : {})}
-              title={scopeSupported ? (board === 'runners' ? 'Standings' : 'Team standings') : scopeLabel}
+              subtitle={board === 'runners' ? 'Season points' : 'Season team points'}
+              title={board === 'runners' ? 'Standings' : 'Team standings'}
             />
           </View>
         }
         ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={<EmptyState title={getEmptyTitle({ board, scope, scopeSupported })} />}
+        ListEmptyComponent={<EmptyState title={getEmptyTitle({ board })} />}
         renderItem={({ item }) => (
           <LeaderboardRow
             avatarUrl={item.avatarUrl}
@@ -214,17 +210,13 @@ export default function LeaderboardScreen() {
   );
 }
 
-function getHeaderSubtitle(scope: LeaderboardScope, board: LeaderboardBoard) {
+function getHeaderSubtitle(board: LeaderboardBoard) {
   return board === 'runners' ? 'Season standings' : 'Season team standings';
 }
 
 function resolveBoardParam(value: string | string[] | undefined): LeaderboardBoard {
   const resolved = Array.isArray(value) ? value[0] : value;
   return resolved === 'teams' ? 'teams' : 'runners';
-}
-
-function getScopeLabel() {
-  return 'Season';
 }
 
 function getHeaderItems({
@@ -246,16 +238,10 @@ function getHeaderItems({
 function getRankEmptyMessage({
   betaAccessState,
   board,
-  scopeSupported,
 }: {
   betaAccessState: BetaAccessState;
   board: LeaderboardBoard;
-  scopeSupported: boolean;
 }) {
-  if (!scopeSupported) {
-    return 'This scope is not live yet.';
-  }
-
   if (board === 'teams') {
     return betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked'
       ? 'Sign in with an invited beta account to pin your team.'
@@ -269,17 +255,9 @@ function getRankEmptyMessage({
 
 function getEmptyTitle({
   board,
-  scope,
-  scopeSupported,
 }: {
   board: LeaderboardBoard;
-  scope: LeaderboardScope;
-  scopeSupported: boolean;
 }) {
-  if (!scopeSupported) {
-    return `${getScopeLabel()} ranking soon`;
-  }
-
   return board === 'runners' ? 'No runners ranked yet' : 'No teams ranked yet';
 }
 

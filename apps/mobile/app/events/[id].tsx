@@ -428,7 +428,7 @@ function getPrimaryAction({
   if (!isAuthenticated) {
     return {
       kind: 'login' as const,
-      label: 'Join',
+      label: 'Sign in to join',
       disabled: false,
     };
   }

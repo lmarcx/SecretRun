@@ -7,7 +7,7 @@
     "backend:stop": "cd nhost && docker compose down",
     "backend:logs": "cd nhost && docker compose logs -f --tail=100",
     "db:migrate": "cd nhost && nhost migrate apply",
-    "db:seed": "cd nhost && nhost seed apply",
+    "db:seed": "cd nhost && docker compose exec -T postgres psql -U postgres -d secretrun -f /seeds/seeds.sql",
     "lint": "eslint nhost/functions --ext .ts"
   },
   "dependencies": {

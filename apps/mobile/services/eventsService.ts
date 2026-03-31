@@ -1,6 +1,8 @@
 import type { LatLng } from 'react-native-maps';
+import { gql } from 'graphql-request';
 import { BackendApiError, requestBackendApi } from './backendApiClient';
-import { getDevJoinedEvent, markDevJoinedEvent } from './devRunnerMode';
+import { getDevJoinedEvent, isDevRunnerActive, markDevJoinedEvent } from './devRunnerMode';
+import { requestGraphql } from './graphqlClient';
 import { nhost } from './nhostClient';
 import { parseGeoPoint } from '@/utils/route';
 
@@ -38,6 +40,52 @@ interface BackendEventDetail extends BackendEventRead {
   participantCount: number | null;
 }
 
+const DEV_FALLBACK_EVENTS_QUERY = gql`
+  query DevFallbackEvents {
+    events(order_by: [{ starts_at: asc }, { reveal_at: asc }]) {
+      id
+      title
+      description
+      starts_at
+      reveal_at
+      ends_at
+      start_area_radius_km
+    }
+  }
+`;
+
+const DEV_FALLBACK_EVENT_DETAIL_QUERY = gql`
+  query DevFallbackEventDetail($eventId: uuid!) {
+    event: events_by_pk(id: $eventId) {
+      id
+      title
+      description
+      starts_at
+      reveal_at
+      ends_at
+      start_area_radius_km
+    }
+  }
+`;
+
+interface DevFallbackEventRow {
+  id: string;
+  title: string;
+  description: string | null;
+  starts_at: string;
+  reveal_at: string;
+  ends_at: string | null;
+  start_area_radius_km: number | string;
+}
+
+interface DevFallbackEventsQuery {
+  events: DevFallbackEventRow[];
+}
+
+interface DevFallbackEventDetailQuery {
+  event: DevFallbackEventRow | null;
+}
+
 function mapEventListItem(
   event: BackendEventRead,
   participation?: { status: string; joinedAt: string } | null,
@@ -68,21 +116,31 @@ function mapEventDetail(
 
 export async function fetchPublicEvents(): Promise<EventListItem[]> {
   const viewerId = nhost.auth.getUser()?.id;
-  const response = await requestBackendApi<{ events: BackendEventRead[] }>('/events');
 
-  return response.events.map((event) => {
-    const devParticipation = !viewerId ? getDevJoinedEvent(event.id) : null;
+  try {
+    const response = await requestBackendApi<{ events: BackendEventRead[] }>('/events');
 
-    return mapEventListItem(
-      event,
-      devParticipation
-        ? {
-            status: devParticipation.status,
-            joinedAt: devParticipation.joinedAt,
-          }
-        : null,
-    );
-  });
+    return response.events.map((event) => {
+      const devParticipation = !viewerId ? getDevJoinedEvent(event.id) : null;
+
+      return mapEventListItem(
+        event,
+        devParticipation
+          ? {
+              status: devParticipation.status,
+              joinedAt: devParticipation.joinedAt,
+            }
+          : null,
+      );
+    });
+  } catch (error) {
+    if (shouldUseDevFallbackEvents(error)) {
+      const response = await requestGraphql<DevFallbackEventsQuery>(DEV_FALLBACK_EVENTS_QUERY, {});
+      return response.events.map(mapDevFallbackListItem);
+    }
+
+    throw error;
+  }
 }
 
 export async function fetchEventDetails(eventId: string): Promise<EventDetail | null> {
@@ -103,6 +161,18 @@ export async function fetchEventDetails(eventId: string): Promise<EventDetail | 
   } catch (error) {
     if (error instanceof BackendApiError && error.status === 404 && error.code === 'event_not_found') {
       return null;
+    }
+
+    if (shouldUseDevFallbackEvents(error)) {
+      const response = await requestGraphql<DevFallbackEventDetailQuery>(DEV_FALLBACK_EVENT_DETAIL_QUERY, {
+        eventId,
+      });
+
+      if (!response.event) {
+        return null;
+      }
+
+      return mapDevFallbackDetail(response, devParticipation);
     }
 
     throw error;
@@ -167,4 +237,42 @@ export function getEventErrorMessage(error: unknown): string {
 
 function isAlreadyJoinedError(error: unknown): boolean {
   return error instanceof BackendApiError && error.code === 'already_joined';
+}
+
+function shouldUseDevFallbackEvents(error: unknown): boolean {
+  return Boolean(
+    !nhost.auth.getUser() &&
+      isDevRunnerActive() &&
+      error instanceof BackendApiError &&
+      ['missing_authorization', 'invalid_authorization', 'beta_access_denied'].includes(error.code),
+  );
+}
+
+function mapDevFallbackListItem(event: DevFallbackEventRow): EventListItem {
+  const devParticipation = getDevJoinedEvent(event.id);
+
+  return {
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    startsAt: event.starts_at,
+    revealAt: event.reveal_at,
+    endsAt: event.ends_at,
+    startAreaRadiusKm: Number(event.start_area_radius_km),
+    startAreaCenter: null,
+    viewerParticipationStatus: devParticipation?.status ?? null,
+    viewerJoinedAt: devParticipation?.joinedAt ?? null,
+  };
+}
+
+function mapDevFallbackDetail(
+  response: DevFallbackEventDetailQuery,
+  devParticipation: { status: string; joinedAt: string } | null,
+): EventDetail {
+  return {
+    ...mapDevFallbackListItem(response.event!),
+    viewerParticipationStatus: devParticipation?.status ?? getDevJoinedEvent(response.event!.id)?.status ?? null,
+    viewerJoinedAt: devParticipation?.joinedAt ?? getDevJoinedEvent(response.event!.id)?.joinedAt ?? null,
+    participantCount: null,
+  };
 }

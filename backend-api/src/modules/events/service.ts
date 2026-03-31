@@ -265,7 +265,7 @@ interface JoinEventMutation {
 export async function listEvents(userId: string | null): Promise<EventReadModel[]> {
   if (!userId) {
     const response = await requestHasura<PublicEventsQuery>(PUBLIC_EVENTS_QUERY);
-    return response.events.filter((event) => isPublicEvent(event)).map((event) => mapEventReadModel(event));
+    return response.events.filter((event) => isPublicEvent(event)).map((event) => mapEventReadModel(event, null, false));
   }
 
   const response = await requestHasura<AuthenticatedEventsQuery>(AUTHENTICATED_EVENTS_QUERY, {
@@ -279,7 +279,7 @@ export async function listEvents(userId: string | null): Promise<EventReadModel[
 
   return response.events
     .filter((event) => canViewEvent(event, userId, membershipTeamIds, participationByEventId.get(event.id) ?? null))
-    .map((event) => mapEventReadModel(event, participationByEventId.get(event.id) ?? null));
+    .map((event) => mapEventReadModel(event, participationByEventId.get(event.id) ?? null, false));
 }
 
 export async function getEvent(userId: string | null, eventId: string): Promise<EventDetailReadModel | null> {
@@ -292,7 +292,7 @@ export async function getEvent(userId: string | null, eventId: string): Promise<
       return null;
     }
 
-    return mapEventDetailReadModel(response.event, null, response.participant_count.aggregate?.count ?? null);
+    return mapEventDetailReadModel(response.event, null, response.participant_count.aggregate?.count ?? null, false);
   }
 
   const response = await requestHasura<AuthenticatedEventDetailQuery>(AUTHENTICATED_EVENT_DETAIL_QUERY, {
@@ -311,7 +311,12 @@ export async function getEvent(userId: string | null, eventId: string): Promise<
     return null;
   }
 
-  return mapEventDetailReadModel(event, participation, response.participant_count.aggregate?.count ?? null);
+  return mapEventDetailReadModel(
+    event,
+    participation,
+    response.participant_count.aggregate?.count ?? null,
+    canViewSensitiveEventFields(event, userId, participation),
+  );
 }
 
 export async function getEventRoute(userId: string, eventId: string): Promise<{ routePolyline: string }> {
@@ -415,7 +420,11 @@ function canViewEvent(
   return participation?.status === 'registered';
 }
 
-function mapEventReadModel(event: EventRecord, participation: EventParticipation | null = null): EventReadModel {
+function mapEventReadModel(
+  event: EventRecord,
+  participation: EventParticipation | null = null,
+  includeSensitiveLocation = false,
+): EventReadModel {
   return {
     id: event.id,
     title: event.title,
@@ -424,7 +433,7 @@ function mapEventReadModel(event: EventRecord, participation: EventParticipation
     revealAt: event.reveal_at,
     endsAt: event.ends_at,
     startAreaRadiusKm: Number(event.start_area_radius_km),
-    startAreaCenter: event.start_area_center,
+    startAreaCenter: includeSensitiveLocation ? event.start_area_center : null,
     viewerParticipationStatus: participation?.status ?? null,
     viewerJoinedAt: participation?.joined_at ?? null,
   };
@@ -434,11 +443,24 @@ function mapEventDetailReadModel(
   event: EventRecord,
   participation: EventParticipation | null,
   participantCount: number | null,
+  includeSensitiveLocation: boolean,
 ): EventDetailReadModel {
   return {
-    ...mapEventReadModel(event, participation),
+    ...mapEventReadModel(event, participation, includeSensitiveLocation),
     participantCount,
   };
+}
+
+function canViewSensitiveEventFields(
+  event: Pick<EventRecord, 'created_by'>,
+  userId: string,
+  participation: EventParticipation | null,
+): boolean {
+  if (event.created_by === userId) {
+    return true;
+  }
+
+  return participation?.status === 'registered';
 }
 
 function assertRouteVisible(

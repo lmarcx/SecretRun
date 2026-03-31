@@ -76,13 +76,17 @@ Useful commands:
 5. GraphQL endpoint: `http://localhost:8080/v1/graphql`.
 6. Local frontend requests without a user session run as the Hasura `anonymous` role via `HASURA_GRAPHQL_UNAUTHORIZED_ROLE=anonymous`.
 7. Local Hasura metadata from `backend/nhost/metadata` is reapplied automatically on container startup, so tracked tables and permissions come back after a reset.
-8. Local dev seed data from `backend/nhost/seeds/seed.sql` is applied automatically on a fresh Postgres volume.
-9. Use `docker compose down -v` followed by `docker compose up -d` whenever init SQL or seed files change, because `docker-entrypoint-initdb.d` runs only when the data volume is created.
+8. Local dev seed data from `backend/nhost/seeds/seeds.sql` is applied automatically on a fresh Postgres volume.
+9. The Docker init script now reuses that same tracked seed file, so fresh volumes and manual reseeds stay aligned.
+10. Use `pnpm db:seed` to replay the demo seed on an existing local database without recreating the volume.
+11. Use `docker compose down -v` followed by `docker compose up -d` only when you need a full local reset, because `docker-entrypoint-initdb.d` runs only when the data volume is created.
 
 ## Database Migration
 
 - `pnpm db:migrate`
 - `pnpm db:seed`
+
+`pnpm db:seed` expects the local Docker backend to be running and replays `backend/nhost/seeds/seeds.sql` idempotently through the Postgres container.
 
 ## Connect Mobile to Nhost
 
