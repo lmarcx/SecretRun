@@ -2,10 +2,12 @@ import { GraphQLClient } from 'graphql-request';
 import { getGraphqlUrl, nhost, nhostConfig } from './nhostClient';
 
 let graphqlClient: GraphQLClient | null = null;
+export const PUBLIC_GRAPHQL_CONFIG_ERROR_MESSAGE =
+  'Set EXPO_PUBLIC_HASURA_GRAPHQL_URL or EXPO_PUBLIC_NHOST_SUBDOMAIN + EXPO_PUBLIC_NHOST_REGION to load public GraphQL data in mobile.';
 
 function getGraphqlClient() {
-  if (!nhostConfig.isConfigured) {
-    throw new Error('Secret Run is not connected to an Nhost Cloud project yet.');
+  if (!nhostConfig.isGraphqlEnabled) {
+    throw new Error(nhostConfig.graphqlDisabledMessage ?? PUBLIC_GRAPHQL_CONFIG_ERROR_MESSAGE);
   }
 
   if (!graphqlClient) {
@@ -40,6 +42,14 @@ export async function requestGraphql<TData>(
 
     throw error;
   }
+}
+
+export function isPublicGraphqlConfigError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message.includes(PUBLIC_GRAPHQL_CONFIG_ERROR_MESSAGE) ||
+      error.message.includes('load public GraphQL data in mobile'))
+  );
 }
 
 export async function requestPublicGraphql<TData>(

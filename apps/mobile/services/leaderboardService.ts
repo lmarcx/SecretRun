@@ -1,4 +1,5 @@
 import { ClientError, gql } from 'graphql-request';
+import { isPublicGraphqlConfigError } from './graphqlClient';
 import { nhost } from './nhostClient';
 import { requestGraphql } from './graphqlClient';
 
@@ -151,6 +152,10 @@ export async function fetchLeaderboard(): Promise<LeaderboardData | null> {
 }
 
 export function getLeaderboardErrorMessage(error: unknown): string {
+  if (isPublicGraphqlConfigError(error)) {
+    return 'Leaderboard needs EXPO_PUBLIC_HASURA_GRAPHQL_URL or EXPO_PUBLIC_NHOST_SUBDOMAIN + EXPO_PUBLIC_NHOST_REGION.';
+  }
+
   if (error instanceof ClientError) {
     const firstMessage = error.response.errors?.[0]?.message;
     if (firstMessage) {

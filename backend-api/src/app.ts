@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { ZodError } from 'zod';
 import { env } from './config/env';
+import { registerCors } from './lib/cors';
 import { isAppError } from './lib/errors';
 import { authRoutes } from './modules/auth/routes';
 import { eventsRoutes } from './modules/events/routes';
@@ -17,6 +18,7 @@ export function buildApp() {
   });
 
   app.decorateRequest('auth', null);
+  registerCors(app);
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ZodError) {

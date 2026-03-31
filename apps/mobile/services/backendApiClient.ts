@@ -1,6 +1,12 @@
 import { nhost } from './nhostClient';
 
 const configuredBackendApiUrl = process.env.EXPO_PUBLIC_BACKEND_API_URL?.trim().replace(/\/+$/, '') ?? '';
+export const BACKEND_API_CONFIG_ERROR_MESSAGE = 'Set EXPO_PUBLIC_BACKEND_API_URL to enable the standalone backend API.';
+
+export interface BackendApiSourceDiagnostics {
+  url: string | null;
+  mode: 'local' | 'cloud' | 'custom' | 'unset';
+}
 
 export class BackendApiError extends Error {
   status: number;
@@ -18,7 +24,7 @@ export class BackendApiError extends Error {
 
 function getBackendApiBaseUrl(): string {
   if (!configuredBackendApiUrl) {
-    throw new Error('Set EXPO_PUBLIC_BACKEND_API_URL to enable the standalone backend API.');
+    throw new Error(BACKEND_API_CONFIG_ERROR_MESSAGE);
   }
 
   return configuredBackendApiUrl;
@@ -26,6 +32,17 @@ function getBackendApiBaseUrl(): string {
 
 export function isBackendApiConfigured(): boolean {
   return Boolean(configuredBackendApiUrl);
+}
+
+export function isBackendApiConfigError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes(BACKEND_API_CONFIG_ERROR_MESSAGE);
+}
+
+export function getBackendApiSourceDiagnostics(): BackendApiSourceDiagnostics {
+  return {
+    url: configuredBackendApiUrl || null,
+    mode: classifySourceMode(configuredBackendApiUrl),
+  };
 }
 
 export async function requestBackendApi<TResponse>(
@@ -59,4 +76,31 @@ export async function requestBackendApi<TResponse>(
   }
 
   return (payload ?? {}) as TResponse;
+}
+
+function classifySourceMode(url: string | null | undefined): BackendApiSourceDiagnostics['mode'] {
+  if (!url) {
+    return 'unset';
+  }
+
+  const normalized = url.toLowerCase();
+  if (
+    normalized.includes('localhost') ||
+    normalized.includes('127.0.0.1') ||
+    normalized.includes('192.168.') ||
+    normalized.includes('10.') ||
+    normalized.includes('172.16.') ||
+    normalized.includes('172.17.') ||
+    normalized.includes('172.18.') ||
+    normalized.includes('172.19.') ||
+    normalized.includes('.local')
+  ) {
+    return 'local';
+  }
+
+  if (normalized.includes('.onrender.com') || normalized.includes('.nhost.run')) {
+    return 'cloud';
+  }
+
+  return 'custom';
 }

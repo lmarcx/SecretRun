@@ -1,4 +1,4 @@
-import { BackendApiError, requestBackendApi } from './backendApiClient';
+import { BackendApiError, isBackendApiConfigError, requestBackendApi } from './backendApiClient';
 import { nhost } from './nhostClient';
 
 export type FeedActivityType = 'joined_event' | 'completed_run' | 'result_available';
@@ -40,6 +40,10 @@ export async function fetchFeed(limit = 20): Promise<FeedData> {
 }
 
 export function getFeedErrorMessage(error: unknown): string {
+  if (isBackendApiConfigError(error)) {
+    return 'Feed needs EXPO_PUBLIC_BACKEND_API_URL. Public fallback is only enabled for events.';
+  }
+
   if (error instanceof BackendApiError) {
     switch (error.code) {
       case 'beta_access_denied':

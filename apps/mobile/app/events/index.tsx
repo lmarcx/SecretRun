@@ -9,6 +9,7 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import type { StatusBadgeTone } from '@/components/ui/StatusBadge';
 import { isDevRunnerActive } from '@/services/devRunnerMode';
+import { debugEvents } from '@/services/eventsDebug';
 import type { EventListItem } from '@/services/eventsService';
 import { fetchPublicEvents, getEventsListErrorMessage } from '@/services/eventsService';
 import { getStoredRunSession } from '@/services/runSessionStore';
@@ -83,6 +84,19 @@ export default function EventsScreen() {
     () => buildSections(eventModels, heroEvent?.event.id ?? null),
     [eventModels, heroEvent?.event.id],
   );
+
+  useEffect(() => {
+    debugEvents('screen.sections', {
+      rawEventCount: events.length,
+      eventModelCount: eventModels.length,
+      heroEventId: heroEvent?.event.id ?? null,
+      sections: sections.map((section) => ({
+        key: section.key,
+        count: section.items.length,
+        eventIds: section.items.map((item) => item.event.id),
+      })),
+    });
+  }, [eventModels, events.length, heroEvent?.event.id, sections]);
 
   if (loading) {
     return (

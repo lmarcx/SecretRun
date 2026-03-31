@@ -26,6 +26,7 @@ Copier `.env.example` et renseigner:
 
 - `PORT`
 - `HOST`
+- `CORS_ALLOWED_ORIGINS` optionnel, liste CSV d'origines web supplementaires a autoriser
 - `HASURA_GRAPHQL_URL`
 - `HASURA_ADMIN_SECRET`
 - `NHOST_SUBDOMAIN`
@@ -43,6 +44,12 @@ pnpm install
 pnpm --filter @secret-run/backend-api build
 pnpm --filter @secret-run/backend-api start
 ```
+
+Notes CORS locales:
+
+- en `development` et `test`, l'API autorise automatiquement les origins web locales utiles a Expo/web: `localhost`, `127.0.0.1` et les IP LAN privees (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`)
+- les preflights `OPTIONS` sont repondus directement par l'API
+- en `production`, seules les origines listees dans `CORS_ALLOWED_ORIGINS` sont autorisees
 
 ## Render
 

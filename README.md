@@ -28,12 +28,18 @@ Create `apps/mobile/.env`:
 EXPO_PUBLIC_NHOST_SUBDOMAIN=local
 EXPO_PUBLIC_NHOST_REGION=local
 EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://YOUR_LOCAL_IP:8080/v1/graphql
-EXPO_PUBLIC_NHOST_BASE_URL=http://YOUR_LOCAL_IP:1337
+EXPO_PUBLIC_BACKEND_API_URL=http://YOUR_LOCAL_IP:10000
 EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://YOUR_LOCAL_IP:1337/v1/functions/trackpoints
+
+Mobile env roles:
+- `EXPO_PUBLIC_HASURA_GRAPHQL_URL`: public GraphQL reads. Required for guest-accessible `events` fallback and `leaderboard`.
+- `EXPO_PUBLIC_NHOST_SUBDOMAIN` + `EXPO_PUBLIC_NHOST_REGION`: enable Nhost Auth and derive auth/functions/storage URLs. They can also derive the GraphQL URL if you do not set `EXPO_PUBLIC_HASURA_GRAPHQL_URL` explicitly.
+- `EXPO_PUBLIC_BACKEND_API_URL`: recommended for all backend-owned reads and required for private/account flows such as `feed`, `profile`, joins, and run sync. If it is absent, public `events` list/detail fall back to public GraphQL; `feed` and `profile` do not.
+- `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT`: optional override for the trackpoints function endpoint.
 
 Expo Go note:
 - On a real phone, `localhost` points to the phone itself, not your PC.
-- Use your development machine LAN IP for `EXPO_PUBLIC_HASURA_GRAPHQL_URL`, `EXPO_PUBLIC_NHOST_BASE_URL`, and `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT`.
+- Use your development machine LAN IP for `EXPO_PUBLIC_HASURA_GRAPHQL_URL`, `EXPO_PUBLIC_BACKEND_API_URL`, and `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT`.
 - Public frontend GraphQL requests use the local Hasura `anonymous` role. Do not send the Hasura admin secret from mobile or web code.
 
 Create `backend/nhost/config/.env` (or copy `.env.example`):
@@ -94,9 +100,14 @@ Useful commands:
 2. GraphQL endpoint is available at `http://localhost:8080/v1/graphql` on the development machine.
 3. In `apps/mobile/.env`, use your PC LAN IP for Expo Go on a phone, for example:
    - `EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://192.168.1.42:8080/v1/graphql`
-   - `EXPO_PUBLIC_NHOST_BASE_URL=http://192.168.1.42:1337`
+   - `EXPO_PUBLIC_BACKEND_API_URL=http://192.168.1.42:10000`
    - `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://192.168.1.42:1337/v1/functions/trackpoints`
 4. Launch Expo (`pnpm dev:mobile`) and authenticate via Nhost Auth.
+
+Mobile behavior without `EXPO_PUBLIC_BACKEND_API_URL`:
+- `events` list/detail still work through the public GraphQL fallback.
+- `leaderboard` still works if GraphQL env is configured.
+- `feed`, `profile`, joins, and run sync still need the backend API and show explicit config errors if it is missing.
 
 ## Route Lifecycle Functions
 

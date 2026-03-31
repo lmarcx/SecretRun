@@ -4,6 +4,7 @@ const rawEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(10000),
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
   HASURA_GRAPHQL_URL: z.string().url(),
   HASURA_ADMIN_SECRET: z.string().min(1),
   NHOST_SUBDOMAIN: z.string().min(1).optional(),

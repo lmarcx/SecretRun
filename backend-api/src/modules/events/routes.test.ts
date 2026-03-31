@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
-import Fastify, { type FastifyInstance } from 'fastify';
-import { ZodError } from 'zod';
-import { isAppError } from '../../lib/errors';
 
 process.env.NODE_ENV = 'test';
 process.env.HASURA_GRAPHQL_URL ??= 'http://localhost:8080/v1/graphql';
@@ -10,35 +7,8 @@ process.env.HASURA_ADMIN_SECRET ??= 'test-secret';
 process.env.NHOST_JWT_PUBLIC_KEY ??= 'test-public-key';
 
 async function buildEventsTestApp() {
-  const [{ eventsRoutes }, eventsService] = await Promise.all([import('./routes'), import('./service')]);
-  const app = Fastify({ logger: false });
-
-  app.decorateRequest('auth', null);
-  app.setErrorHandler((error, request, reply) => {
-    if (error instanceof ZodError) {
-      return reply.status(400).send({
-        error: 'validation_error',
-        message: 'Request validation failed.',
-        details: error.flatten(),
-      });
-    }
-
-    if (isAppError(error)) {
-      return reply.status(error.statusCode).send({
-        error: error.code,
-        message: error.message,
-        details: error.details ?? null,
-      });
-    }
-
-    request.log.error(error);
-    return reply.status(500).send({
-      error: 'internal_error',
-      message: 'Unexpected server error.',
-    });
-  });
-
-  await app.register(eventsRoutes);
+  const [{ buildApp }, eventsService] = await Promise.all([import('../../app'), import('./service')]);
+  const app = buildApp();
 
   return {
     app,
@@ -129,6 +99,28 @@ describe('events routes guest access', () => {
 
       assert.equal(response.statusCode, 200);
       assert.equal(response.json().startAreaCenter, null);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('handles allowed dev preflight requests for public events', async () => {
+    const { app } = await buildEventsTestApp();
+
+    try {
+      const response = await app.inject({
+        method: 'OPTIONS',
+        url: '/events',
+        headers: {
+          Origin: 'http://localhost:8081',
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'content-type',
+        },
+      });
+
+      assert.equal(response.statusCode, 204);
+      assert.equal(response.headers['access-control-allow-origin'], 'http://localhost:8081');
+      assert.match(String(response.headers['access-control-allow-methods'] ?? ''), /GET/);
     } finally {
       await app.close();
     }

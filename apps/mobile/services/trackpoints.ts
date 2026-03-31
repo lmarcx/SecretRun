@@ -15,7 +15,7 @@ function getTrackpointsEndpoint(): string | null {
     return configuredTrackpointsEndpoint;
   }
 
-  if (!nhostConfig.isConfigured) {
+  if (!nhostConfig.isFunctionsEnabled) {
     return null;
   }
 

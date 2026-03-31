@@ -116,7 +116,7 @@ function isGuestAccessibleRoute(pathname: string | null | undefined) {
     return false;
   }
 
-  return pathname === '/' || pathname === '/events' || pathname.startsWith('/events/');
+  return pathname === '/' || pathname === '/events' || pathname.startsWith('/events/') || pathname === '/leaderboard';
 }
 
 const styles = StyleSheet.create({

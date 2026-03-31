@@ -1,4 +1,4 @@
-import { BackendApiError, requestBackendApi } from './backendApiClient';
+import { BackendApiError, isBackendApiConfigError, requestBackendApi } from './backendApiClient';
 import { nhost } from './nhostClient';
 
 export interface CurrentProfile {
@@ -75,6 +75,10 @@ function mapProfile(profile: BackendProfile): CurrentProfile {
 }
 
 export function getProfileErrorMessage(error: unknown): string {
+  if (isBackendApiConfigError(error)) {
+    return 'Profile needs EXPO_PUBLIC_BACKEND_API_URL.';
+  }
+
   if (error instanceof BackendApiError) {
     switch (error.code) {
       case 'username_taken':

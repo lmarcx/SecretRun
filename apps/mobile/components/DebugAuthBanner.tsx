@@ -1,11 +1,16 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { getBetaBuildLabel } from '@/services/betaDiagnostics';
+import { getBackendApiSourceDiagnostics } from '@/services/backendApiClient';
 import { useAuth, type BetaAccessState } from '@/hooks/useAuth';
+import { getAuthSourceDiagnostics, getGraphqlSourceDiagnostics } from '@/services/nhostClient';
 import { borderWidth, colors, spacing, typography } from '@/theme/tokens';
 
 export function DebugAuthBanner() {
   const { betaAccessState } = useAuth();
   const bannerContent = getBannerContent(betaAccessState);
+  const authSource = getAuthSourceDiagnostics();
+  const graphqlSource = getGraphqlSourceDiagnostics();
+  const backendSource = getBackendApiSourceDiagnostics();
 
   return (
     <View style={styles.banner}>
@@ -17,6 +22,9 @@ export function DebugAuthBanner() {
         <Text style={styles.buildLabel}>{getBetaBuildLabel()}</Text>
       </View>
       <Text style={styles.text}>{bannerContent.message}</Text>
+      <Text style={styles.sourceText}>
+        {`Auth ${formatSourceLabel(authSource.mode)} | GraphQL ${formatSourceLabel(graphqlSource.mode)} (${graphqlSource.via}) | Backend ${formatSourceLabel(backendSource.mode)}`}
+      </Text>
     </View>
   );
 }
@@ -74,6 +82,20 @@ function getBannerContent(betaAccessState: BetaAccessState) {
   }
 }
 
+function formatSourceLabel(mode: 'local' | 'cloud' | 'custom' | 'unset') {
+  switch (mode) {
+    case 'local':
+      return 'local';
+    case 'cloud':
+      return 'cloud';
+    case 'custom':
+      return 'custom';
+    case 'unset':
+    default:
+      return 'unset';
+  }
+}
+
 const styles = StyleSheet.create({
   banner: {
     backgroundColor: colors.backgroundRaised,
@@ -96,6 +118,10 @@ const styles = StyleSheet.create({
   text: {
     ...typography.bodySm,
     color: colors.textSecondary,
+  },
+  sourceText: {
+    ...typography.bodySm,
+    color: colors.textMuted,
   },
   buildLabel: {
     color: colors.textMuted,
