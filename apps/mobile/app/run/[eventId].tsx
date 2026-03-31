@@ -15,7 +15,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { StatCard } from '@/components/ui/StatCard';
 import { StatusBadge, type StatusBadgeTone } from '@/components/ui/StatusBadge';
 import { StatusStrip } from '@/components/ui/StatusStrip';
-import { formatValidationReason } from '@/services/betaDiagnostics';
+import { formatValidationReason, recordActivityDiagnostic, recordStartCalibrationOutcome } from '@/services/betaDiagnostics';
 import {
   ActivityUploadError,
   getActivityErrorMessage,
@@ -425,6 +425,16 @@ export default function RunScreen() {
 
     if (startGpsGuidance.blockingMessage && !devRunnerActive) {
       setGpsQualityMessage(startGpsGuidance.blockingMessage);
+      recordActivityDiagnostic({
+        phase: 'start_blocked',
+        eventId: resolvedEventId ?? null,
+        activityId: null,
+        message: startGpsGuidance.blockingMessage,
+        validationReason: startGpsGuidance.blockingReason,
+      });
+      recordStartCalibrationOutcome(
+        startGpsGuidance.blockingReason === 'start_gps_too_imprecise' ? 'blocked_gps_too_imprecise' : 'blocked_other',
+      );
       return;
     }
 
@@ -456,6 +466,14 @@ export default function RunScreen() {
           if (shouldSurfaceStartErrorAsGpsIssue(err.code)) {
             setGpsQualityMessage(nextStartUploadError);
           }
+          recordActivityDiagnostic({
+            phase: 'start_blocked',
+            eventId: resolvedEventId ?? null,
+            activityId: null,
+            message: nextStartUploadError,
+            validationReason: err.code,
+          });
+          recordStartCalibrationOutcome(getStartBlockedCalibrationOutcome(err.code));
           return;
         }
 
@@ -483,6 +501,28 @@ export default function RunScreen() {
     setGpsQualityMessage(nextUploadedActivity ? null : startGpsGuidance.warningMessage);
     setFinishWarning(null);
     persistRunningDraft([startLocation], 0, startLocation.recordedAt, nextUploadedActivity ? null : nextStartUploadError);
+
+    if (nextUploadedActivity && startGpsGuidance.warningMessage) {
+      recordActivityDiagnostic({
+        phase: 'start_warning',
+        eventId: resolvedEventId ?? null,
+        activityId: nextUploadedActivity.id,
+        message: startGpsGuidance.warningMessage,
+        validationReason: null,
+      });
+      recordStartCalibrationOutcome('warning');
+    } else if (nextUploadedActivity) {
+      recordStartCalibrationOutcome('accepted');
+    } else if (nextStartUploadError) {
+      recordActivityDiagnostic({
+        phase: 'start_local_fallback',
+        eventId: resolvedEventId ?? null,
+        activityId: null,
+        message: nextStartUploadError,
+        validationReason: null,
+      });
+      recordStartCalibrationOutcome('local_fallback');
+    }
   }
 
   function handleAbandonRun() {
@@ -1079,11 +1119,13 @@ function getResultLine({
 
 function getStartGpsGuidance(location: LocationObject | null): {
   blockingMessage: string | null;
+  blockingReason: string | null;
   warningMessage: string | null;
 } {
   if (!location) {
     return {
       blockingMessage: null,
+      blockingReason: null,
       warningMessage: null,
     };
   }
@@ -1092,6 +1134,7 @@ function getStartGpsGuidance(location: LocationObject | null): {
   if (!Number.isNaN(recordedAtMs) && Date.now() - recordedAtMs > MAX_STALE_FIX_MS) {
     return {
       blockingMessage: 'Waiting for a fresher GPS fix before starting.',
+      blockingReason: 'stale_start_fix',
       warningMessage: null,
     };
   }
@@ -1100,6 +1143,7 @@ function getStartGpsGuidance(location: LocationObject | null): {
   if (accuracyMeters != null && accuracyMeters > MAX_ACCURACY_METERS) {
     return {
       blockingMessage: `GPS too imprecise (${Math.round(accuracyMeters)} m). Wait for a better fix.`,
+      blockingReason: 'start_gps_too_imprecise',
       warningMessage: null,
     };
   }
@@ -1107,12 +1151,14 @@ function getStartGpsGuidance(location: LocationObject | null): {
   if (accuracyMeters != null && accuracyMeters > START_WARNING_ACCURACY_METERS) {
     return {
       blockingMessage: null,
+      blockingReason: null,
       warningMessage: `GPS moderate (${Math.round(accuracyMeters)} m). Start allowed, but a better fix is safer.`,
     };
   }
 
   return {
     blockingMessage: null,
+    blockingReason: null,
     warningMessage: null,
   };
 }
@@ -1135,6 +1181,19 @@ function isBlockingStartSyncErrorCode(code: string | null): boolean {
 
 function shouldSurfaceStartErrorAsGpsIssue(code: string | null): boolean {
   return Boolean(code && ['outside_start_zone', 'start_gps_too_imprecise', 'invalid_start_location_timestamp'].includes(code));
+}
+
+function getStartBlockedCalibrationOutcome(
+  code: string | null,
+): 'blocked_gps_too_imprecise' | 'blocked_outside_zone' | 'blocked_other' {
+  switch (code) {
+    case 'start_gps_too_imprecise':
+      return 'blocked_gps_too_imprecise';
+    case 'outside_start_zone':
+      return 'blocked_outside_zone';
+    default:
+      return 'blocked_other';
+  }
 }
 
 function mapLocationToTrackpoint(location: LocationObject): LocalTrackpoint {

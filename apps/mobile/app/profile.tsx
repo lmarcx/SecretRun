@@ -477,6 +477,14 @@ function SupportSection({
         {profileCreatedAt ? <InfoRow label="Joined" value={formatDate(profileCreatedAt)} /> : null}
         <InfoRow label="Run sync" value={formatActivityDiagnostic(diagnostics.activity)} />
         <InfoRow label="Run update" value={formatBetaTimestamp(diagnostics.activity.updatedAt)} />
+        <InfoRow
+          label="Start beta"
+          value={`${diagnostics.startCalibration.acceptedCount} ok / ${diagnostics.startCalibration.warningCount} warned / ${diagnostics.startCalibration.localFallbackCount} local`}
+        />
+        <InfoRow
+          label="Start blocks"
+          value={`GPS ${diagnostics.startCalibration.blockedGpsTooImpreciseCount} / Zone ${diagnostics.startCalibration.blockedOutsideZoneCount} / Other ${diagnostics.startCalibration.blockedOtherCount}`}
+        />
         <InfoRow label="Push" value={formatNotificationDiagnostic(diagnostics.notification)} />
         {diagnostics.activity.eventId ? <InfoRow label="Event ID" value={diagnostics.activity.eventId} /> : null}
         {diagnostics.activity.activityId ? <InfoRow label="Activity ID" value={diagnostics.activity.activityId} /> : null}
@@ -612,8 +620,14 @@ function formatActivityDiagnostic(diagnostic: ReturnType<typeof useBetaDiagnosti
   switch (diagnostic.phase) {
     case 'start_requested':
       return 'Starting run sync';
-    case 'started':
-      return 'Activity started';
+    case 'start_accepted':
+      return 'Start accepted';
+    case 'start_warning':
+      return 'Start accepted with warning';
+    case 'start_blocked':
+      return 'Start blocked';
+    case 'start_local_fallback':
+      return 'Start kept local';
     case 'ingesting':
       return 'Trackpoints uploaded';
     case 'finish_requested':

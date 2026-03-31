@@ -125,7 +125,7 @@ export async function startRunActivity(
     const activity = mapWorkflowActivity(response.activity, response.reason ?? null);
 
     recordActivityDiagnostic({
-      phase: 'started',
+      phase: 'start_accepted',
       eventId,
       activityId: activity.id,
       message: response.reused ? 'Recovered an open beta activity for this event.' : 'Activity started on the beta backend.',

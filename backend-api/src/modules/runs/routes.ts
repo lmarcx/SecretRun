@@ -17,15 +17,13 @@ const startRunBodySchema = z.object({
     const hasLat = body.lat !== undefined;
     const hasLng = body.lng !== undefined;
 
-    if (hasLat === hasLng) {
-      return;
+    if (hasLat !== hasLng) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'lat and lng must be provided together.',
+        path: hasLat ? ['lng'] : ['lat'],
+      });
     }
-
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'lat and lng must be provided together.',
-      path: hasLat ? ['lng'] : ['lat'],
-    });
 
     if ((body.accuracy_meters !== undefined || body.timestamp !== undefined) && (!hasLat || !hasLng)) {
       context.addIssue({
@@ -78,6 +76,9 @@ export async function runsRoutes(app: FastifyInstance) {
               timestamp: body.timestamp,
             }
           : undefined,
+        (diagnostic) => {
+          request.log.info({ startRun: diagnostic }, 'runs/start decision');
+        },
       );
     },
   );

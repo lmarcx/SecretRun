@@ -4,7 +4,10 @@ import { useSyncExternalStore } from 'react';
 export type ActivityDiagnosticPhase =
   | 'idle'
   | 'start_requested'
-  | 'started'
+  | 'start_accepted'
+  | 'start_warning'
+  | 'start_blocked'
+  | 'start_local_fallback'
   | 'ingesting'
   | 'finish_requested'
   | 'synced'
@@ -37,10 +40,20 @@ export interface NotificationDiagnostic {
   updatedAt: string | null;
 }
 
+export interface StartCalibrationSummary {
+  acceptedCount: number;
+  warningCount: number;
+  blockedGpsTooImpreciseCount: number;
+  blockedOutsideZoneCount: number;
+  blockedOtherCount: number;
+  localFallbackCount: number;
+}
+
 export interface BetaDiagnosticsSnapshot {
   currentScreen: string | null;
   activity: ActivityDiagnostic;
   notification: NotificationDiagnostic;
+  startCalibration: StartCalibrationSummary;
 }
 
 const defaultSnapshot: BetaDiagnosticsSnapshot = {
@@ -60,6 +73,14 @@ const defaultSnapshot: BetaDiagnosticsSnapshot = {
     state: 'idle',
     message: null,
     updatedAt: null,
+  },
+  startCalibration: {
+    acceptedCount: 0,
+    warningCount: 0,
+    blockedGpsTooImpreciseCount: 0,
+    blockedOutsideZoneCount: 0,
+    blockedOtherCount: 0,
+    localFallbackCount: 0,
   },
 };
 
@@ -121,6 +142,32 @@ export function recordNotificationDiagnostic(update: Partial<NotificationDiagnos
   emit();
 }
 
+export function recordStartCalibrationOutcome(
+  outcome:
+    | 'accepted'
+    | 'warning'
+    | 'blocked_gps_too_imprecise'
+    | 'blocked_outside_zone'
+    | 'blocked_other'
+    | 'local_fallback',
+): void {
+  snapshot = {
+    ...snapshot,
+    startCalibration: {
+      ...snapshot.startCalibration,
+      acceptedCount: snapshot.startCalibration.acceptedCount + (outcome === 'accepted' ? 1 : 0),
+      warningCount: snapshot.startCalibration.warningCount + (outcome === 'warning' ? 1 : 0),
+      blockedGpsTooImpreciseCount:
+        snapshot.startCalibration.blockedGpsTooImpreciseCount + (outcome === 'blocked_gps_too_imprecise' ? 1 : 0),
+      blockedOutsideZoneCount:
+        snapshot.startCalibration.blockedOutsideZoneCount + (outcome === 'blocked_outside_zone' ? 1 : 0),
+      blockedOtherCount: snapshot.startCalibration.blockedOtherCount + (outcome === 'blocked_other' ? 1 : 0),
+      localFallbackCount: snapshot.startCalibration.localFallbackCount + (outcome === 'local_fallback' ? 1 : 0),
+    },
+  };
+  emit();
+}
+
 export function getBetaBuildLabel(): string {
   const version = Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? 'dev';
   const build = Constants.nativeBuildVersion ?? null;
@@ -160,6 +207,7 @@ export function buildBetaIssueMailto(current: BetaDiagnosticsSnapshot): string {
         current.activity.rejectedTrackpoints ?? 'n/a'
       }`,
       `Run note: ${current.activity.message ?? 'n/a'}`,
+      `Start calibration: accepted=${current.startCalibration.acceptedCount}, warnings=${current.startCalibration.warningCount}, blocked_gps=${current.startCalibration.blockedGpsTooImpreciseCount}, blocked_zone=${current.startCalibration.blockedOutsideZoneCount}, blocked_other=${current.startCalibration.blockedOtherCount}, local_fallback=${current.startCalibration.localFallbackCount}`,
       '',
       `Notification state: ${current.notification.state}`,
       `Notification note: ${current.notification.message ?? 'n/a'}`,
@@ -178,6 +226,11 @@ export function formatValidationReason(reason: string | null | undefined): strin
       return 'This beta account was not registered for the event when the run was reviewed.';
     case 'outside_start_zone':
       return 'The run did not start inside the configured event start zone.';
+    case 'start_gps_too_imprecise':
+      return 'The GPS fix was too imprecise to allow the start.';
+    case 'invalid_start_location_timestamp':
+    case 'stale_start_fix':
+      return 'The start GPS sample was too old or timing looked inconsistent.';
     case 'insufficient_trackpoints':
       return 'The backend did not receive enough stable GPS points to validate this run.';
     case 'invalid_timestamps':

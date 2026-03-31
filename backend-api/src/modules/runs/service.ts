@@ -19,6 +19,21 @@ interface StartLocationInput {
   timestamp?: string;
 }
 
+interface StartRunDiagnostic {
+  outcome:
+    | 'backend_accepted'
+    | 'outside_start_zone'
+    | 'start_gps_too_imprecise'
+    | 'invalid_start_location_timestamp';
+  eventId: string;
+  userId: string;
+  accuracyMeters: number | null;
+  distanceMeters: number | null;
+  allowedRadiusMeters: number | null;
+  fixAgeMs: number | null;
+  reused: boolean;
+}
+
 interface ActivityPayload {
   id: string;
   user_id: string;
@@ -297,7 +312,13 @@ const FINALIZE_VALIDATED_ACTIVITY_MUTATION = gql`
   }
 `;
 
-export async function startRun(userId: string, eventId: string, startedAt?: string, startLocation?: StartLocationInput) {
+export async function startRun(
+  userId: string,
+  eventId: string,
+  startedAt?: string,
+  startLocation?: StartLocationInput,
+  onDiagnostic?: (diagnostic: StartRunDiagnostic) => void,
+) {
   const normalizedStartedAt = normalizeStartedAt(startedAt);
   const normalizedStartLocation = normalizeStartLocation(startLocation);
   const response = await requestHasura<{
@@ -333,6 +354,16 @@ export async function startRun(userId: string, eventId: string, startedAt?: stri
       );
     }
 
+    buildStartRunDiagnosticEmitter(onDiagnostic, {
+      eventId,
+      userId,
+      startLocation: normalizedStartLocation,
+    })('backend_accepted', {
+      distanceMeters: null,
+      allowedRadiusMeters: null,
+      reused: true,
+    });
+
     return {
       success: true,
       activity: existingActivity,
@@ -341,7 +372,18 @@ export async function startRun(userId: string, eventId: string, startedAt?: stri
     };
   }
 
-  assertStartLocationInZone(response.event, normalizedStartedAt, normalizedStartLocation);
+  const startZoneCheck = normalizedStartLocation ? getStartZoneCheck(response.event, normalizedStartLocation) : null;
+  assertStartLocationInZone(
+    response.event,
+    normalizedStartedAt,
+    normalizedStartLocation,
+    startZoneCheck,
+    buildStartRunDiagnosticEmitter(onDiagnostic, {
+      eventId,
+      userId,
+      startLocation: normalizedStartLocation,
+    }),
+  );
 
   const created = await requestHasura<{
     insert_activities_one: ActivityPayload;
@@ -350,6 +392,16 @@ export async function startRun(userId: string, eventId: string, startedAt?: stri
     userId,
     startedAt: normalizedStartedAt,
     status: 'pending',
+  });
+
+  buildStartRunDiagnosticEmitter(onDiagnostic, {
+    eventId,
+    userId,
+    startLocation: normalizedStartLocation,
+  })('backend_accepted', {
+    distanceMeters: startZoneCheck ? Math.round(startZoneCheck.distanceMeters) : null,
+    allowedRadiusMeters: startZoneCheck ? Math.round(startZoneCheck.allowedRadiusMeters) : null,
+    reused: false,
   });
 
   return {
@@ -859,15 +911,25 @@ function assertStartLocationInZone(
   event: EventAccessSnapshot,
   startedAt: string,
   startLocation?: StartLocationInput,
+  startZoneCheck?: { distanceMeters: number; allowedRadiusMeters: number } | null,
+  emitDiagnostic?: (
+    outcome: StartRunDiagnostic['outcome'],
+    details?: Partial<Omit<StartRunDiagnostic, 'outcome' | 'eventId' | 'userId' | 'accuracyMeters' | 'fixAgeMs' | 'reused'>>,
+  ) => void,
 ) {
   if (!startLocation) {
     return;
   }
 
   if (startLocation.accuracyMeters !== undefined && startLocation.accuracyMeters > MAX_START_GPS_ACCURACY_METERS) {
+    emitDiagnostic?.('start_gps_too_imprecise', {
+      distanceMeters: startZoneCheck ? Math.round(startZoneCheck.distanceMeters) : null,
+      allowedRadiusMeters: startZoneCheck ? Math.round(startZoneCheck.allowedRadiusMeters) : null,
+    });
     throw new AppError(409, 'start_gps_too_imprecise', 'Wait for a more precise GPS fix before starting this run.', {
       accuracyMeters: Math.round(startLocation.accuracyMeters),
       maxAllowedAccuracyMeters: MAX_START_GPS_ACCURACY_METERS,
+      fixAgeMs: getStartFixAgeMs(startLocation),
     });
   }
 
@@ -877,6 +939,10 @@ function assertStartLocationInZone(
     const gpsDeltaMs = Math.abs(gpsTimestampMs - startedAtMs);
 
     if (gpsDeltaMs > MAX_START_GPS_STARTED_AT_DELTA_MS) {
+      emitDiagnostic?.('invalid_start_location_timestamp', {
+        distanceMeters: startZoneCheck ? Math.round(startZoneCheck.distanceMeters) : null,
+        allowedRadiusMeters: startZoneCheck ? Math.round(startZoneCheck.allowedRadiusMeters) : null,
+      });
       throw new AppError(
         409,
         'invalid_start_location_timestamp',
@@ -890,17 +956,60 @@ function assertStartLocationInZone(
     }
   }
 
-  const startZoneCheck = getStartZoneCheck(event, startLocation);
   if (!startZoneCheck) {
     return;
   }
 
   if (startZoneCheck.distanceMeters > startZoneCheck.allowedRadiusMeters) {
-    throw new AppError(409, 'outside_start_zone', 'Start this run from inside the event start zone.', {
+    emitDiagnostic?.('outside_start_zone', {
       distanceMeters: Math.round(startZoneCheck.distanceMeters),
       allowedRadiusMeters: Math.round(startZoneCheck.allowedRadiusMeters),
     });
+    throw new AppError(409, 'outside_start_zone', 'Start this run from inside the event start zone.', {
+      distanceMeters: Math.round(startZoneCheck.distanceMeters),
+      allowedRadiusMeters: Math.round(startZoneCheck.allowedRadiusMeters),
+      accuracyMeters: startLocation.accuracyMeters ?? null,
+      fixAgeMs: getStartFixAgeMs(startLocation),
+    });
   }
+}
+
+function buildStartRunDiagnosticEmitter(
+  onDiagnostic: ((diagnostic: StartRunDiagnostic) => void) | undefined,
+  context: { eventId: string; userId: string; startLocation?: StartLocationInput },
+) {
+  return (
+    outcome: StartRunDiagnostic['outcome'],
+    details: Partial<Omit<StartRunDiagnostic, 'outcome' | 'eventId' | 'userId' | 'accuracyMeters' | 'fixAgeMs'>> = {},
+  ) => {
+    if (!onDiagnostic) {
+      return;
+    }
+
+    onDiagnostic({
+      outcome,
+      eventId: context.eventId,
+      userId: context.userId,
+      accuracyMeters: context.startLocation?.accuracyMeters ?? null,
+      distanceMeters: details.distanceMeters ?? null,
+      allowedRadiusMeters: details.allowedRadiusMeters ?? null,
+      fixAgeMs: getStartFixAgeMs(context.startLocation),
+      reused: details.reused ?? false,
+    });
+  };
+}
+
+function getStartFixAgeMs(startLocation?: StartLocationInput): number | null {
+  if (!startLocation?.timestamp) {
+    return null;
+  }
+
+  const timestampMs = new Date(startLocation.timestamp).getTime();
+  if (Number.isNaN(timestampMs)) {
+    return null;
+  }
+
+  return Math.max(0, Date.now() - timestampMs);
 }
 
 function getStartZoneCheck(event: EventAccessSnapshot, point: StartLocationInput) {
