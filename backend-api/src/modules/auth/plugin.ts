@@ -2,7 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppError } from '../../lib/errors';
 import { assertBetaAccess, isBetaAccessEnforced } from './beta-access';
 import type { AuthContext } from './jwt';
-import { verifyAccessToken } from './jwt';
+import { assertAuthConfigured, isAuthConfigured, verifyAccessToken } from './jwt';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -25,11 +25,17 @@ function getBearerToken(request: FastifyRequest): string {
 }
 
 export async function requireAuth(request: FastifyRequest, _reply: FastifyReply) {
+  assertAuthConfigured();
   const token = getBearerToken(request);
   request.auth = await verifyAccessToken(token);
 }
 
 export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply) {
+  if (!isAuthConfigured()) {
+    request.auth = null;
+    return;
+  }
+
   if (!request.headers.authorization) {
     request.auth = null;
     return;

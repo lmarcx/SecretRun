@@ -23,6 +23,28 @@ type Verifier = { kind: 'key'; value: ImportedKey } | { kind: 'jwks'; value: Rem
 let verifierPromise: Promise<Verifier> | null = null;
 let joseModulePromise: Promise<JoseModule> | null = null;
 
+export function isAuthConfigured(): boolean {
+  return env.AUTH_JWT_CONFIGURED;
+}
+
+export function assertAuthConfigured() {
+  if (isAuthConfigured()) {
+    return;
+  }
+
+  throw new AppError(
+    503,
+    'auth_unavailable',
+    env.NODE_ENV === 'development'
+      ? 'Authentication backend not configured in development.'
+      : 'Authentication backend not configured in this environment.',
+    {
+      nodeEnv: env.NODE_ENV,
+      missing: ['NHOST_JWKS_URL or NHOST_JWT_PUBLIC_KEY'],
+    },
+  );
+}
+
 function normalizePem(value: string): string {
   return value.replace(/\\n/g, '\n');
 }
@@ -71,6 +93,7 @@ async function getVerifier(): Promise<Verifier> {
 }
 
 export async function verifyAccessToken(token: string): Promise<AuthContext> {
+  assertAuthConfigured();
   const verifier = await getVerifier();
   const { jwtVerify } = await getJose();
   const verifyOptions = {

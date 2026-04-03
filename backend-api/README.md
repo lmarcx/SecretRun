@@ -29,13 +29,19 @@ Copier `.env.example` et renseigner:
 - `CORS_ALLOWED_ORIGINS` optionnel, liste CSV d'origines web supplementaires a autoriser
 - `HASURA_GRAPHQL_URL`
 - `HASURA_ADMIN_SECRET`
-- `NHOST_SUBDOMAIN`
-- `NHOST_REGION`
+- `NHOST_SUBDOMAIN` optionnel hors production, utilise pour deriver `NHOST_JWKS_URL`
+- `NHOST_REGION` optionnel hors production, utilise pour deriver `NHOST_JWKS_URL`
 - `NHOST_JWKS_URL` ou `NHOST_JWT_PUBLIC_KEY`
 - `NHOST_JWT_ISSUER` optionnel
 - `NHOST_JWT_AUDIENCE` optionnel
 - `BETA_ALLOWED_EMAILS` optionnel, liste CSV d'emails autorises pour fermer reellement la beta cote produit
 - `TEAM_EVENT_BONUS_POINTS` optionnel
+
+Regles de validation JWT:
+
+- en `production`, `NHOST_JWKS_URL` ou `NHOST_JWT_PUBLIC_KEY` reste obligatoire au boot
+- en `development` et `test`, ces variables peuvent etre absentes ou vides; l'API demarre alors en mode public-only
+- `NHOST_JWT_ISSUER` et `NHOST_JWT_AUDIENCE` restent optionnels, et une valeur vide est traitee comme absente
 
 ## Local
 
@@ -44,6 +50,23 @@ pnpm install
 cp .env.example .env
 pnpm --filter @secret-run/backend-api dev
 ```
+
+Mode dev public-only sans JWT:
+
+- laisser `NHOST_SUBDOMAIN`, `NHOST_REGION`, `NHOST_JWKS_URL`, `NHOST_JWT_PUBLIC_KEY`, `NHOST_JWT_ISSUER` et `NHOST_JWT_AUDIENCE` vides
+- garder `HASURA_GRAPHQL_URL` et `HASURA_ADMIN_SECRET` pointes vers le backend local
+- lancer ensuite `pnpm dev:api` depuis la racine ou `pnpm --filter @secret-run/backend-api dev`
+
+Routes disponibles dans ce mode:
+
+- `GET /health`
+- `GET /events`
+- `GET /events/:id`
+
+Routes volontairement indisponibles dans ce mode:
+
+- toute route qui exige une authentification verifiee, par exemple `GET /me`, `GET /events/:id/route`, `POST /events/:id/join`, `GET /profile`, `POST /profile`, `GET /profile/stats`, `GET /feed`, `POST /runs/start` et `POST /runs/finish`
+- ces routes repondent avec `503 auth_unavailable` et le message `Authentication backend not configured in development.`
 
 Notes CORS locales:
 
@@ -70,8 +93,10 @@ Configuration manuelle conseillee pour ce monorepo:
 ## Notes d'architecture
 
 - L'API verifie le JWT Nhost avant toute action protegee.
+- si la config JWT est absente hors production, l'API demarre sans verifier de token et traite les routes publiques comme guest uniquement
 - `GET /events` et `GET /events/:id` restent publics pour les events publics, avec un viewer authentifie traite comme guest s'il n'a pas l'acces closed beta.
 - `POST /events/:id/join`, `GET /events/:id/route`, `POST /runs/start` et `POST /runs/finish` restent proteges par JWT + regles beta.
+- `optionalAuth` reste tolerant quand l'auth n'est pas configuree: aucun user n'est hydrate sans verification reelle
 - Si `BETA_ALLOWED_EMAILS` est renseigne, la closed beta est verrouillee par allowlist email cote backend.
 - Les mutations metier passent par Hasura GraphQL avec secret serveur.
 - Le mobile envoie le token Nhost dans `Authorization: Bearer <token>`.

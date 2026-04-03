@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=.env dist/server.js",
     "dev": "pnpm run build && node --env-file-if-exists=.env dist/server.js",
-    "test": "pnpm run build && node --test --test-concurrency=1 dist/modules/events/routes.test.js dist/modules/events/service.test.js",
+    "test": "pnpm run build && node --test --test-concurrency=1 --test-isolation=none dist/modules/auth/dev-auth-mode.test.js dist/modules/events/routes.test.js dist/modules/events/service.test.js",
     "typecheck": "tsc --noEmit",
     "lint": "pnpm run typecheck"
   },
