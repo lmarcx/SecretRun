@@ -5,12 +5,15 @@ import { PrimaryButton } from './PrimaryButton';
 import { SecondaryButton } from './SecondaryButton';
 import type { StatusBadgeTone } from './StatusBadge';
 import { StatusBadge } from './StatusBadge';
+import { StatusStrip } from './StatusStrip';
 
 interface EventCardProps {
+  eyebrow?: string;
   title: string;
   description: string;
   meta: Array<{ label: string; value: string; icon: 'reveal' | 'start' | 'zone' }>;
   statusBadge?: { label: string; tone?: StatusBadgeTone };
+  statusItems?: Array<{ label: string; tone?: StatusBadgeTone }>;
   primaryAction?: {
     label: string;
     onPress: () => void;
@@ -24,17 +27,36 @@ interface EventCardProps {
   };
 }
 
-export function EventCard({ description, meta, primaryAction, secondaryAction, statusBadge, title }: EventCardProps) {
+export function EventCard({
+  description,
+  eyebrow,
+  meta,
+  primaryAction,
+  secondaryAction,
+  statusBadge,
+  statusItems = [],
+  title,
+}: EventCardProps) {
   return (
     <View style={styles.card}>
+      {eyebrow ? (
+        <Text numberOfLines={1} style={styles.eyebrow}>
+          {eyebrow}
+        </Text>
+      ) : null}
+
       <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
+        <Text numberOfLines={2} style={styles.title}>
+          {title}
+        </Text>
         {statusBadge ? <StatusBadge label={statusBadge.label} tone={statusBadge.tone ?? 'neutral'} /> : null}
       </View>
 
-      <Text numberOfLines={1} style={styles.description}>
+      <Text numberOfLines={2} style={styles.description}>
         {description}
       </Text>
+
+      {statusItems.length > 0 ? <StatusStrip compact muted items={statusItems} /> : null}
 
       <EventMetaRow dense items={meta} />
 
@@ -83,10 +105,15 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm,
   },
+  eyebrow: {
+    ...typography.eyebrow,
+    color: colors.textMuted,
+    opacity: 0.78,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
   },
   title: {
@@ -97,11 +124,12 @@ const styles = StyleSheet.create({
   description: {
     ...typography.bodySm,
     color: colors.textMuted,
+    minHeight: 34,
   },
   actions: {
     flexDirection: 'row',
     gap: spacing.sm,
-    paddingTop: spacing.xs,
+    paddingTop: spacing.xxs,
   },
   flexAction: {
     flex: 1,
