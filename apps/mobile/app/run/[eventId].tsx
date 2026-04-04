@@ -801,11 +801,51 @@ export default function RunScreen() {
   }
 
   if (error || !event || !route) {
+    const unavailableState = getRunUnavailableState({
+      devRunnerActive,
+      error,
+      event,
+    });
+
     return (
-      <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
-        <Text style={styles.stateTitle}>Run</Text>
-        <Text style={styles.errorText}>{error ?? 'No route available.'}</Text>
-        <SecondaryButton label="Back to event" onPress={() => router.replace(`/events/${resolvedEventId ?? ''}`)} />
+      <AppScreen contentContainerStyle={styles.content}>
+        <ScreenHeader
+          eyebrow="Run"
+          title={event?.title ?? 'Run unavailable'}
+          subtitle={unavailableState.subtitle}
+          accessory={<StatusBadge label={unavailableState.label} tone={unavailableState.tone} />}
+        />
+
+        <SectionCard title={unavailableState.cardTitle} subtitle={unavailableState.cardSubtitle} tone="muted">
+          <Text style={styles.stateTextLeft}>{unavailableState.message}</Text>
+          {event ? (
+            <>
+              <InfoRow label="Reveal" value={formatEventDateTime(event.revealAt)} />
+              <InfoRow label="Start" value={formatEventDateTime(event.startsAt)} />
+              <InfoRow
+                label="Access"
+                value={
+                  devRunnerActive
+                    ? 'DEV runner local access'
+                    : event.viewerParticipationStatus === 'registered'
+                      ? 'Registered runner'
+                      : 'Join required'
+                }
+                tone="muted"
+              />
+            </>
+          ) : null}
+        </SectionCard>
+
+        <ActionBar
+          secondary={<SecondaryButton label="Events" onPress={() => router.replace('/events')} />}
+          primary={
+            <PrimaryButton
+              label={event ? 'Back to event' : 'Back to events'}
+              onPress={() => router.replace(event ? `/events/${event.id}` : '/events')}
+            />
+          }
+        />
       </AppScreen>
     );
   }
@@ -1332,6 +1372,70 @@ function formatDuration(durationSeconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function getRunUnavailableState({
+  devRunnerActive,
+  error,
+  event,
+}: {
+  devRunnerActive: boolean;
+  error: string | null;
+  event: EventDetail | null;
+}) {
+  if (event && !devRunnerActive && new Date(event.revealAt).getTime() > Date.now()) {
+    return {
+      label: 'Route locked',
+      tone: 'warning' as const,
+      subtitle: 'This run opens when the route reveal goes live.',
+      cardTitle: 'Route locked until reveal',
+      cardSubtitle: `Unlocks ${formatEventDateTime(event.revealAt)}`,
+      message: `${event.title} is not broken. The route is still intentionally sealed, so the run screen cannot arm yet. Go back to the event briefing to follow the reveal countdown.`,
+    };
+  }
+
+  if (event && devRunnerActive && !event.startAreaCenter) {
+    return {
+      label: 'DEV runner',
+      tone: 'warning' as const,
+      subtitle: 'This local event does not expose a route preview on this device yet.',
+      cardTitle: 'Route unavailable in DEV runner mode',
+      cardSubtitle: 'Local route preview is missing',
+      message: `${event.title} is available locally, but this DEV runner setup does not have route geometry for the run screen yet. Return to the event briefing and use another local event or wait for route data.`,
+    };
+  }
+
+  if (event) {
+    return {
+      label: 'Run pending',
+      tone: 'warning' as const,
+      subtitle: 'The event loaded, but the run screen is not ready yet.',
+      cardTitle: 'Run setup unavailable',
+      cardSubtitle: 'Route data is still pending',
+      message: error
+        ? `${event.title} is loaded, but the route cannot be armed yet. ${error}`
+        : `${event.title} is loaded, but route data is still unavailable right now. Return to the event briefing and try again shortly.`,
+    };
+  }
+
+  return {
+    label: 'Unavailable',
+    tone: 'warning' as const,
+    subtitle: 'The run screen could not load this event.',
+    cardTitle: 'Run unavailable',
+    cardSubtitle: 'Event context is missing',
+    message: error ?? 'No route details are available for this run yet.',
+  };
+}
+
+function formatEventDateTime(value: string): string {
+  return new Date(value).toLocaleString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function formatRunPhase(value: RunPhase): string {
   switch (value) {
     case 'running':
@@ -1377,6 +1481,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     maxWidth: 300,
+  },
+  stateTextLeft: {
+    ...typography.body,
+    color: colors.textSecondary,
   },
   errorText: {
     ...typography.body,

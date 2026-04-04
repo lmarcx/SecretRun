@@ -163,12 +163,18 @@ export default function FeedScreen() {
               <View style={styles.emptyStateCard}>
                 <EmptyState
                   title="Your activity feed is private"
-                  description="Sign in to see your runs, results, and event activity."
+                  description="Sign in or create an account to see your runs, results, and event activity."
                 />
               </View>
               {isAvailable ? (
                 <View style={styles.emptyStateActions}>
                   <ActionBar
+                    secondary={
+                      <SecondaryButton
+                        label="Create account"
+                        onPress={() => router.push({ pathname: '/(auth)/register', params: { redirectTo: '/feed' } })}
+                      />
+                    }
                     primary={
                       <PrimaryButton
                         label="Sign in"
