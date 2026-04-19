@@ -10,15 +10,39 @@ declare module 'fastify' {
   }
 }
 
-function getBearerToken(request: FastifyRequest): string {
+const MAX_AUTHORIZATION_HEADER_LENGTH = 8_192;
+const bearerJwtPattern = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
+function getAuthorizationHeader(request: FastifyRequest): string {
   const authorization = request.headers.authorization;
+
   if (!authorization) {
     throw new AppError(401, 'missing_authorization', 'Missing Authorization header.');
   }
 
-  const [scheme, token] = authorization.split(' ');
-  if (!scheme || !token || scheme.toLowerCase() !== 'bearer') {
+  if (authorization.length > MAX_AUTHORIZATION_HEADER_LENGTH) {
+    throw new AppError(401, 'invalid_authorization', 'Authorization header is too large.');
+  }
+
+  if (authorization.includes(',')) {
+    throw new AppError(401, 'invalid_authorization', 'Authorization header must contain a single Bearer token.');
+  }
+
+  return authorization.trim();
+}
+
+function getBearerToken(request: FastifyRequest): string {
+  const authorization = getAuthorizationHeader(request);
+  const match = /^Bearer\s+(.+)$/i.exec(authorization);
+
+  if (!match) {
     throw new AppError(401, 'invalid_authorization', 'Authorization header must use Bearer token.');
+  }
+
+  const token = match[1].trim();
+
+  if (!token || token.includes(' ') || !bearerJwtPattern.test(token)) {
+    throw new AppError(401, 'invalid_authorization', 'Bearer token must be a compact JWT.');
   }
 
   return token;

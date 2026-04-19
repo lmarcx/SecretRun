@@ -78,3 +78,8 @@ export function createRateLimitPreHandler(config: RateLimitConfig) {
     }
   };
 }
+
+export function resetRateLimitStoreForTests() {
+  rateLimitStore.clear();
+  nextSweepAt = 0;
+}
