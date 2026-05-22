@@ -30,27 +30,28 @@ export function SecondaryButton({ compact = false, disabled, label, style, textS
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 50,
-    borderRadius: radius.md,
+    minHeight: 52,
+    borderRadius: radius.xl,
     borderWidth: borderWidth.regular,
     borderColor: colors.borderStrong,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
   },
   compactButton: {
-    minHeight: 44,
+    minHeight: 46,
   },
   buttonPressed: {
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.09)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
   },
   buttonDisabled: {
-    opacity: 0.52,
+    opacity: 0.45,
   },
   label: {
     ...typography.button,
-    color: colors.textPrimary,
+    color: colors.textSecondary,
   },
   labelDisabled: {
     color: colors.textMuted,

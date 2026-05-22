@@ -84,6 +84,7 @@ function AppChrome() {
               headerShadowVisible: false,
               headerTitleStyle: {
                 color: colors.textPrimary,
+                fontWeight: '700',
               },
               contentStyle: {
                 backgroundColor: colors.background,

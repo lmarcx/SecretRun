@@ -18,7 +18,7 @@ export function EmptyStateCard({ description, minimal = false, title }: EmptySta
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: borderWidth.regular,
     borderColor: colors.border,
     backgroundColor: colors.surfaceMuted,
@@ -29,6 +29,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderColor: 'rgba(255, 255, 255, 0.05)',
   },
   title: {
     ...typography.cardTitle,
@@ -37,7 +38,7 @@ const styles = StyleSheet.create({
   titleMinimal: {
     fontSize: 15,
     lineHeight: 20,
-    fontWeight: '600',
+    fontWeight: '500',
     color: colors.textMuted,
   },
   description: {

@@ -14,6 +14,7 @@ interface SectionCardProps extends PropsWithChildren {
 export function SectionCard({ accessory, children, subtitle, title, tone = 'default' }: SectionCardProps) {
   return (
     <View style={[styles.card, toneStyles[tone]]}>
+      <View pointerEvents="none" style={[styles.topHighlight, tone === 'accent' && styles.topHighlightAccent]} />
       {title || subtitle || accessory ? (
         <View style={styles.header}>
           <View style={styles.copy}>
@@ -30,10 +31,28 @@ export function SectionCard({ accessory, children, subtitle, title, tone = 'defa
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: borderWidth.regular,
     padding: spacing.md,
     gap: spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  topHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 1,
+    right: 1,
+    height: 1,
+    backgroundColor: colors.glassHighlight,
+    borderTopLeftRadius: radius.lg - 1,
+    borderTopRightRadius: radius.lg - 1,
+  },
+  topHighlightAccent: {
+    backgroundColor: 'rgba(139, 92, 246, 0.22)',
   },
   header: {
     flexDirection: 'row',
@@ -65,7 +84,7 @@ const toneStyles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   accent: {
-    borderColor: 'rgba(120, 86, 255, 0.26)',
+    borderColor: 'rgba(139, 92, 246, 0.28)',
     backgroundColor: colors.surfaceElevated,
   },
 });

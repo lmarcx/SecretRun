@@ -30,31 +30,39 @@ export function PrimaryButton({ compact = false, disabled, label, style, textSty
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 50,
-    borderRadius: radius.md,
+    minHeight: 52,
+    borderRadius: radius.xl,
     borderWidth: borderWidth.regular,
     borderColor: colors.accent,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
+    shadowColor: colors.accentGlow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 14,
+    elevation: 6,
   },
   compactButton: {
-    minHeight: 44,
+    minHeight: 46,
   },
   buttonPressed: {
     backgroundColor: colors.accentPressed,
     borderColor: colors.accentPressed,
+    shadowOpacity: 0.6,
   },
   buttonDisabled: {
-    backgroundColor: '#43398A',
-    borderColor: '#43398A',
+    backgroundColor: '#3D2B8A',
+    borderColor: '#3D2B8A',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   label: {
     ...typography.button,
     color: colors.white,
   },
   labelDisabled: {
-    color: 'rgba(255, 255, 255, 0.68)',
+    color: 'rgba(255, 255, 255, 0.52)',
   },
 });

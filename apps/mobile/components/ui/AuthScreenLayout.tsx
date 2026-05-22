@@ -147,16 +147,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     borderWidth: borderWidth.regular,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.borderStrong,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     justifyContent: 'center',
   },
   backButtonPressed: {
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.09)',
   },
   backButtonLabel: {
     ...typography.bodySm,
-    color: colors.textPrimary,
+    color: colors.textSecondary,
   },
   hero: {
     gap: spacing.xs,
@@ -186,17 +186,17 @@ const styles = StyleSheet.create({
   },
   input: {
     minHeight: 54,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: borderWidth.regular,
     borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     paddingHorizontal: spacing.md,
     color: colors.textPrimary,
     ...typography.body,
   },
   inputFocused: {
-    borderColor: colors.accent,
-    backgroundColor: colors.surface,
+    borderColor: 'rgba(139, 92, 246, 0.55)',
+    backgroundColor: 'rgba(139, 92, 246, 0.06)',
   },
   notice: {
     borderRadius: radius.md,
@@ -231,12 +231,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: borderWidth.regular,
     borderColor: colors.borderStrong,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   tertiaryButtonPressed: {
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   tertiaryButtonLabel: {
     ...typography.bodySm,
@@ -253,14 +253,14 @@ const toneStyles = StyleSheet.create({
     color: colors.textSecondary,
   },
   dangerNotice: {
-    borderColor: 'rgba(255, 124, 147, 0.32)',
+    borderColor: 'rgba(248, 113, 113, 0.32)',
     backgroundColor: colors.dangerSoft,
   },
   dangerText: {
     color: colors.danger,
   },
   successNotice: {
-    borderColor: 'rgba(83, 215, 166, 0.28)',
+    borderColor: 'rgba(52, 211, 153, 0.30)',
     backgroundColor: colors.successSoft,
   },
   successText: {

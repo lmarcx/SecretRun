@@ -39,6 +39,8 @@ export function EventCard({
 }: EventCardProps) {
   return (
     <View style={styles.card}>
+      <View pointerEvents="none" style={styles.topHighlight} />
+
       {eyebrow ? (
         <Text numberOfLines={1} style={styles.eyebrow}>
           {eyebrow}
@@ -98,17 +100,31 @@ export function EventCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: borderWidth.regular,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceElevated,
     padding: spacing.md,
     gap: spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.30,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  topHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 1,
+    right: 1,
+    height: 1,
+    backgroundColor: colors.glassHighlight,
+    borderTopLeftRadius: radius.lg - 1,
+    borderTopRightRadius: radius.lg - 1,
   },
   eyebrow: {
     ...typography.eyebrow,
     color: colors.textMuted,
-    opacity: 0.78,
   },
   header: {
     flexDirection: 'row',

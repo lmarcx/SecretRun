@@ -43,59 +43,81 @@ export function AppNavigationShell() {
 
   return (
     <View style={[styles.shell, { paddingBottom: Math.max(insets.bottom, APP_NAVIGATION_BOTTOM_PADDING) }]}>
-      {navigationItems.map((item) => {
-        const active = item.isActive(pathname);
+      <View style={styles.bar}>
+        {navigationItems.map((item) => {
+          const active = item.isActive(pathname);
 
-        return (
-          <Link key={item.href} href={item.href} asChild>
-            <Pressable style={StyleSheet.flatten([styles.item, active && styles.itemActive])}>
-              <Text
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                numberOfLines={1}
-                style={StyleSheet.flatten([styles.label, active && styles.labelActive])}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          </Link>
-        );
-      })}
+          return (
+            <Link key={item.href} href={item.href} asChild>
+              <Pressable style={StyleSheet.flatten([styles.item, active && styles.itemActive])}>
+                {active ? <View style={styles.activeDot} /> : null}
+                <Text
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  numberOfLines={1}
+                  style={StyleSheet.flatten([styles.label, active && styles.labelActive])}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            </Link>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   shell: {
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xxs,
+  },
+  bar: {
     flexDirection: 'row',
-    borderTopWidth: borderWidth.regular,
-    borderTopColor: colors.border,
+    borderWidth: borderWidth.regular,
+    borderColor: colors.borderStrong,
     backgroundColor: colors.backgroundRaised,
+    borderRadius: radius.xl,
     paddingHorizontal: spacing.xs,
     paddingTop: APP_NAVIGATION_TOP_PADDING,
+    paddingBottom: APP_NAVIGATION_TOP_PADDING,
     gap: spacing.xs,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.50,
+    shadowRadius: 20,
+    elevation: 12,
   },
   item: {
     flex: 1,
     minHeight: APP_NAVIGATION_ITEM_HEIGHT,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: borderWidth.regular,
-    borderColor: colors.border,
+    borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceMuted,
     paddingHorizontal: 6,
+    gap: spacing.xxs,
   },
   itemActive: {
     backgroundColor: colors.accentSoft,
-    borderColor: 'rgba(120, 86, 255, 0.38)',
+    borderColor: 'rgba(139, 92, 246, 0.32)',
+  },
+  activeDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
   },
   label: {
     ...typography.bodySm,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     textAlign: 'center',
   },
   labelActive: {
     color: colors.textPrimary,
+    fontWeight: '600',
   },
 });

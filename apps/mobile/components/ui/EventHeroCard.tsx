@@ -35,47 +35,68 @@ export function EventHeroCard({
   title,
 }: EventHeroCardProps) {
   return (
-    <View style={styles.card}>
-      <SecretZoneBackdrop />
+    <View style={styles.shadow}>
+      <View style={styles.card}>
+        <SecretZoneBackdrop />
+        <View pointerEvents="none" style={styles.topHighlight} />
 
-      <View style={styles.header}>
-        <Text numberOfLines={1} style={styles.eyebrow}>
-          {eyebrow}
+        <View style={styles.header}>
+          <Text numberOfLines={1} style={styles.eyebrow}>
+            {eyebrow}
+          </Text>
+          <StatusBadge label={statusBadge.label} tone={statusBadge.tone ?? 'neutral'} />
+        </View>
+
+        <Text style={styles.title}>{title}</Text>
+        <Text numberOfLines={1} style={styles.description}>
+          {description}
         </Text>
-        <StatusBadge label={statusBadge.label} tone={statusBadge.tone ?? 'neutral'} />
-      </View>
 
-      <Text style={styles.title}>{title}</Text>
-      <Text numberOfLines={1} style={styles.description}>
-        {description}
-      </Text>
+        <EventMetaRow items={metaItems} withRail />
 
-      <EventMetaRow items={metaItems} withRail />
-
-      <View style={styles.actions}>
-        <PrimaryButton label={primaryAction.label} onPress={primaryAction.onPress} disabled={primaryAction.disabled} style={styles.primaryButton} />
-        {secondaryAction ? (
-          <SecondaryButton
-            label={secondaryAction.label}
-            onPress={secondaryAction.onPress}
-            disabled={secondaryAction.disabled}
-            style={styles.secondaryButton}
-          />
-        ) : null}
+        <View style={styles.actions}>
+          <PrimaryButton label={primaryAction.label} onPress={primaryAction.onPress} disabled={primaryAction.disabled} style={styles.primaryButton} />
+          {secondaryAction ? (
+            <SecondaryButton
+              label={secondaryAction.label}
+              onPress={secondaryAction.onPress}
+              disabled={secondaryAction.disabled}
+              style={styles.secondaryButton}
+            />
+          ) : null}
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  shadow: {
+    borderRadius: radius.xl,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    elevation: 10,
+  },
   card: {
     overflow: 'hidden',
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderWidth: borderWidth.regular,
     borderColor: colors.borderStrong,
     backgroundColor: colors.surfaceElevated,
     padding: spacing.xl,
     gap: spacing.lg,
+  },
+  topHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 1,
+    right: 1,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    borderTopLeftRadius: radius.xl - 1,
+    borderTopRightRadius: radius.xl - 1,
   },
   header: {
     flexDirection: 'row',
@@ -86,7 +107,6 @@ const styles = StyleSheet.create({
   eyebrow: {
     ...typography.eyebrow,
     color: colors.textMuted,
-    opacity: 0.82,
     flexShrink: 1,
   },
   title: {

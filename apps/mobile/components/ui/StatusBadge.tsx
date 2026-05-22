@@ -23,7 +23,7 @@ const styles = StyleSheet.create({
   badge: {
     borderRadius: radius.pill,
     borderWidth: borderWidth.regular,
-    paddingHorizontal: spacing.xs + 2,
+    paddingHorizontal: spacing.xs + 3,
     paddingVertical: spacing.xxs + 1,
   },
   badgeCompact: {
@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   badgeMuted: {
-    opacity: 0.74,
+    opacity: 0.70,
   },
   label: {
     ...typography.badge,
@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
 const toneStyles: Record<StatusBadgeTone, { badge: ViewStyle; label: TextStyle }> = {
   neutral: {
     badge: {
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: 'rgba(255, 255, 255, 0.05)',
       borderColor: colors.borderStrong,
     },
     label: {
@@ -58,16 +58,16 @@ const toneStyles: Record<StatusBadgeTone, { badge: ViewStyle; label: TextStyle }
   accent: {
     badge: {
       backgroundColor: colors.accentSoft,
-      borderColor: 'rgba(120, 86, 255, 0.28)',
+      borderColor: 'rgba(139, 92, 246, 0.30)',
     },
     label: {
-      color: '#C9BDFF',
+      color: '#C4B5FD',
     },
   },
   success: {
     badge: {
       backgroundColor: colors.successSoft,
-      borderColor: 'rgba(83, 215, 166, 0.26)',
+      borderColor: 'rgba(52, 211, 153, 0.28)',
     },
     label: {
       color: colors.success,
@@ -76,7 +76,7 @@ const toneStyles: Record<StatusBadgeTone, { badge: ViewStyle; label: TextStyle }
   info: {
     badge: {
       backgroundColor: colors.infoSoft,
-      borderColor: 'rgba(138, 165, 255, 0.24)',
+      borderColor: 'rgba(96, 165, 250, 0.26)',
     },
     label: {
       color: colors.info,
@@ -85,7 +85,7 @@ const toneStyles: Record<StatusBadgeTone, { badge: ViewStyle; label: TextStyle }
   warning: {
     badge: {
       backgroundColor: colors.warningSoft,
-      borderColor: 'rgba(242, 181, 93, 0.24)',
+      borderColor: 'rgba(251, 191, 36, 0.26)',
     },
     label: {
       color: colors.warning,
@@ -94,7 +94,7 @@ const toneStyles: Record<StatusBadgeTone, { badge: ViewStyle; label: TextStyle }
   danger: {
     badge: {
       backgroundColor: colors.dangerSoft,
-      borderColor: 'rgba(255, 124, 147, 0.26)',
+      borderColor: 'rgba(248, 113, 113, 0.28)',
     },
     label: {
       color: colors.danger,
