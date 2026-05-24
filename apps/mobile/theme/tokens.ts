@@ -1,8 +1,8 @@
 import { StyleSheet } from 'react-native';
 
 export const colors = {
-  background: '#030508',
-  backgroundRaised: '#060A12',
+  background: '#0A0A0F',
+  backgroundRaised: '#0F0F1A',
   surface: '#0C1020',
   surfaceElevated: '#101627',
   surfaceMuted: '#090D18',
@@ -11,10 +11,10 @@ export const colors = {
   textPrimary: '#F0F4FF',
   textSecondary: '#8A9BB8',
   textMuted: '#4E5D72',
-  accent: '#8B5CF6',
-  accentPressed: '#7C3AED',
-  accentSoft: 'rgba(139, 92, 246, 0.16)',
-  accentGlow: 'rgba(139, 92, 246, 0.38)',
+  accent: '#8250FF',
+  accentPressed: '#6B3FE8',
+  accentSoft: 'rgba(130, 80, 255, 0.16)',
+  accentGlow: 'rgba(130, 80, 255, 0.38)',
   success: '#34D399',
   successSoft: 'rgba(52, 211, 153, 0.14)',
   info: '#60A5FA',

@@ -3,8 +3,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '@/components/ui/AppScreen';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { LeaderboardRankCard } from '@/components/ui/LeaderboardRankCard';
-import { LeaderboardRow } from '@/components/ui/LeaderboardRow';
+import { MyRankCard } from '@/components/ui/MyRankCard';
+import { PodiumTop3, type PodiumEntry } from '@/components/ui/PodiumTop3';
+import { RunnerRow, type Trend } from '@/components/ui/RunnerRow';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { SecondaryButton } from '@/components/ui/SecondaryButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
@@ -28,6 +29,7 @@ interface LeaderboardListItem {
   avatarUrl?: string | null;
   highlighted: boolean;
   badgeLabel?: string;
+  trend: Trend;
 }
 
 export default function LeaderboardScreen() {
@@ -50,29 +52,18 @@ export default function LeaderboardScreen() {
 
       try {
         const nextData = await fetchLeaderboard();
-        if (!active) {
-          return;
-        }
-
+        if (!active) return;
         setData(nextData);
       } catch (err) {
-        if (!active) {
-          return;
-        }
-
+        if (!active) return;
         setError(getLeaderboardErrorMessage(err));
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     };
 
     void load();
-
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [reloadKey]);
 
   useEffect(() => {
@@ -80,9 +71,7 @@ export default function LeaderboardScreen() {
   }, [params.board]);
 
   const rows = useMemo<LeaderboardListItem[]>(() => {
-    if (!data) {
-      return [];
-    }
+    if (!data) return [];
 
     if (board === 'runners') {
       return data.users.map((entry, index) => {
@@ -98,6 +87,7 @@ export default function LeaderboardScreen() {
           variant: 'user' as const,
           avatarUrl: entry.avatarUrl,
           highlighted: data.currentUserId === entry.id,
+          trend: 'stable' as Trend,
           ...(data.currentUserId === entry.id ? { badgeLabel: 'You' } : {}),
         };
       });
@@ -111,11 +101,26 @@ export default function LeaderboardScreen() {
       subtitle: 'Season standing',
       variant: 'team' as const,
       highlighted: data.currentTeamIds.includes(entry.id),
+      trend: 'stable' as Trend,
       ...(data.currentTeamIds.includes(entry.id) ? { badgeLabel: 'Your team' } : {}),
     }));
   }, [board, data]);
 
+  const podiumEntries = useMemo<PodiumEntry[]>(
+    () =>
+      rows.slice(0, 3).map((item) => ({
+        id: item.id,
+        title: item.title,
+        points: item.points,
+        avatarUrl: item.avatarUrl,
+        variant: item.variant,
+      })),
+    [rows],
+  );
+
+  const listRows = rows.slice(3);
   const currentEntry = useMemo(() => rows.find((item) => item.highlighted) ?? null, [rows]);
+  const currentHighlightId = currentEntry?.id ?? null;
   const headerItems = getHeaderItems({ betaAccessState, seasonName: data?.seasonName ?? null });
 
   if (loading) {
@@ -132,7 +137,7 @@ export default function LeaderboardScreen() {
       <AppScreen scrollable={false} contentContainerStyle={styles.centered}>
         <Text style={styles.title}>Leaderboard</Text>
         <Text style={styles.error}>{error}</Text>
-        <SecondaryButton label="Retry" onPress={() => setReloadKey((value) => value + 1)} style={styles.stateButton} />
+        <SecondaryButton label="Retry" onPress={() => setReloadKey((v) => v + 1)} style={styles.stateButton} />
       </AppScreen>
     );
   }
@@ -149,7 +154,7 @@ export default function LeaderboardScreen() {
   return (
     <AppScreen scrollable={false} contentContainerStyle={styles.screen}>
       <FlatList
-        data={rows}
+        data={listRows}
         key={board}
         keyExtractor={(item) => item.id}
         style={styles.list}
@@ -158,7 +163,11 @@ export default function LeaderboardScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <ScreenHeader title="Leaderboard" subtitle={getHeaderSubtitle(board)} />
-            {headerItems.length > 0 ? <StatusStrip compact muted items={headerItems} /> : null}
+
+            {headerItems.length > 0 && (
+              <StatusStrip compact muted items={headerItems} />
+            )}
+
             <SegmentedTabs
               compact
               items={[
@@ -168,16 +177,28 @@ export default function LeaderboardScreen() {
               onChange={(nextValue) => setBoard(nextValue as LeaderboardBoard)}
               value={board}
             />
-            <LeaderboardRankCard
-              actionLabel={betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked' ? 'Sign in' : undefined}
+
+            {podiumEntries.length >= 3 && (
+              <PodiumTop3 entries={podiumEntries} highlightId={currentHighlightId} />
+            )}
+
+            <MyRankCard
+              actionLabel={
+                betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked'
+                  ? 'Sign in'
+                  : undefined
+              }
               avatarUrl={currentEntry?.avatarUrl}
-              contextLabel="Season"
               emptyMessage={getRankEmptyMessage({ betaAccessState, board })}
               identity={currentEntry?.title}
               label={board === 'runners' ? 'Your rank' : 'Your team'}
               onAction={
                 betaAccessState === 'signed_out' || betaAccessState === 'beta_blocked'
-                  ? () => router.push({ pathname: '/(auth)/login', params: { redirectTo: '/leaderboard' } })
+                  ? () =>
+                      router.push({
+                        pathname: '/(auth)/login',
+                        params: { redirectTo: '/leaderboard' },
+                      })
                   : undefined
               }
               points={currentEntry?.points}
@@ -185,6 +206,7 @@ export default function LeaderboardScreen() {
               subtitle={currentEntry?.subtitle}
               variant={board === 'runners' ? 'user' : 'team'}
             />
+
             <SectionHeader
               subtitle={board === 'runners' ? 'Season points' : 'Season team points'}
               title={board === 'runners' ? 'Standings' : 'Team standings'}
@@ -194,7 +216,7 @@ export default function LeaderboardScreen() {
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={<EmptyState title={getEmptyTitle({ board })} />}
         renderItem={({ item }) => (
-          <LeaderboardRow
+          <RunnerRow
             avatarUrl={item.avatarUrl}
             badgeLabel={item.badgeLabel}
             highlighted={item.highlighted}
@@ -202,6 +224,7 @@ export default function LeaderboardScreen() {
             rank={item.rank}
             subtitle={item.subtitle}
             title={item.title}
+            trend={item.trend}
             variant={item.variant}
           />
         )}
@@ -253,11 +276,7 @@ function getRankEmptyMessage({
     : 'No personal rank yet.';
 }
 
-function getEmptyTitle({
-  board,
-}: {
-  board: LeaderboardBoard;
-}) {
+function getEmptyTitle({ board }: { board: LeaderboardBoard }) {
   return board === 'runners' ? 'No runners ranked yet' : 'No teams ranked yet';
 }
 
