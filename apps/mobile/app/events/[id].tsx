@@ -1,26 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { RouteMap } from '@/components/RouteMap';
-import { ActionBar } from '@/components/ui/ActionBar';
 import { AppScreen } from '@/components/ui/AppScreen';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { EventMetaRow } from '@/components/ui/EventMetaRow';
-import { InfoRow } from '@/components/ui/InfoRow';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
-import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { SecondaryButton } from '@/components/ui/SecondaryButton';
-import { SectionCard } from '@/components/ui/SectionCard';
-import { StatusBadge, type StatusBadgeTone } from '@/components/ui/StatusBadge';
-import { StatusStrip } from '@/components/ui/StatusStrip';
+import type { StatusBadgeTone } from '@/components/ui/StatusBadge';
 import { useAuth } from '@/hooks/useAuth';
 import { DEV_MODE_LABEL, getEffectiveRunner, isDevRunnerActive } from '@/services/devRunnerMode';
 import { canFetchProtectedEventRoute, fetchEventRoute, getEventRouteErrorMessage } from '@/services/eventRoutes';
 import type { EventDetail } from '@/services/eventsService';
 import { fetchEventDetails, getEventErrorMessage, joinEvent } from '@/services/eventsService';
 import { getStoredRunSession } from '@/services/runSessionStore';
-import { colors, spacing, typography } from '@/theme/tokens';
+import { colors, fonts, spacing, typography } from '@/theme/tokens';
 import type { EventRoute } from '@/utils/route';
+
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 interface BriefingState {
   stateLabel: string;
@@ -35,6 +32,8 @@ interface BriefingState {
   eventPast: boolean;
   completed: boolean;
 }
+
+type ArcadeRowTone = 'default' | 'purple' | 'green' | 'orange' | 'muted';
 
 export default function EventDetailsScreen() {
   const { id, notice } = useLocalSearchParams<{ id: string; notice?: string }>();
@@ -242,6 +241,14 @@ export default function EventDetailsScreen() {
     [briefingState?.joined, briefingState?.routeRevealed, devRunnerActive, route, routeError, routeLoading],
   );
 
+  const eventStats = useMemo(() => {
+    if (!event || !briefingState) {
+      return null;
+    }
+
+    return getEventArcadeStats(event, briefingState, nowMs);
+  }, [briefingState, event, nowMs]);
+
   const handleJoin = async () => {
     if (!eventId) {
       return;
@@ -315,94 +322,242 @@ export default function EventDetailsScreen() {
   }
 
   return (
-    <AppScreen contentContainerStyle={styles.content}>
-      <SecondaryButton compact label="Back to events" onPress={() => router.replace('/events')} style={styles.topButton} />
+    <AppScreen contentContainerStyle={styles.content} style={styles.screen}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.replace('/events')} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={15} color="rgba(255,255,255,0.64)" />
+        </Pressable>
+        <Text style={styles.headerTitle}>Event details</Text>
+        <Text style={styles.headerSeason}>{getSeasonLabel(event.startsAt)}</Text>
+      </View>
 
-      <ScreenHeader
-        eyebrow="Event briefing"
-        title={event.title}
-        subtitle={getBriefingSubtitle(event, briefingState)}
-        accessory={<StatusBadge label={briefingState.stateLabel} tone={briefingState.stateTone} />}
-      />
+      <View style={styles.statusRow}>
+        {[
+          ...(devRunnerActive ? [{ label: DEV_MODE_LABEL, tone: 'warning' as const }] : []),
+          ...(noticeMessage ? [{ label: 'Notice', tone: 'info' as const }] : []),
+          ...briefingStatusItems,
+        ].map((item) => (
+          <ArcadePill key={`${item.label}-${item.tone}`} label={item.label} tone={item.tone} />
+        ))}
+      </View>
 
-      {devRunnerActive || noticeMessage || briefingStatusItems.length > 0 ? (
-        <StatusStrip
-          compact
-          muted
-          items={[
-            ...(devRunnerActive ? [{ label: DEV_MODE_LABEL, tone: 'warning' as const }] : []),
-            ...(noticeMessage ? [{ label: 'Notice', tone: 'info' as const }] : []),
-            ...briefingStatusItems,
-          ]}
-        />
-      ) : null}
+      {eventStats ? (
+        <View style={styles.arcadeCard}>
+          <View pointerEvents="none" style={styles.cardGlow} />
+          <View pointerEvents="none" style={styles.cardGlowBottom} />
+          <View style={styles.cardTopBar} />
 
-      <SectionCard
-        title={revealCountdown.title}
-        subtitle={revealCountdown.subtitle}
-        accessory={<StatusBadge compact label={briefingState.routeLabel} tone={briefingState.routeTone} />}
-        tone="accent"
-      >
-        <Text style={styles.countdownValue}>{revealCountdown.value}</Text>
-        <Text style={styles.countdownHint}>{getHeroSignal(briefingState)}</Text>
-        <EventMetaRow
-          items={[
-            { label: 'Reveal', value: formatDateTime(event.revealAt), icon: 'reveal' },
-            { label: 'Start', value: formatDateTime(event.startsAt), icon: 'start' },
-            { label: 'Zone', value: `${event.startAreaRadiusKm} km`, icon: 'zone' },
-          ]}
-          withRail
-        />
-      </SectionCard>
-
-      <SectionCard title="Event window" subtitle="Reveal timing, start timing, and zone guidance">
-        <InfoRow label="Reveal" value={formatFullDateTime(event.revealAt)} />
-        <InfoRow label="Start" value={formatFullDateTime(event.startsAt)} />
-        {event.endsAt ? <InfoRow label="End" value={formatFullDateTime(event.endsAt)} /> : null}
-        <InfoRow label="Start radius" value={`${formatZoneRadius(event.startAreaRadiusKm)} km`} />
-        <InfoRow label="Zone" value={getZoneSignal(event, briefingState)} tone="muted" />
-      </SectionCard>
-
-      <SectionCard title="Entry">
-        <InfoRow label="State" value={briefingState.joined ? 'Registered' : isAuthenticated || devRunnerActive ? 'Not joined' : 'Signed out'} />
-        {event.viewerJoinedAt ? <InfoRow label="Joined" value={formatDateTime(event.viewerJoinedAt)} /> : null}
-        {event.participantCount !== null ? <InfoRow label="Runners" value={String(event.participantCount)} /> : null}
-        {devRunnerActive && effectiveRunner ? <InfoRow label="Runner" value={effectiveRunner.username} tone="muted" /> : null}
-      </SectionCard>
-
-      <SectionCard title="Route" accessory={<StatusBadge compact label={routePreviewState.label} tone={routePreviewState.tone} />}>
-        {route && (briefingState.joined || devRunnerActive) ? (
-          <View style={styles.mapCard}>
-            <RouteMap
-              routePolyline={route.polyline}
-              startPoint={route.startPoint}
-              endPoint={route.endPoint}
-              startZoneCenter={event.startAreaCenter}
-              startZoneRadiusKm={event.startAreaRadiusKm}
-            />
+          <View style={styles.cardHeader}>
+            <View style={styles.rarityWrap}>
+              {Array.from({ length: 5 }).map((_, index) => (
+                <View
+                  key={index}
+                  style={[styles.rarityDot, index < eventStats.rarityLevel ? styles.rarityDotOn : styles.rarityDotDim]}
+                />
+              ))}
+              <Text style={styles.rarityLabel}>{eventStats.rarityLabel}</Text>
+            </View>
+            <View style={styles.pointsBadge}>
+              <Ionicons name="star" size={14} color="#F0C84E" />
+              <Text style={styles.pointsText}>+{eventStats.points} pts</Text>
+            </View>
           </View>
-        ) : (
-          <EmptyState title={routePreviewState.emptyTitle} description={routePreviewState.emptyDescription} />
-        )}
-      </SectionCard>
 
-      {noticeMessage ? (
-        <SectionCard tone="muted">
-          <Text style={styles.noticeText}>{noticeMessage}</Text>
-        </SectionCard>
+          <Text style={styles.cardName}>{splitTitle(event.title)}</Text>
+          <View style={styles.cardTypeRow}>
+            <View style={styles.cardTypeRule} />
+            <Text style={styles.cardType}>{eventStats.eventType}</Text>
+          </View>
+
+          <View style={styles.statsRow}>
+            <ArcadeStat label="Distance" value={eventStats.distanceLabel} sub={eventStats.distanceSub} locked={!briefingState.routeRevealed} />
+            <ArcadeStat label="Zone" value={`${formatZoneRadius(event.startAreaRadiusKm)} km`} sub="Start radius" color="green" />
+            <ArcadeStat label="Runners" value={String(eventStats.runnersLabel)} sub={eventStats.runnersSub} />
+            <ArcadeStat label="Points" value={String(eventStats.points)} sub="On finish" color="amber" />
+          </View>
+
+          <View style={styles.cardSep} />
+
+          <View style={styles.barsWrap}>
+            <ProgressBar label="Spots filled" valueLabel={eventStats.spotsLabel} progress={eventStats.spotsProgress} tone="purple" />
+            <ProgressBar label={eventStats.timeProgressLabel} valueLabel={`${eventStats.timeProgress}%`} progress={eventStats.timeProgress} tone="amber" />
+          </View>
+        </View>
       ) : null}
 
-      {feedback ? (
-        <SectionCard tone="muted">
-          <Text style={feedback.type === 'success' ? styles.successText : styles.errorTextLeft}>{feedback.message}</Text>
-        </SectionCard>
-      ) : null}
+      <View style={styles.countdownWrap}>
+        <View style={styles.countdownIcon}>
+          <Ionicons name={briefingState.routeRevealed ? 'flash' : 'hourglass'} size={20} color="#B38BFF" />
+        </View>
+        <View style={styles.countdownInfo}>
+          <Text style={styles.countdownLabel}>{briefingState.routeRevealed ? 'Route reveal' : 'Route reveals in'}</Text>
+          <Text style={styles.countdownTime}>{revealCountdown.value}</Text>
+          <Text style={styles.countdownSub}>{revealCountdown.subtitle}</Text>
+        </View>
+      </View>
 
-      <ActionBar
-        secondary={<SecondaryButton label="Refresh" onPress={() => setReloadKey((value) => value + 1)} />}
-        primary={<PrimaryButton label={primaryAction.label} onPress={handlePrimaryAction} disabled={primaryAction.disabled} />}
+      <InfoSection
+        title="Event window"
+        icon="time-outline"
+        rows={[
+          { label: 'Reveal', value: formatFullDateTime(event.revealAt) },
+          { label: 'Start', value: formatFullDateTime(event.startsAt) },
+          ...(event.endsAt ? [{ label: 'End', value: formatFullDateTime(event.endsAt) }] : []),
+          { label: 'Start radius', value: `${formatZoneRadius(event.startAreaRadiusKm)} km`, tone: 'purple' },
+          { label: 'Distance', value: briefingState.routeRevealed ? 'Route visible after join' : 'Hidden until reveal', tone: 'muted' },
+        ]}
       />
+
+      <InfoSection
+        title="Entry"
+        rows={[
+          {
+            label: 'State',
+            value: briefingState.joined ? 'Registered' : isAuthenticated || devRunnerActive ? 'Not registered' : 'Signed out',
+            tone: briefingState.joined ? 'green' : 'orange',
+          },
+          { label: 'Runners', value: getRunnersLabel(event) },
+          { label: 'Spots left', value: getSpotsLeftLabel(event) },
+          ...(event.viewerJoinedAt ? [{ label: 'Joined', value: formatDateTime(event.viewerJoinedAt) }] : []),
+          ...(devRunnerActive && effectiveRunner ? [{ label: 'Runner', value: effectiveRunner.username, tone: 'muted' as const }] : []),
+        ]}
+      />
+
+      <View style={styles.routeSection}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="map-outline" size={14} color="rgba(255,255,255,0.28)" />
+          <Text style={styles.sectionHeaderLabel}>Route</Text>
+          <ArcadePill compact label={routePreviewState.label} tone={routePreviewState.tone} />
+        </View>
+        <View style={styles.routeBody}>
+          {route && (briefingState.joined || devRunnerActive) ? (
+            <View style={styles.mapCard}>
+              <RouteMap
+                routePolyline={route.polyline}
+                startPoint={route.startPoint}
+                endPoint={route.endPoint}
+                startZoneCenter={event.startAreaCenter}
+                startZoneRadiusKm={event.startAreaRadiusKm}
+              />
+            </View>
+          ) : (
+            <EmptyState title={routePreviewState.emptyTitle} description={routePreviewState.emptyDescription} />
+          )}
+        </View>
+      </View>
+
+      {noticeMessage ? <MessageBlock tone="info" message={noticeMessage} /> : null}
+      {feedback ? <MessageBlock tone={feedback.type} message={feedback.message} /> : null}
+
+      <View style={styles.ctaWrap}>
+        <PrimaryButton label={primaryAction.label} onPress={handlePrimaryAction} disabled={primaryAction.disabled} />
+        <SecondaryButton label="Refresh briefing" onPress={() => setReloadKey((value) => value + 1)} />
+      </View>
     </AppScreen>
+  );
+}
+
+function ArcadePill({
+  compact = false,
+  label,
+  tone,
+}: {
+  compact?: boolean;
+  label: string;
+  tone: StatusBadgeTone;
+}) {
+  const color = pillColors[tone] ?? pillColors.neutral;
+
+  return (
+    <View style={[styles.pill, compact && styles.pillCompact, { backgroundColor: color.bg, borderColor: color.border }]}>
+      {!compact ? <View style={[styles.pillDot, { backgroundColor: color.text }]} /> : null}
+      <Text style={[styles.pillText, compact && styles.pillTextCompact, { color: color.text }]}>{label}</Text>
+    </View>
+  );
+}
+
+function ArcadeStat({
+  color = 'default',
+  label,
+  locked = false,
+  sub,
+  value,
+}: {
+  color?: 'default' | 'green' | 'amber';
+  label: string;
+  locked?: boolean;
+  sub: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.statBox}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statVal, locked && styles.statValLocked, color === 'green' && styles.statValGreen, color === 'amber' && styles.statValAmber]}>
+        {value}
+      </Text>
+      <Text style={styles.statSub}>{sub}</Text>
+    </View>
+  );
+}
+
+function ProgressBar({
+  label,
+  progress,
+  tone,
+  valueLabel,
+}: {
+  label: string;
+  progress: number;
+  tone: 'purple' | 'amber';
+  valueLabel: string;
+}) {
+  return (
+    <View style={styles.barRow}>
+      <View style={styles.barMeta}>
+        <Text style={styles.barLabel}>{label}</Text>
+        <Text style={[styles.barValue, tone === 'purple' ? styles.barValuePurple : styles.barValueAmber]}>{valueLabel}</Text>
+      </View>
+      <View style={styles.barTrack}>
+        <View style={[styles.barFill, tone === 'purple' ? styles.barFillPurple : styles.barFillAmber, { width: `${progress}%` }]} />
+      </View>
+    </View>
+  );
+}
+
+function InfoSection({
+  icon,
+  rows,
+  title,
+}: {
+  icon?: IoniconName;
+  rows: Array<{ label: string; value: string; tone?: ArcadeRowTone }>;
+  title: string;
+}) {
+  return (
+    <View style={styles.infoSection}>
+      <View style={styles.sectionHeader}>
+        {icon ? <Ionicons name={icon} size={14} color="rgba(255,255,255,0.28)" /> : null}
+        <Text style={styles.sectionHeaderLabel}>{title}</Text>
+      </View>
+      <View style={styles.infoRows}>
+        {rows.map((row) => (
+          <View key={`${row.label}-${row.value}`} style={styles.infoRow}>
+            <Text style={styles.infoKey}>{row.label}</Text>
+            <Text style={[styles.infoVal, row.tone === 'purple' && styles.infoValPurple, row.tone === 'green' && styles.infoValGreen, row.tone === 'orange' && styles.infoValOrange, row.tone === 'muted' && styles.infoValMuted]}>
+              {row.value}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function MessageBlock({ message, tone }: { message: string; tone: 'success' | 'error' | 'info' }) {
+  return (
+    <View style={styles.messageBlock}>
+      <Text style={[styles.messageText, tone === 'success' && styles.successText, tone === 'error' && styles.errorTextLeft]}>{message}</Text>
+    </View>
   );
 }
 
@@ -573,6 +728,99 @@ function getRoutePreviewState({
   };
 }
 
+function getEventArcadeStats(event: EventDetail, state: BriefingState, nowMs: number) {
+  const participantCount = event.participantCount ?? 0;
+  const maxParticipants = event.maxParticipants ?? 0;
+  const points = getPointsReward(event, state);
+  const spotsProgress = maxParticipants > 0 ? clamp(Math.round((participantCount / maxParticipants) * 100), 0, 100) : 0;
+  const revealAt = new Date(event.revealAt).getTime();
+  const startsAt = new Date(event.startsAt).getTime();
+  const endsAt = new Date(event.endsAt ?? event.startsAt).getTime();
+  const timeProgress = getTimeProgress({ endsAt, nowMs, revealAt, startsAt, state });
+  const filled = maxParticipants > 0 && participantCount >= maxParticipants;
+
+  return {
+    distanceLabel: state.routeRevealed ? 'Live' : '???',
+    distanceSub: state.routeRevealed ? 'Route' : 'Hidden',
+    eventType: `${getEventTypeLabel(state, filled)} - ${state.routeRevealed ? 'Route revealed' : 'Route hidden'}`,
+    points,
+    rarityLabel: points >= 70 ? 'Epic' : points >= 50 ? 'Rare' : 'Urban',
+    rarityLevel: points >= 70 ? 5 : points >= 50 ? 4 : 3,
+    runnersLabel: participantCount,
+    runnersSub: maxParticipants > 0 ? 'Registered' : 'Runners',
+    spotsLabel: maxParticipants > 0 ? `${participantCount} / ${maxParticipants}` : `${participantCount} reg.`,
+    spotsProgress,
+    timeProgress,
+    timeProgressLabel: state.routeRevealed ? 'Window progress' : 'Time to reveal',
+  };
+}
+
+function getEventTypeLabel(state: BriefingState, filled: boolean): string {
+  if (state.completed) return 'Completed race';
+  if (state.startWindowOpen) return 'Live run';
+  if (filled) return 'Validated race';
+  return 'Urban race';
+}
+
+function getPointsReward(event: EventDetail, state: BriefingState): number {
+  const base = event.startAreaRadiusKm <= 0.5 ? 70 : event.startAreaRadiusKm <= 1 ? 55 : 40;
+  if (state.startWindowOpen) return base + 10;
+  if (state.completed) return Math.max(30, base - 10);
+  return base;
+}
+
+function getTimeProgress({
+  endsAt,
+  nowMs,
+  revealAt,
+  startsAt,
+  state,
+}: {
+  endsAt: number;
+  nowMs: number;
+  revealAt: number;
+  startsAt: number;
+  state: BriefingState;
+}) {
+  if (Number.isNaN(revealAt) || Number.isNaN(startsAt)) return 0;
+
+  if (!state.routeRevealed) {
+    const total = Math.max(1, startsAt - revealAt);
+    const remaining = Math.max(0, revealAt - nowMs);
+    return clamp(Math.round(100 - (remaining / total) * 100), 0, 100);
+  }
+
+  const total = Math.max(1, endsAt - startsAt);
+  const elapsed = Math.max(0, nowMs - startsAt);
+  return clamp(Math.round((elapsed / total) * 100), 0, 100);
+}
+
+function splitTitle(title: string): string {
+  const words = title.trim().split(/\s+/);
+  if (words.length <= 2) return title;
+  const pivot = Math.ceil(words.length / 2);
+  return `${words.slice(0, pivot).join(' ')}\n${words.slice(pivot).join(' ')}`;
+}
+
+function getSeasonLabel(value: string): string {
+  const date = new Date(value);
+  const month = date.getMonth();
+  const season = month >= 2 && month <= 4 ? 'Spring' : month >= 5 && month <= 7 ? 'Summer' : month >= 8 && month <= 10 ? 'Autumn' : 'Winter';
+  return `${season} ${date.getFullYear()}`;
+}
+
+function getRunnersLabel(event: EventDetail): string {
+  const participantCount = event.participantCount ?? 0;
+  return event.maxParticipants && event.maxParticipants > 0
+    ? `${participantCount} / ${event.maxParticipants}`
+    : String(participantCount);
+}
+
+function getSpotsLeftLabel(event: EventDetail): string {
+  if (!event.maxParticipants || event.maxParticipants <= 0) return 'No cap';
+  return String(Math.max(0, event.maxParticipants - (event.participantCount ?? 0)));
+}
+
 function getBriefingSubtitle(event: EventDetail, state: BriefingState): string {
   const description = event.description?.replace(/\s+/g, ' ').trim();
   if (description) {
@@ -670,12 +918,53 @@ function formatZoneRadius(value: number): string {
   return String(normalized);
 }
 
-const styles = StyleSheet.create({
-  content: {
-    gap: spacing.lg,
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+const pillColors: Record<StatusBadgeTone, { bg: string; border: string; text: string }> = {
+  neutral: {
+    bg: 'rgba(255,255,255,0.06)',
+    border: 'rgba(255,255,255,0.10)',
+    text: 'rgba(255,255,255,0.42)',
   },
-  topButton: {
-    alignSelf: 'flex-start',
+  accent: {
+    bg: 'rgba(130,80,255,0.14)',
+    border: 'rgba(130,80,255,0.30)',
+    text: '#C4A3FF',
+  },
+  success: {
+    bg: 'rgba(78,204,163,0.12)',
+    border: 'rgba(78,204,163,0.28)',
+    text: '#5DDDB8',
+  },
+  info: {
+    bg: 'rgba(96,165,250,0.12)',
+    border: 'rgba(96,165,250,0.28)',
+    text: '#93C5FD',
+  },
+  warning: {
+    bg: 'rgba(232,184,75,0.12)',
+    border: 'rgba(232,184,75,0.30)',
+    text: '#F0C84E',
+  },
+  danger: {
+    bg: 'rgba(255,100,60,0.12)',
+    border: 'rgba(255,100,60,0.28)',
+    text: '#FF9870',
+  },
+};
+
+const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: '#0D0A1A',
+  },
+  content: {
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: spacing.lg,
+    backgroundColor: '#0D0A1A',
   },
   centered: {
     alignItems: 'center',
@@ -709,22 +998,441 @@ const styles = StyleSheet.create({
   stateButton: {
     minWidth: 160,
   },
-  countdownValue: {
-    ...typography.heroTitle,
-    color: colors.textPrimary,
+  header: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.07)',
   },
-  countdownHint: {
-    ...typography.bodySm,
-    color: colors.textSecondary,
-    maxWidth: 320,
+  backButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: fonts.dmSans600,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.45)',
+  },
+  headerSeason: {
+    fontSize: 11,
+    fontFamily: fonts.dmSans400,
+    letterSpacing: 0.4,
+    color: 'rgba(255,255,255,0.22)',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  pillCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  pillDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  pillText: {
+    fontSize: 10,
+    fontFamily: fonts.dmSans600,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  pillTextCompact: {
+    fontSize: 9,
+    letterSpacing: 0.3,
+  },
+  arcadeCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 14,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(130,80,255,0.45)',
+    backgroundColor: '#130D25',
+  },
+  cardGlow: {
+    position: 'absolute',
+    top: -50,
+    right: -50,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(130,80,255,0.12)',
+  },
+  cardGlowBottom: {
+    position: 'absolute',
+    bottom: -40,
+    left: -40,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(78,204,163,0.06)',
+  },
+  cardTopBar: {
+    height: 2,
+    backgroundColor: '#8250FF',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+  rarityWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  rarityDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  rarityDotOn: {
+    backgroundColor: '#8250FF',
+  },
+  rarityDotDim: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  rarityLabel: {
+    marginLeft: 6,
+    fontSize: 10,
+    fontFamily: fonts.dmSans600,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: 'rgba(130,80,255,0.85)',
+  },
+  pointsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 9,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(232,184,75,0.40)',
+    backgroundColor: 'rgba(232,184,75,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  pointsText: {
+    fontSize: 15,
+    fontFamily: fonts.syne800,
+    fontWeight: '800',
+    color: '#F0C84E',
+  },
+  cardName: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 3,
+    fontSize: 26,
+    lineHeight: 28,
+    fontFamily: fonts.syne800,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  cardTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  cardTypeRule: {
+    width: 12,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(130,80,255,0.45)',
+  },
+  cardType: {
+    flex: 1,
+    fontSize: 11,
+    fontFamily: fonts.dmSans600,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.30)',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  statBox: {
+    flex: 1,
+    minHeight: 68,
+    borderRadius: 11,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 3,
+  },
+  statLabel: {
+    fontSize: 9,
+    fontFamily: fonts.dmSans600,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.28)',
+  },
+  statVal: {
+    fontSize: 16,
+    lineHeight: 18,
+    fontFamily: fonts.syne800,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  statValLocked: {
+    color: 'rgba(255,255,255,0.18)',
+    letterSpacing: 1.4,
+  },
+  statValGreen: {
+    color: '#4ECCA3',
+  },
+  statValAmber: {
+    color: '#F0C84E',
+  },
+  statSub: {
+    fontSize: 9,
+    fontFamily: fonts.dmSans400,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.22)',
+  },
+  cardSep: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  barsWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 10,
+  },
+  barRow: {
+    gap: 5,
+  },
+  barMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  barLabel: {
+    fontSize: 11,
+    fontFamily: fonts.dmSans600,
+    color: 'rgba(255,255,255,0.36)',
+  },
+  barValue: {
+    fontSize: 11,
+    fontFamily: fonts.dmSans600,
+  },
+  barValuePurple: {
+    color: '#B38BFF',
+  },
+  barValueAmber: {
+    color: '#F0C84E',
+  },
+  barTrack: {
+    height: 5,
+    borderRadius: 3,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  barFillPurple: {
+    backgroundColor: '#8250FF',
+  },
+  barFillAmber: {
+    backgroundColor: '#E8B84B',
+  },
+  countdownWrap: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: 15,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.09)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  countdownIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(130,80,255,0.30)',
+    backgroundColor: 'rgba(130,80,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countdownInfo: {
+    flex: 1,
+  },
+  countdownLabel: {
+    marginBottom: 2,
+    fontSize: 10,
+    fontFamily: fonts.dmSans600,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.30)',
+  },
+  countdownTime: {
+    fontSize: 26,
+    lineHeight: 28,
+    fontFamily: fonts.syne800,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  countdownSub: {
+    marginTop: 2,
+    fontSize: 10,
+    fontFamily: fonts.dmSans400,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.22)',
+  },
+  infoSection: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+    overflow: 'hidden',
+    borderRadius: 15,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  routeSection: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+    overflow: 'hidden',
+    borderRadius: 15,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  sectionHeader: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  sectionHeaderLabel: {
+    flex: 1,
+    fontSize: 10,
+    fontFamily: fonts.dmSans600,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.30)',
+  },
+  infoRows: {
+    paddingVertical: 4,
+  },
+  infoRow: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  infoKey: {
+    fontSize: 11,
+    fontFamily: fonts.dmSans600,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.28)',
+  },
+  infoVal: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 12,
+    fontFamily: fonts.dmSans600,
+    color: 'rgba(255,255,255,0.70)',
+  },
+  infoValPurple: {
+    color: '#C4A3FF',
+  },
+  infoValGreen: {
+    color: '#4ECCA3',
+  },
+  infoValOrange: {
+    color: '#FF9870',
+  },
+  infoValMuted: {
+    color: 'rgba(255,255,255,0.25)',
+    fontStyle: 'italic',
+  },
+  routeBody: {
+    padding: 14,
   },
   mapCard: {
     height: 260,
     overflow: 'hidden',
-    borderRadius: 16,
+    borderRadius: 12,
   },
-  noticeText: {
+  messageBlock: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+    borderRadius: 15,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  messageText: {
     ...typography.bodySm,
-    color: colors.textSecondary,
+    color: colors.info,
+  },
+  ctaWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    gap: 8,
   },
 });
