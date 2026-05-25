@@ -1,5 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { borderWidth, colors, radius, spacing, typography } from '@/theme/tokens';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, fonts } from '@/theme/tokens';
 import { LeaderboardAvatar } from './LeaderboardAvatar';
 import { StatusBadge } from './StatusBadge';
 
@@ -16,6 +18,7 @@ interface RunnerRowProps {
   badgeLabel?: string | undefined;
   highlighted?: boolean | undefined;
   trend?: Trend | undefined;
+  trendDelta?: number | undefined;
 }
 
 export function RunnerRow({
@@ -27,176 +30,205 @@ export function RunnerRow({
   subtitle,
   title,
   trend = 'stable',
+  trendDelta,
   variant = 'user',
 }: RunnerRowProps) {
-  const tone = getPlacementTone(rank);
-
   return (
     <View style={[styles.row, highlighted && styles.rowHighlighted]}>
-      <View style={[styles.rankBlock, rankBg[tone]]}>
-        <Text style={[styles.rankText, rankLabel[tone]]}>#{rank}</Text>
-      </View>
+      {/* rank */}
+      <Text style={styles.rank}>{rank}</Text>
 
-      <View style={styles.identity}>
-        <LeaderboardAvatar avatarUrl={avatarUrl} label={title} size="sm" variant={variant} />
-        <View style={styles.copy}>
-          <View style={styles.titleRow}>
-            <Text numberOfLines={1} style={styles.title}>
-              {title}
-            </Text>
-            {badgeLabel ? <StatusBadge compact label={badgeLabel} tone="accent" /> : null}
-          </View>
-          {subtitle ? (
-            <Text numberOfLines={1} style={styles.subtitle}>
-              {subtitle}
-            </Text>
-          ) : null}
-        </View>
-      </View>
+      {/* avatar */}
+      <RunnerAvatarSmall avatarUrl={avatarUrl} title={title} variant={variant} />
 
-      <View style={styles.trailing}>
-        <TrendIndicator trend={trend} />
-        <View style={styles.score}>
-          <Text numberOfLines={1} style={styles.points}>
-            {points.toLocaleString()}
+      {/* identity */}
+      <View style={styles.info}>
+        <View style={styles.nameRow}>
+          <Text numberOfLines={1} style={styles.name}>
+            {title}
           </Text>
-          <Text style={styles.pointsLabel}>pts</Text>
+          {badgeLabel ? <StatusBadge compact label={badgeLabel} tone="accent" /> : null}
         </View>
+        {subtitle ? (
+          <Text numberOfLines={1} style={styles.handle}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+
+      {/* pts + trend */}
+      <View style={styles.trailing}>
+        <View style={styles.ptsBlock}>
+          <Text style={styles.pts}>{points.toLocaleString()}</Text>
+          <Text style={styles.ptsLabel}>pts</Text>
+        </View>
+        <TrendChip delta={trendDelta} trend={trend} />
       </View>
     </View>
   );
 }
 
-function TrendIndicator({ trend }: { trend: Trend }) {
-  if (trend === 'up') {
-    return <Text style={styles.trendUp}>▲</Text>;
+function RunnerAvatarSmall({
+  avatarUrl,
+  title,
+  variant,
+}: {
+  title: string;
+  avatarUrl?: string | null | undefined;
+  variant: RunnerRowVariant;
+}) {
+  if (avatarUrl && variant === 'user') {
+    return <LeaderboardAvatar avatarUrl={avatarUrl} label={title} size="sm" variant={variant} />;
   }
-  if (trend === 'down') {
-    return <Text style={styles.trendDown}>▼</Text>;
-  }
-  return <Text style={styles.trendStable}>—</Text>;
+
+  const initial = title.trim().charAt(0).toUpperCase() || '?';
+  const bg = (AVATAR_COLORS[initial.charCodeAt(0) % AVATAR_COLORS.length] ?? AVATAR_COLORS[0]) as [string, string];
+
+  return (
+    <LinearGradient
+      colors={bg}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.avatarGrad}
+    >
+      <Text style={styles.avatarInitial}>{initial}</Text>
+    </LinearGradient>
+  );
 }
 
-function getPlacementTone(rank: number): 'accent' | 'silver' | 'bronze' | 'neutral' {
-  if (rank === 1) return 'accent';
-  if (rank === 2) return 'silver';
-  if (rank === 3) return 'bronze';
-  return 'neutral';
+function TrendChip({ trend, delta }: { trend: Trend; delta?: number | undefined }) {
+  if (trend === 'up') {
+    return (
+      <View style={styles.trendRow}>
+        <Ionicons color="#4ECCA3" name="arrow-up" size={10} />
+        {delta != null && <Text style={styles.trendUp}>+{delta}</Text>}
+      </View>
+    );
+  }
+
+  if (trend === 'down') {
+    return (
+      <View style={styles.trendRow}>
+        <Ionicons color="#FF6B6B" name="arrow-down" size={10} />
+        {delta != null && <Text style={styles.trendDown}>-{delta}</Text>}
+      </View>
+    );
+  }
+
+  return null;
 }
+
+const AVATAR_COLORS: [string, string][] = [
+  ['#FF6B53', '#FF9853'],
+  ['#4A90D9', '#6AB0F5'],
+  ['#4ECCA3', '#2EAF84'],
+  ['#F5A623', '#F5C823'],
+  ['#9B59B6', '#C39BD3'],
+  ['#E74C3C', '#F1948A'],
+];
 
 const styles = StyleSheet.create({
   row: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: borderWidth.regular,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: 12,
   },
   rowHighlighted: {
-    borderColor: 'rgba(130, 80, 255, 0.30)',
-    backgroundColor: colors.surfaceElevated,
+    borderColor: 'rgba(130,80,255,0.28)',
+    backgroundColor: 'rgba(130,80,255,0.07)',
   },
-  rankBlock: {
-    minWidth: 48,
-    minHeight: 40,
-    borderRadius: radius.sm,
-    borderWidth: borderWidth.regular,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-  },
-  rankText: {
+  rank: {
+    fontFamily: fonts.syne800,
     fontSize: 14,
     lineHeight: 18,
+    color: 'rgba(255,255,255,0.35)',
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  avatarGrad: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  avatarInitial: {
+    fontFamily: fonts.dmSans600,
+    fontSize: 13,
+    lineHeight: 17,
     fontWeight: '700',
-    // fontFamily: 'Syne_700Bold', — enable after: npx expo install @expo-google-fonts/syne expo-font
+    color: '#fff',
   },
-  identity: {
+  info: {
     flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 6,
   },
-  copy: {
-    flex: 1,
-    gap: spacing.xxs,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  title: {
+  name: {
+    fontFamily: fonts.dmSans600,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '600',
+    color: '#fff',
     flexShrink: 1,
-    ...typography.body,
-    color: colors.textPrimary,
   },
-  subtitle: {
-    ...typography.bodySm,
-    color: colors.textMuted,
+  handle: {
+    fontFamily: fonts.dmSans400,
+    fontSize: 11,
+    lineHeight: 15,
+    color: 'rgba(255,255,255,0.35)',
   },
   trailing: {
     alignItems: 'flex-end',
-    gap: spacing.xxs,
+    gap: 2,
+    flexShrink: 0,
   },
-  score: {
+  ptsBlock: {
     alignItems: 'flex-end',
-    gap: 1,
   },
-  points: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
+  pts: {
+    fontFamily: fonts.syne800,
+    fontSize: 16,
+    lineHeight: 20,
+    color: '#fff',
   },
-  pointsLabel: {
-    ...typography.eyebrow,
-    color: colors.textMuted,
+  ptsLabel: {
+    fontFamily: fonts.dmSans400,
+    fontSize: 9,
+    lineHeight: 12,
+    color: 'rgba(255,255,255,0.30)',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  trendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   trendUp: {
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '700',
-    color: colors.success,
+    fontFamily: fonts.dmSans600,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    color: '#4ECCA3',
   },
   trendDown: {
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '700',
-    color: colors.danger,
+    fontFamily: fonts.dmSans600,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    color: '#FF6B6B',
   },
-  trendStable: {
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '700',
-    color: colors.textMuted,
-  },
-});
-
-const rankBg = StyleSheet.create({
-  neutral: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.borderStrong,
-  },
-  accent: {
-    backgroundColor: colors.accentSoft,
-    borderColor: 'rgba(130, 80, 255, 0.28)',
-  },
-  silver: {
-    backgroundColor: 'rgba(138,155,184,0.13)',
-    borderColor: 'rgba(138,155,184,0.24)',
-  },
-  bronze: {
-    backgroundColor: 'rgba(176,120,64,0.13)',
-    borderColor: 'rgba(176,120,64,0.24)',
-  },
-});
-
-const rankLabel = StyleSheet.create({
-  neutral: { color: colors.textPrimary },
-  accent: { color: '#D4CCFF' },
-  silver: { color: '#8A9BB8' },
-  bronze: { color: '#C08B50' },
 });

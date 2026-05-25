@@ -99,6 +99,14 @@ export const typography = {
   },
 } as const;
 
+export const fonts = {
+  syne700: 'Syne_700Bold',
+  syne800: 'Syne_800ExtraBold',
+  dmSans400: 'DMSans_400Regular',
+  dmSans500: 'DMSans_500Medium',
+  dmSans600: 'DMSans_600SemiBold',
+} as const;
+
 export const borderWidth = {
   subtle: StyleSheet.hairlineWidth,
   regular: 1,

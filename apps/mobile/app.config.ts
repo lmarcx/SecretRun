@@ -7,7 +7,10 @@ const config: ExpoConfig = {
   version: '1.0.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
-  plugins: ['expo-router', 'expo-location', 'expo-notifications'],
+  plugins: ['expo-router', 'expo-location', 'expo-notifications', 'expo-font'],
+  web: {
+    bundler: 'metro',
+  },
   experiments: {
     typedRoutes: true,
   },

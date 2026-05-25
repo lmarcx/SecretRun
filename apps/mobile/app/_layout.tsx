@@ -1,11 +1,15 @@
 import { NhostProvider } from '@nhost/react';
 import { Stack, usePathname, useRouter } from 'expo-router';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppNavigationShell } from '@/components/AppNavigationShell';
+import { Syne_700Bold, Syne_800ExtraBold } from '@expo-google-fonts/syne';
+import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold } from '@expo-google-fonts/dm-sans';
+import { NavBar } from '@/components/NavBar';
 import { DebugAuthBanner } from '@/components/DebugAuthBanner';
 import { useAuth } from '@/hooks/useAuth';
 import { setCurrentBetaScreen } from '@/services/betaDiagnostics';
@@ -14,10 +18,24 @@ import { configureNotificationHandling, getRouteFromNotificationData } from '@/s
 import { colors } from '@/theme/tokens';
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Syne_700Bold,
+    Syne_800ExtraBold,
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_600SemiBold,
+  });
+
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
+
   return (
     <NhostProvider nhost={nhost}>
       <SafeAreaProvider>
-        <AppChrome />
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <AppChrome />
+        </GestureHandlerRootView>
       </SafeAreaProvider>
     </NhostProvider>
   );
@@ -106,7 +124,7 @@ function AppChrome() {
             <Stack.Screen name="teams/[id]" options={{ title: 'Team' }} />
           </Stack>
         </View>
-        <AppNavigationShell />
+        <NavBar />
       </View>
     </>
   );

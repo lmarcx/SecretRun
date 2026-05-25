@@ -11,6 +11,9 @@
       "@/components/*": [
         "components/*"
       ],
+      "@/constants/*": [
+        "constants/*"
+      ],
       "@/hooks/*": [
         "hooks/*"
       ],
@@ -19,6 +22,9 @@
       ],
       "@/theme/*": [
         "theme/*"
+      ],
+      "@/types/*": [
+        "types/*"
       ],
       "@/utils/*": [
         "utils/*"
