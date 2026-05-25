@@ -24,6 +24,12 @@ const publicEvent = {
   ends_at: '2026-04-01T22:00:00.000Z',
   start_area_radius_km: 1.5,
   start_area_center: { type: 'Point', coordinates: [-6.2603, 53.3498] },
+  max_participants: 40,
+  participant_count: {
+    aggregate: {
+      count: 12,
+    },
+  },
   team_id: null,
   is_private: false,
   created_by: '11111111-1111-4111-8111-111111111111',
@@ -53,6 +59,8 @@ describe('events service guest visibility', () => {
 
     assert.equal(result.length, 1);
     assert.equal(result[0]?.id, publicEvent.id);
+    assert.equal(result[0]?.participantCount, 12);
+    assert.equal(result[0]?.maxParticipants, 40);
     assert.equal(result[0]?.startAreaCenter, null);
   });
 

@@ -25,6 +25,12 @@ const STATUS_COLORS: Record<EventStatus, StatusColor> = {
     text: '#5DDDB8',
     pulse: 'rgba(78,204,163,0.25)',
   },
+  completed: {
+    pin: 'rgba(96,165,250,0.15)',
+    border: 'rgba(96,165,250,0.40)',
+    text: '#93C5FD',
+    pulse: 'rgba(96,165,250,0.22)',
+  },
 };
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -33,6 +39,7 @@ const STATUS_ICONS: Record<string, IoniconName> = {
   hidden: 'lock-closed',
   full: 'ellipse',
   open: 'walk',
+  completed: 'checkmark-done',
 };
 
 interface MapPinProps {

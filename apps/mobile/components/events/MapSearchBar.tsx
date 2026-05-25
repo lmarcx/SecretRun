@@ -1,24 +1,43 @@
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { fonts } from '@/theme/tokens';
 
-interface MapSearchBarProps {
-  onSearch?: ((query: string) => void) | undefined;
+interface GeoResult {
+  latitude: number;
+  longitude: number;
 }
 
-export function MapSearchBar({ onSearch }: MapSearchBarProps) {
+interface MapSearchBarProps {
+  onGeocode?: ((coords: GeoResult) => void) | undefined;
+}
+
+export function MapSearchBar({ onGeocode }: MapSearchBarProps) {
   const [value, setValue] = useState('');
+  const [loading, setLoading] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
-  const handleChange = (text: string) => {
-    setValue(text);
-    onSearch?.(text);
+  const handleSubmit = async () => {
+    const query = value.trim();
+    if (!query || !onGeocode) return;
+    setLoading(true);
+    try {
+      const results = await Location.geocodeAsync(query);
+      const first = results[0];
+      if (first) {
+        onGeocode({ latitude: first.latitude, longitude: first.longitude });
+        inputRef.current?.blur();
+      }
+    } catch {
+      // geocode failed silently — user stays on current view
+    } finally {
+      setLoading(false);
+    }
   };
 
   const clear = () => {
     setValue('');
-    onSearch?.('');
     inputRef.current?.blur();
   };
 
@@ -31,14 +50,17 @@ export function MapSearchBar({ onSearch }: MapSearchBarProps) {
         placeholder="Search area..."
         placeholderTextColor="rgba(255,255,255,0.25)"
         value={value}
-        onChangeText={handleChange}
+        onChangeText={setValue}
         returnKeyType="search"
+        onSubmitEditing={handleSubmit}
       />
-      {value.length > 0 && (
+      {loading ? (
+        <ActivityIndicator size="small" color="rgba(255,255,255,0.35)" />
+      ) : value.length > 0 ? (
         <Pressable onPress={clear} hitSlop={8}>
           <Ionicons name="close-circle" size={16} color="rgba(255,255,255,0.35)" />
         </Pressable>
-      )}
+      ) : null}
     </View>
   );
 }

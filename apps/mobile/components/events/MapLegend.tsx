@@ -3,8 +3,9 @@ import { fonts } from '@/theme/tokens';
 
 const ITEMS = [
   { label: 'Hidden', bg: 'rgba(130,80,255,0.20)', border: 'rgba(130,80,255,0.50)', text: '#C4A3FF' },
-  { label: 'Full', bg: 'rgba(232,184,75,0.18)', border: 'rgba(232,184,75,0.50)', text: '#F0C84E' },
-  { label: 'Open', bg: 'rgba(78,204,163,0.15)', border: 'rgba(78,204,163,0.40)', text: '#5DDDB8' },
+  { label: 'Validated', bg: 'rgba(232,184,75,0.18)', border: 'rgba(232,184,75,0.50)', text: '#F0C84E' },
+  { label: 'Live', bg: 'rgba(78,204,163,0.15)', border: 'rgba(78,204,163,0.40)', text: '#5DDDB8' },
+  { label: 'Done', bg: 'rgba(96,165,250,0.15)', border: 'rgba(96,165,250,0.40)', text: '#93C5FD' },
 ] as const;
 
 export function MapLegend() {

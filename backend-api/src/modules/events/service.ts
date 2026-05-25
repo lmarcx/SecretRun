@@ -13,9 +13,15 @@ const EVENT_FIELDS = gql`
     ends_at
     start_area_radius_km
     start_area_center
+    max_participants
     team_id
     is_private
     created_by
+    participant_count: event_participants_aggregate {
+      aggregate {
+        count
+      }
+    }
   }
 `;
 
@@ -157,9 +163,15 @@ interface EventRecord {
   ends_at: string | null;
   start_area_radius_km: number | string;
   start_area_center: unknown;
+  max_participants: number | null;
   team_id: string | null;
   is_private: boolean;
   created_by: string;
+  participant_count: {
+    aggregate: {
+      count: number;
+    } | null;
+  };
 }
 
 interface EventParticipation {
@@ -180,6 +192,8 @@ interface EventReadModel {
   endsAt: string | null;
   startAreaRadiusKm: number;
   startAreaCenter: unknown;
+  participantCount: number | null;
+  maxParticipants: number | null;
   viewerParticipationStatus: string | null;
   viewerJoinedAt: string | null;
 }
@@ -434,6 +448,8 @@ function mapEventReadModel(
     endsAt: event.ends_at,
     startAreaRadiusKm: Number(event.start_area_radius_km),
     startAreaCenter: includeSensitiveLocation ? event.start_area_center : null,
+    participantCount: event.participant_count.aggregate?.count ?? null,
+    maxParticipants: event.max_participants,
     viewerParticipationStatus: participation?.status ?? null,
     viewerJoinedAt: participation?.joined_at ?? null,
   };

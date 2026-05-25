@@ -1,4 +1,5 @@
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import type { RunEvent } from '@/types/event';
 import { fonts } from '@/theme/tokens';
 import { EventChip } from './EventChip';
@@ -31,12 +32,11 @@ export function EventBottomSheet({ events, selectedEventId, onSelectEvent }: Eve
           <Text style={styles.emptyText}>No events right now</Text>
         </View>
       ) : (
-        <FlatList
+        <BottomSheetFlatList
           data={sorted}
           horizontal
           showsHorizontalScrollIndicator={false}
           snapToInterval={232}
-          decelerationRate="fast"
           contentContainerStyle={styles.list}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (

@@ -1,4 +1,4 @@
-export type EventStatus = 'hidden' | 'full' | 'open';
+export type EventStatus = 'hidden' | 'full' | 'open' | 'completed';
 
 export interface RunEvent {
   id: string;

@@ -8,6 +8,13 @@ const config: ExpoConfig = {
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   plugins: ['expo-router', 'expo-location', 'expo-notifications', 'expo-font'],
+  android: {
+    config: {
+      googleMaps: {
+        apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+      },
+    },
+  },
   web: {
     bundler: 'metro',
   },

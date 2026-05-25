@@ -21,6 +21,8 @@ export interface EventListItem {
   endsAt: string | null;
   startAreaRadiusKm: number;
   startAreaCenter: LatLng | null;
+  participantCount: number | null;
+  maxParticipants: number | null;
   viewerParticipationStatus: string | null;
   viewerJoinedAt: string | null;
 }
@@ -38,6 +40,8 @@ interface BackendEventRead {
   endsAt: string | null;
   startAreaRadiusKm: number;
   startAreaCenter: unknown;
+  participantCount: number | null;
+  maxParticipants: number | null;
   viewerParticipationStatus: string | null;
   viewerJoinedAt: string | null;
 }
@@ -56,6 +60,12 @@ const DEV_FALLBACK_EVENTS_QUERY = gql`
       reveal_at
       ends_at
       start_area_radius_km
+      max_participants
+      participant_count: event_participants_aggregate {
+        aggregate {
+          count
+        }
+      }
     }
   }
 `;
@@ -70,6 +80,12 @@ const DEV_FALLBACK_EVENT_DETAIL_QUERY = gql`
       reveal_at
       ends_at
       start_area_radius_km
+      max_participants
+      participant_count: event_participants_aggregate {
+        aggregate {
+          count
+        }
+      }
     }
   }
 `;
@@ -82,6 +98,12 @@ interface DevFallbackEventRow {
   reveal_at: string;
   ends_at: string | null;
   start_area_radius_km: number | string;
+  max_participants?: number | string | null;
+  participant_count?: {
+    aggregate?: {
+      count?: number | null;
+    } | null;
+  } | null;
 }
 
 interface DevFallbackEventsQuery {
@@ -107,6 +129,8 @@ function mapEventListItem(
     endsAt: event.endsAt,
     startAreaRadiusKm: Number(event.startAreaRadiusKm),
     startAreaCenter: parseGeoPoint(event.startAreaCenter),
+    participantCount: event.participantCount ?? null,
+    maxParticipants: event.maxParticipants ?? null,
     viewerParticipationStatus: participation?.status ?? event.viewerParticipationStatus ?? null,
     viewerJoinedAt: participation?.joinedAt ?? event.viewerJoinedAt ?? null,
   };
@@ -171,6 +195,18 @@ export async function fetchPublicEvents(): Promise<EventListItem[]> {
 
     return mappedEvents;
   } catch (error) {
+    if (shouldUseSeededDevDemoFallback()) {
+      const demoEvents = buildSeededDevDemoEvents();
+      debugEvents('list.demo_fallback', {
+        source: 'seeded_dev_demo',
+        reason: 'backend_error',
+        error: error instanceof Error ? error.message : String(error),
+        count: demoEvents.length,
+        eventIds: demoEvents.map((event) => event.id),
+      });
+      return demoEvents;
+    }
+
     if (shouldUseDevFallbackEvents(error)) {
       return fetchPublicEventsFallback();
     }
@@ -213,6 +249,19 @@ export async function fetchEventDetails(eventId: string): Promise<EventDetail | 
 
     return mappedEvent;
   } catch (error) {
+    if (shouldUseSeededDevDemoFallback()) {
+      const demoEvent = getSeededDevDemoEventDetail(eventId, devParticipation);
+      if (demoEvent) {
+        debugEvents('detail.demo_fallback', {
+          source: 'seeded_dev_demo',
+          reason: 'backend_error',
+          error: error instanceof Error ? error.message : String(error),
+          eventId,
+        });
+        return demoEvent;
+      }
+    }
+
     if (error instanceof BackendApiError && error.status === 404 && error.code === 'event_not_found') {
       const demoEvent = getSeededDevDemoEventDetail(eventId, devParticipation);
       if (demoEvent) {
@@ -334,7 +383,26 @@ function shouldUseDevFallbackEvents(error: unknown): boolean {
 }
 
 async function fetchPublicEventsFallback(): Promise<EventListItem[]> {
-  const response = await requestPublicGraphql<DevFallbackEventsQuery>(DEV_FALLBACK_EVENTS_QUERY, {});
+  let response: DevFallbackEventsQuery;
+
+  try {
+    response = await requestPublicGraphql<DevFallbackEventsQuery>(DEV_FALLBACK_EVENTS_QUERY, {});
+  } catch (error) {
+    if (shouldUseSeededDevDemoFallback()) {
+      const demoEvents = buildSeededDevDemoEvents();
+      debugEvents('list.demo_fallback', {
+        source: 'seeded_dev_demo',
+        reason: 'public_graphql_error',
+        error: error instanceof Error ? error.message : String(error),
+        count: demoEvents.length,
+        eventIds: demoEvents.map((event) => event.id),
+      });
+      return demoEvents;
+    }
+
+    throw error;
+  }
+
   debugEvents('list.raw.public_graphql', {
     source: 'public_graphql',
     count: response.events.length,
@@ -367,9 +435,29 @@ async function fetchPublicEventDetailsFallback(
   eventId: string,
   devParticipation: { status: string; joinedAt: string } | null,
 ): Promise<EventDetail | null> {
-  const response = await requestPublicGraphql<DevFallbackEventDetailQuery>(DEV_FALLBACK_EVENT_DETAIL_QUERY, {
-    eventId,
-  });
+  let response: DevFallbackEventDetailQuery;
+
+  try {
+    response = await requestPublicGraphql<DevFallbackEventDetailQuery>(DEV_FALLBACK_EVENT_DETAIL_QUERY, {
+      eventId,
+    });
+  } catch (error) {
+    if (shouldUseSeededDevDemoFallback()) {
+      const demoEvent = getSeededDevDemoEventDetail(eventId, devParticipation);
+      if (demoEvent) {
+        debugEvents('detail.demo_fallback', {
+          source: 'seeded_dev_demo',
+          reason: 'public_graphql_error',
+          error: error instanceof Error ? error.message : String(error),
+          eventId,
+        });
+        return demoEvent;
+      }
+    }
+
+    throw error;
+  }
+
   debugEvents('detail.raw.public_graphql', {
     source: 'public_graphql',
     eventId,
@@ -412,6 +500,8 @@ function mapDevFallbackListItem(event: DevFallbackEventRow): EventListItem {
     endsAt: event.ends_at,
     startAreaRadiusKm: Number(event.start_area_radius_km),
     startAreaCenter: null,
+    participantCount: event.participant_count?.aggregate?.count ?? null,
+    maxParticipants: event.max_participants != null ? Number(event.max_participants) : null,
     viewerParticipationStatus: devParticipation?.status ?? null,
     viewerJoinedAt: devParticipation?.joinedAt ?? null,
   };
@@ -425,7 +515,7 @@ function mapDevFallbackDetail(
     ...mapDevFallbackListItem(response.event!),
     viewerParticipationStatus: devParticipation?.status ?? getDevJoinedEvent(response.event!.id)?.status ?? null,
     viewerJoinedAt: devParticipation?.joinedAt ?? getDevJoinedEvent(response.event!.id)?.joinedAt ?? null,
-    participantCount: null,
+    participantCount: response.event!.participant_count?.aggregate?.count ?? null,
   };
 }
 
@@ -436,43 +526,78 @@ function shouldUseSeededDevDemoFallback(): boolean {
 function buildSeededDevDemoEvents(now = new Date()): EventListItem[] {
   const nowMs = now.getTime();
   const makeIso = (offsetMs: number) => new Date(nowMs + offsetMs).toISOString();
+  const joinedAt = makeIso(-2 * 60 * 60 * 1000);
 
   return [
     {
       id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3',
       title: 'Local Dev Test Loop',
-      description: 'A short revealed route seeded around the local dev fallback coordinates for field testing.',
+      description: 'Ready to launch now. Use this event to validate the run flow from the events map.',
       revealAt: makeIso(-3 * 60 * 60 * 1000),
       startsAt: makeIso(-90 * 60 * 1000),
       endsAt: makeIso(6 * 60 * 60 * 1000),
       startAreaRadiusKm: 0.35,
-      startAreaCenter: null,
-      viewerParticipationStatus: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3')?.status ?? null,
-      viewerJoinedAt: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3')?.joinedAt ?? null,
+      startAreaCenter: { latitude: 53.3498, longitude: -6.2603 },
+      participantCount: 12,
+      maxParticipants: 40,
+      viewerParticipationStatus: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3')?.status ?? 'registered',
+      viewerJoinedAt: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3')?.joinedAt ?? joinedAt,
     },
     {
       id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1',
       title: 'Sunrise Bridge Dash',
-      description: 'A fast city loop with the route revealed shortly before kickoff.',
+      description: 'Validated by registrations. The race is full and starts soon.',
       revealAt: makeIso(2 * 60 * 60 * 1000),
       startsAt: makeIso(6 * 60 * 60 * 1000),
       endsAt: makeIso(8 * 60 * 60 * 1000),
       startAreaRadiusKm: 1.5,
-      startAreaCenter: null,
+      startAreaCenter: { latitude: 53.3466, longitude: -6.2541 },
+      participantCount: 50,
+      maxParticipants: 50,
       viewerParticipationStatus: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1')?.status ?? null,
       viewerJoinedAt: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1')?.joinedAt ?? null,
     },
     {
       id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2',
       title: 'Canal Twilight Run',
-      description: 'An evening tempo event with a reveal timed for the commute home.',
+      description: 'Hidden route with open registration. Join it from the detail page.',
       revealAt: makeIso(24 * 60 * 60 * 1000),
       startsAt: makeIso(28 * 60 * 60 * 1000),
       endsAt: makeIso(30 * 60 * 60 * 1000),
       startAreaRadiusKm: 2,
-      startAreaCenter: null,
+      startAreaCenter: { latitude: 53.3389, longitude: -6.2676 },
+      participantCount: 8,
+      maxParticipants: 30,
       viewerParticipationStatus: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2')?.status ?? null,
       viewerJoinedAt: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2')?.joinedAt ?? null,
+    },
+    {
+      id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4',
+      title: 'Docklands Night Relay',
+      description: 'Open event with visible route timing and spots still available.',
+      revealAt: makeIso(-45 * 60 * 1000),
+      startsAt: makeIso(90 * 60 * 1000),
+      endsAt: makeIso(4 * 60 * 60 * 1000),
+      startAreaRadiusKm: 0.8,
+      startAreaCenter: { latitude: 53.3509, longitude: -6.2394 },
+      participantCount: 19,
+      maxParticipants: 36,
+      viewerParticipationStatus: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4')?.status ?? null,
+      viewerJoinedAt: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4')?.joinedAt ?? null,
+    },
+    {
+      id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee5',
+      title: 'Old Town Finishers Loop',
+      description: 'Completed sample event for checking the done state in the map carousel.',
+      revealAt: makeIso(-30 * 60 * 60 * 1000),
+      startsAt: makeIso(-28 * 60 * 60 * 1000),
+      endsAt: makeIso(-26 * 60 * 60 * 1000),
+      startAreaRadiusKm: 1.2,
+      startAreaCenter: { latitude: 53.3432, longitude: -6.2711 },
+      participantCount: 31,
+      maxParticipants: 32,
+      viewerParticipationStatus: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee5')?.status ?? null,
+      viewerJoinedAt: getDevJoinedEvent('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee5')?.joinedAt ?? null,
     },
   ];
 }
@@ -494,6 +619,6 @@ function getSeededDevDemoEventDetail(
     ...event,
     viewerParticipationStatus: devParticipation?.status ?? event.viewerParticipationStatus,
     viewerJoinedAt: devParticipation?.joinedAt ?? event.viewerJoinedAt,
-    participantCount: null,
+    participantCount: event.participantCount,
   };
 }

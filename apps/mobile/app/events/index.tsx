@@ -30,6 +30,7 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import type { StatusBadgeTone } from '@/components/ui/StatusBadge';
 import { EventBottomSheet } from '@/components/events/EventBottomSheet';
+import { InteractiveEventsMap } from '@/components/events/InteractiveEventsMap';
 import { MapControls } from '@/components/events/MapControls';
 import { MapLegend } from '@/components/events/MapLegend';
 import { MapPin } from '@/components/events/MapPin';
@@ -39,7 +40,14 @@ import { UserDot } from '@/components/events/UserDot';
 // ─── Data mapping ────────────────────────────────────────────────────────────
 
 function deriveStatus(event: EventListItem, nowMs: number): EventStatus {
+  const startsAt = new Date(event.startsAt).getTime();
+  const endsAt = new Date(event.endsAt ?? event.startsAt).getTime();
   const revealed = new Date(event.revealAt).getTime() <= nowMs;
+  const full = event.maxParticipants != null && event.maxParticipants > 0 && (event.participantCount ?? 0) >= event.maxParticipants;
+
+  if (endsAt <= nowMs) return 'completed';
+  if (startsAt <= nowMs && revealed) return 'open';
+  if (full) return 'full';
   return revealed ? 'open' : 'hidden';
 }
 
@@ -74,8 +82,8 @@ function mapToRunEvents(events: EventListItem[], userLoc: LatLng | null): RunEve
         : null,
     revealDate: event.revealAt,
     startDate: event.startsAt,
-    registeredCount: 0,
-    maxParticipants: 0,
+    registeredCount: event.participantCount ?? 0,
+    maxParticipants: event.maxParticipants ?? 0,
   }));
 }
 
@@ -223,7 +231,14 @@ function EventsMapView({
         pointerEvents="box-none"
       >
         <View style={styles.headerContent} pointerEvents="box-none">
-          <MapSearchBar />
+          <MapSearchBar
+            onGeocode={(coords) =>
+              mapRef.current?.animateToRegion(
+                { ...coords, latitudeDelta: 0.02, longitudeDelta: 0.02 },
+                400,
+              )
+            }
+          />
           <MapLegend />
         </View>
       </View>
@@ -443,7 +458,14 @@ export default function EventsScreen() {
   const onRetry = () => setReloadKey((k) => k + 1);
 
   if (Platform.OS === 'web') {
-    return <EventsListView events={events} loading={loading} error={error} onRetry={onRetry} />;
+    return (
+      <InteractiveEventsMap
+        events={runEvents}
+        loading={loading}
+        error={error}
+        onRetry={onRetry}
+      />
+    );
   }
 
   return (
