@@ -9,6 +9,8 @@
 -- mobile login, create the same email in the Nhost Auth project used by the app
 -- or configure a local auth/JWT setup that issues this user id.
 
+\set ON_ERROR_STOP on
+
 \i /seeds/secret_run_clear_seed.sql
 
 INSERT INTO auth.users (id, email, created_at)
