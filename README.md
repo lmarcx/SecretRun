@@ -1,146 +1,382 @@
-# Secret Run Monorepo
+# Secret Run
+
+Secret Run est un monorepo pour une application mobile Expo / React Native connectee a un backend Nhost, Hasura, PostgreSQL/PostGIS et une API Node Fastify.
 
 ## Stack
 
-- Mobile: React Native, Expo, TypeScript, Expo Router
-- Backend: Nhost, PostgreSQL, Hasura GraphQL, PostGIS, Nhost Auth, Nhost Storage, Nhost Functions
-- Tooling: pnpm workspaces, ESLint, Prettier, Docker
+- Mobile: React Native, Expo, Expo Router, TypeScript
+- Backend local: Docker Compose, PostgreSQL, PostGIS, Hasura
+- Backend API: Node.js, Fastify, TypeScript
+- Auth / GraphQL / Storage / Functions: Nhost
+- Tooling: pnpm workspaces, ESLint, Prettier, TypeScript
 
 ## Structure
 
-secret-run/
-  apps/mobile
-  backend/nhost
-  packages/types
-  packages/config
-  scripts
+```txt
+SecretRun/
+  apps/mobile        Application Expo / React Native
+  backend/nhost      Stack local Docker, migrations, metadata, seeds, functions
+  backend-api        API Node/Fastify utilisee par l'app
+  packages/config    Configuration partagee
+  packages/types     Types partages
+  scripts            Scripts utilitaires
+```
 
-## Prerequisites
+## Prerequis
 
 - Node.js 20+
 - pnpm 10+
 - Docker Desktop
+- Expo CLI via les scripts du projet
+- Nhost CLI seulement si tu veux appliquer des migrations avec `pnpm db:migrate`
 
-## Environment Variables
+Installation:
 
-Create `apps/mobile/.env`:
+```powershell
+pnpm install
+```
 
+## Variables d'environnement
+
+### Backend Docker local
+
+Copie le fichier d'exemple:
+
+```powershell
+Copy-Item backend\nhost\.env.example backend\nhost\.env
+```
+
+Valeurs locales minimales:
+
+```env
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=secretrun
+HASURA_GRAPHQL_ADMIN_SECRET=hasura-admin-secret
+```
+
+### Backend API
+
+Copie le fichier d'exemple:
+
+```powershell
+Copy-Item backend-api\.env.example backend-api\.env
+```
+
+Configuration locale typique:
+
+```env
+NODE_ENV=development
+PORT=10000
+HOST=0.0.0.0
+CORS_ALLOWED_ORIGINS=http://localhost:8081
+HASURA_GRAPHQL_URL=http://localhost:8080/v1/graphql
+HASURA_ADMIN_SECRET=hasura-admin-secret
+NHOST_SUBDOMAIN=
+NHOST_REGION=
+TEAM_EVENT_BONUS_POINTS=5
+```
+
+Pour Expo Go sur un telephone, ajoute aussi l'origine LAN dans `CORS_ALLOWED_ORIGINS`, par exemple `http://192.168.1.42:8081`.
+
+### Application mobile
+
+Copie le fichier d'exemple:
+
+```powershell
+Copy-Item apps\mobile\.env.example apps\mobile\.env
+```
+
+Sur web ou simulateur local:
+
+```env
 EXPO_PUBLIC_NHOST_SUBDOMAIN=local
 EXPO_PUBLIC_NHOST_REGION=local
-EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://YOUR_LOCAL_IP:8080/v1/graphql
-EXPO_PUBLIC_BACKEND_API_URL=http://YOUR_LOCAL_IP:10000
-EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://YOUR_LOCAL_IP:1337/v1/functions/trackpoints
+EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://localhost:8080/v1/graphql
+EXPO_PUBLIC_BACKEND_API_URL=http://localhost:10000
+EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://localhost:1337/v1/functions/trackpoints
+```
 
-Mobile env roles:
-- `EXPO_PUBLIC_HASURA_GRAPHQL_URL`: public GraphQL reads. Required for guest-accessible `events` fallback and `leaderboard`.
-- `EXPO_PUBLIC_NHOST_SUBDOMAIN` + `EXPO_PUBLIC_NHOST_REGION`: enable Nhost Auth and derive auth/functions/storage URLs. They can also derive the GraphQL URL if you do not set `EXPO_PUBLIC_HASURA_GRAPHQL_URL` explicitly.
-- `EXPO_PUBLIC_BACKEND_API_URL`: recommended for all backend-owned reads and required for private/account flows such as `feed`, `profile`, joins, and run sync. If it is absent, public `events` list/detail fall back to public GraphQL; `feed` and `profile` do not.
-- `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT`: optional override for the trackpoints function endpoint.
+Sur un telephone avec Expo Go, `localhost` pointe vers le telephone. Remplace donc par l'IP LAN de ta machine:
 
-Expo Go note:
-- On a real phone, `localhost` points to the phone itself, not your PC.
-- Use your development machine LAN IP for `EXPO_PUBLIC_HASURA_GRAPHQL_URL`, `EXPO_PUBLIC_BACKEND_API_URL`, and `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT`.
-- Public frontend GraphQL requests use the local Hasura `anonymous` role. Do not send the Hasura admin secret from mobile or web code.
+```env
+EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://192.168.1.42:8080/v1/graphql
+EXPO_PUBLIC_BACKEND_API_URL=http://192.168.1.42:10000
+EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://192.168.1.42:1337/v1/functions/trackpoints
+```
 
-Create `backend/nhost/config/.env` (or copy `.env.example`):
+Ne mets jamais le secret admin Hasura dans l'app mobile.
 
-NHOST_SUBDOMAIN=local
-NHOST_REGION=local
-NHOST_GRAPHQL_URL=http://localhost:1337/v1/graphql
-NHOST_ADMIN_SECRET=nhost-admin-secret
-ORS_API_KEY=replace-with-openrouteservice-key
-ROUTE_ENCRYPTION_SECRET=replace-with-32-byte-secret
-NHOST_FUNCTIONS_BASE_URL=http://127.0.0.1:1337/v1/functions
-PARTICIPATION_REWARD_AMOUNT=5
-DAILY_LOGIN_REWARD_AMOUNT=2
-RATING_REWARD_AMOUNT=1
-TEAM_EVENT_BONUS_POINTS=5
-DEFAULT_START_AREA_RADIUS_KM=1
-EXPO_PUSH_API_URL=https://exp.host/--/api/v2/push/send
+## Demarrage rapide
 
-## Start Development
+Demarrage complet en trois services:
 
-1. `pnpm install`
-2. Copy `backend-api/.env.example` to `backend-api/.env` and point it at your local Hasura when you want the Node API in the loop.
-3. For full local mobile integration, use three processes:
-   - Terminal 1: `pnpm dev:backend`
-   - Terminal 2: `pnpm dev:api`
-   - Terminal 3: `pnpm dev:mobile`
-4. Or use `pnpm dev:full` to start Docker backend, backend-api, and Expo together.
+```powershell
+pnpm dev:full
+```
 
-`pnpm dev` still starts backend and mobile together. The backend command uses `docker compose up -d` and exits once containers are started, so the root script is configured to keep Expo running after backend startup completes.
+Cette commande lance:
 
-Useful commands:
-- `pnpm dev:backend`
-- `pnpm dev:api`
-- `pnpm dev:full`
-- `pnpm dev:mobile`
-- `pnpm backend:stop`
-- `pnpm backend:logs`
+- le backend Docker local
+- l'API Node `backend-api`
+- Expo pour l'application mobile
 
-## Local Backend with Docker (No Nhost CLI)
+Demarrage service par service:
 
-1. Copy `backend/nhost/.env.example` to `backend/nhost/.env` and set `POSTGRES_PASSWORD` and `HASURA_GRAPHQL_ADMIN_SECRET`.
-2. From `backend/nhost`, run `docker compose down -v`.
-3. Run `docker compose up -d`.
-4. Follow startup logs with `docker compose logs -f`.
-5. GraphQL endpoint: `http://localhost:8080/v1/graphql`.
-6. Local frontend requests without a user session run as the Hasura `anonymous` role via `HASURA_GRAPHQL_UNAUTHORIZED_ROLE=anonymous`.
-7. Local Hasura metadata from `backend/nhost/metadata` is reapplied automatically on container startup, so tracked tables and permissions come back after a reset.
-8. Local dev seed data from `backend/nhost/seeds/seeds.sql` is applied automatically on a fresh Postgres volume.
-9. The Docker init script now reuses that same tracked seed file, so fresh volumes and manual reseeds stay aligned.
-10. Use `pnpm db:seed` to replay the demo seed on an existing local database without recreating the volume.
-11. Use `docker compose down -v` followed by `docker compose up -d` only when you need a full local reset, because `docker-entrypoint-initdb.d` runs only when the data volume is created.
+```powershell
+pnpm dev:backend
+pnpm dev:api
+pnpm dev:mobile
+```
 
-## Database Migration
+Commande historique:
 
-- `pnpm db:migrate`
-- `pnpm db:seed`
+```powershell
+pnpm dev
+```
 
-`pnpm db:seed` expects the local Docker backend to be running and replays `backend/nhost/seeds/seeds.sql` idempotently through the Postgres container.
+`pnpm dev` lance le backend Docker et Expo, mais pas `backend-api`. Pour tester les pages feed, profil, inscriptions, details d'events et autres flows backend, utilise plutot `pnpm dev:full`.
 
-## Connect Mobile to Nhost
+## Application mobile
 
-1. Ensure the local backend is running with Docker Compose (`pnpm dev:backend` or `pnpm dev`).
-2. GraphQL endpoint is available at `http://localhost:8080/v1/graphql` on the development machine.
-3. In `apps/mobile/.env`, use your PC LAN IP for Expo Go on a phone, for example:
-   - `EXPO_PUBLIC_HASURA_GRAPHQL_URL=http://192.168.1.42:8080/v1/graphql`
-   - `EXPO_PUBLIC_BACKEND_API_URL=http://192.168.1.42:10000`
-   - `EXPO_PUBLIC_TRACKPOINTS_ENDPOINT=http://192.168.1.42:1337/v1/functions/trackpoints`
-4. Same machine web/simulator: prefer `EXPO_PUBLIC_BACKEND_API_URL=http://localhost:10000`.
-5. Real device / LAN testing: use the machine LAN IP, and keep `backend-api` bound on `HOST=0.0.0.0`.
-6. Launch Expo (`pnpm dev:mobile`) and authenticate via Nhost Auth.
+Lancer Expo:
 
-Mobile behavior without `EXPO_PUBLIC_BACKEND_API_URL`:
-- `events` list/detail still work through the public GraphQL fallback.
-- `leaderboard` still works if GraphQL env is configured.
-- `feed`, `profile`, joins, and run sync still need the backend API and show explicit config errors if it is missing.
+```powershell
+pnpm dev:mobile
+```
 
-## Route Lifecycle Functions
+Dans Expo:
 
-- `generate-event-route`: builds route candidates with OpenRouteService, retries up to 3 times for distance tolerance (15%), encrypts payload, and upserts `event_routes`.
-- `reveal-events`: scheduled function that reveals due routes by decrypting payload and publishing `route_polyline`.
-- `validate-activity`: computes distance, duration, score, wallet credit, and marks activity as validated.
-- `update-leaderboards`: triggered by `validate-activity` to update user/team seasonal points and recompute ranks by points descending.
-- `participation-reward`: rewards wallet with `participation_reward` when user joins an event.
-- `daily-login-reward`: rewards wallet with `daily_login_reward` once per user/day.
-- `rating-reward`: rewards wallet with `rating_reward` once per rating action.
-- `create-team-event`: leader-only team event creation (min 3 team members), then route generation.
-- `join-team-event`: verifies team membership, joins event through participation flow.
-- `get-activity-feed`: returns paginated activities from user, friends, and team members with profile and route details.
-- `register-device`: registers Expo push tokens per user device.
-- `send-notification`: sends push notifications to all devices of a user through Expo Push API.
-- `dispatch-notification-jobs`: scheduled worker that delivers queued notifications.
-- `event-start-reminders`: scheduled 30-minute reminder enqueue for event participants.
-- `send-friend-request`: send a friend request (`pending`) to another user.
-- `respond-friend-request`: accept/reject an incoming friend request.
-- `cancel-friend-request`: cancel an outgoing pending friend request.
-- `remove-friend`: remove an accepted friendship.
-- `block-user`: block a user and remove existing friendship/pending requests.
-- `unblock-user`: remove an existing block.
-- `list-friends`: list accepted friends with profile info (excluding blocked users).
+- appuie sur `w` pour ouvrir la version web
+- scanne le QR code avec Expo Go pour tester sur telephone
+- utilise un emulateur Android/iOS si configure
 
-## Friend and Block Tables
+Commandes natives:
 
-- `friendships`: friend requests and accepted friendships (`pending`, `accepted`, `rejected`, `cancelled`).
-- `blocks`: one-way blocking relation (`blocker_id`, `blocked_id`).
+```powershell
+pnpm --filter @secret-run/mobile android
+pnpm --filter @secret-run/mobile ios
+```
+
+Verifier l'export web Expo:
+
+```powershell
+pnpm --filter @secret-run/mobile exec expo export --platform web
+```
+
+## Backend local
+
+Lancer les conteneurs:
+
+```powershell
+pnpm dev:backend
+```
+
+Voir les logs:
+
+```powershell
+pnpm backend:logs
+```
+
+Arreter le backend:
+
+```powershell
+pnpm backend:stop
+```
+
+Endpoint GraphQL local:
+
+```txt
+http://localhost:8080/v1/graphql
+```
+
+Endpoint API local:
+
+```txt
+http://localhost:10000
+```
+
+Reset complet de la base locale avec suppression du volume Docker:
+
+```powershell
+cd backend\nhost
+docker compose down -v
+docker compose up -d
+cd ..\..
+```
+
+Attention: les scripts d'initialisation Docker ne se rejouent automatiquement que quand le volume Postgres est recree. Pour rejouer les donnees de test sur une base existante, utilise les commandes de seed ci-dessous.
+
+## Migrations
+
+Appliquer les migrations Nhost:
+
+```powershell
+pnpm db:migrate
+```
+
+Cette commande utilise le Nhost CLI. Si tu travailles uniquement avec le Docker Compose local et les migrations deja montees, le stack local peut deja demarrer sans cette commande.
+
+## Donnees de test et seeding
+
+Le projet contient un seed complet pour tester l'application de bout en bout:
+
+- plusieurs profils runners
+- un profil principal de test
+- plusieurs teams
+- plusieurs events ouverts, complets, live, prives et termines
+- des participations
+- des activites pour le feed
+- des leaderboards users et teams
+- des wallets et transactions
+
+Compte de test seed:
+
+```txt
+Email: runner.demo@secretrun.local
+User id: 10000000-0000-4000-8000-000000000001
+Profile: you_runner / You Runner
+Team: Night Owls
+```
+
+Ajouter ou remettre toutes les donnees de test:
+
+```powershell
+pnpm db:seed:full
+```
+
+Commande equivalente via le point d'entree par defaut:
+
+```powershell
+pnpm db:seed
+```
+
+Retirer les donnees de test:
+
+```powershell
+pnpm db:seed:clear
+```
+
+Le seed complet commence par nettoyer les anciennes donnees seed, donc il peut etre relance plusieurs fois.
+
+Fichiers utiles:
+
+- `backend/nhost/seeds/seeds.sql`: point d'entree par defaut
+- `backend/nhost/seeds/secret_run_full_seed.sql`: seed complet
+- `backend/nhost/seeds/secret_run_clear_seed.sql`: nettoyage du seed
+- `backend/nhost/seeds/README.md`: details du jeu de donnees
+
+Important pour l'auth: le seed ajoute les lignes necessaires en base, mais un vrai login Nhost avec mot de passe demande aussi que l'utilisateur existe cote Nhost Auth avec ses credentials. Pour te connecter avec `runner.demo@secretrun.local`, cree le meme compte dans le projet Nhost configure par l'app, ou configure un auth/JWT local qui emet le meme user id. Si une allowlist beta est active, ajoute aussi cette adresse.
+
+## Tests et qualite
+
+Typecheck mobile:
+
+```powershell
+npx tsc -p apps/mobile/tsconfig.json --noEmit
+```
+
+Typecheck backend API:
+
+```powershell
+pnpm --filter @secret-run/backend-api typecheck
+```
+
+Tests backend API:
+
+```powershell
+pnpm --filter @secret-run/backend-api test
+```
+
+Lint global:
+
+```powershell
+pnpm lint
+```
+
+Formatage:
+
+```powershell
+pnpm format
+```
+
+Build backend API:
+
+```powershell
+pnpm --filter @secret-run/backend-api build
+```
+
+## Commandes principales
+
+```powershell
+pnpm install
+pnpm dev:full
+pnpm dev:backend
+pnpm dev:api
+pnpm dev:mobile
+pnpm backend:logs
+pnpm backend:stop
+pnpm db:migrate
+pnpm db:seed
+pnpm db:seed:full
+pnpm db:seed:clear
+pnpm lint
+pnpm format
+```
+
+## Fonctionnalites backend principales
+
+- Events: liste, details, inscription, etats live / complet / termine
+- Feed: activites de l'utilisateur, amis et membres d'equipe
+- Teams: equipes, membres, classements
+- Leaderboards: classement runners et teams par points saisonniers
+- Routes: generation, chiffrement, revelation et validation de parcours
+- Wallet: recompenses de participation, login quotidien et rating
+- Social: friendships, blocks, likes, comments
+- Notifications: enregistrement device, jobs et rappels d'events
+
+## Depannage
+
+### L'app mobile ne joint pas le backend
+
+Verifie que:
+
+- `pnpm dev:backend` est lance
+- `pnpm dev:api` est lance
+- `EXPO_PUBLIC_BACKEND_API_URL` pointe vers `http://localhost:10000` sur web/simulateur
+- `EXPO_PUBLIC_BACKEND_API_URL` pointe vers l'IP LAN de ton PC sur telephone
+- `HOST=0.0.0.0` est configure dans `backend-api/.env`
+
+### Les events publics s'affichent mais pas le feed/profil
+
+Les events peuvent fonctionner via le fallback GraphQL public. Le feed, le profil, les inscriptions et les flows prives demandent `backend-api`. Lance:
+
+```powershell
+pnpm dev:api
+```
+
+### Le seed ne semble pas applique
+
+Verifie que Docker tourne, puis relance:
+
+```powershell
+pnpm dev:backend
+pnpm db:seed:full
+```
+
+Pour repartir proprement:
+
+```powershell
+pnpm db:seed:clear
+pnpm db:seed:full
+```
+
+### Expo Go utilise encore une ancienne config
+
+Redemarre Expo avec le cache vide:
+
+```powershell
+pnpm dev:mobile
+```
+
+Le script mobile utilise deja `expo start --clear`.
