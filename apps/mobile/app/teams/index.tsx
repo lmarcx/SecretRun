@@ -21,7 +21,7 @@ interface TeamDiscoveryItem extends TeamListItem {
   rank: number | null;
   points: number;
   maxMembers: number | null;
-  eventCount: number;
+  eventCount: number | null;
 }
 
 const FILTERS: Array<{ key: TeamFilter; label: string; icon?: IoniconName }> = [
@@ -31,8 +31,6 @@ const FILTERS: Array<{ key: TeamFilter; label: string; icon?: IoniconName }> = [
   { key: 'top3', label: 'Top 3' },
   { key: 'top10', label: 'Top 10' },
 ];
-
-const devRuntimeEnabled = typeof __DEV__ !== 'undefined' && __DEV__;
 
 export default function TeamsScreen() {
   const router = useRouter();
@@ -61,14 +59,6 @@ export default function TeamsScreen() {
       if (!active) return;
 
       if (teamsResult.status === 'rejected') {
-        if (devRuntimeEnabled) {
-          const demo = buildDemoTeamsData();
-          setTeamsData(demo.teams);
-          setLeaderboardData(demo.leaderboard);
-          setLoading(false);
-          return;
-        }
-
         setError(getTeamsErrorMessage(teamsResult.reason));
         setTeamsData(null);
         setLeaderboardData(null);
@@ -76,8 +66,8 @@ export default function TeamsScreen() {
         return;
       }
 
-      setTeamsData(teamsResult.value.items.length > 0 || !devRuntimeEnabled ? teamsResult.value : buildDemoTeamsData().teams);
-      setLeaderboardData(leaderboardResult.status === 'fulfilled' && leaderboardResult.value ? leaderboardResult.value : buildDemoTeamsData().leaderboard);
+      setTeamsData(teamsResult.value);
+      setLeaderboardData(leaderboardResult.status === 'fulfilled' ? leaderboardResult.value : null);
       setLoading(false);
     };
 
@@ -103,17 +93,15 @@ export default function TeamsScreen() {
 
     return teamsData.items
       .filter((item) => item.id !== currentTeam?.id)
-      .map((item, index) => {
+      .map((item) => {
         const standing = leaderboardData?.teams.find((entry) => entry.id === item.id) ?? null;
-        const rank = standing?.rank ?? index + 1;
-        const memberCount = item.memberCount ?? null;
 
         return {
           ...item,
-          rank,
-          points: standing?.points ?? inferPointsFromRank(rank),
-          maxMembers: memberCount == null ? null : inferMaxMembers(rank, memberCount),
-          eventCount: inferEventCount(rank),
+          rank: standing?.rank ?? null,
+          points: standing?.points ?? 0,
+          maxMembers: null,
+          eventCount: null,
         };
       })
       .sort((left, right) => {
@@ -339,7 +327,7 @@ function TeamRankCard({
         <View style={styles.cardStats}>
           <CardStat color={colorsForRank.points} label="Points" value={String(team.points)} />
           <CardStat label="Members" value={memberLabel} />
-          <CardStat label="Events" value={String(team.eventCount)} />
+          <CardStat label="Events" value={team.eventCount == null ? '-' : String(team.eventCount)} />
         </View>
 
         {team.maxMembers != null && team.memberCount != null ? (
@@ -420,54 +408,6 @@ function getInitials(name: string) {
   const words = name.trim().split(/\s+/);
   const initials = words.slice(0, 2).map((word) => word[0]?.toUpperCase() ?? '').join('');
   return initials || '?';
-}
-
-function inferPointsFromRank(rank: number | null) {
-  if (!rank) return 0;
-  return Math.max(40, 280 - rank * 18);
-}
-
-function inferEventCount(rank: number | null) {
-  if (!rank) return 0;
-  return Math.max(2, 9 - Math.floor(rank / 2));
-}
-
-function inferMaxMembers(rank: number | null, memberCount: number) {
-  if (rank === 1 || rank === 5) return memberCount;
-  if (rank === 3) return Math.max(memberCount, 7);
-  return Math.max(memberCount, 10);
-}
-
-function buildDemoTeamsData(): { teams: TeamsData; leaderboard: LeaderboardData } {
-  const now = new Date().toISOString();
-  const items: TeamListItem[] = [
-    { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', name: 'Night Owls', createdAt: now, memberCount: 10, isCurrentUserMember: false },
-    { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2', name: 'River Sprinters', createdAt: now, memberCount: 7, isCurrentUserMember: false },
-    { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3', name: 'Storm Pacers', createdAt: now, memberCount: 5, isCurrentUserMember: false },
-    { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4', name: 'Urban Ghosts', createdAt: now, memberCount: 8, isCurrentUserMember: false },
-    { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5', name: 'Dark Knights', createdAt: now, memberCount: 5, isCurrentUserMember: false },
-  ];
-
-  return {
-    teams: {
-      items,
-      supportsMembershipDetails: true,
-    },
-    leaderboard: {
-      seasonId: 'demo-season',
-      seasonName: 'Spring 2026',
-      currentUserId: null,
-      currentTeamIds: [],
-      users: [],
-      teams: [
-        { id: items[0]!.id, name: items[0]!.name, points: 255, rank: 1 },
-        { id: items[1]!.id, name: items[1]!.name, points: 198, rank: 2 },
-        { id: items[2]!.id, name: items[2]!.name, points: 174, rank: 3 },
-        { id: items[3]!.id, name: items[3]!.name, points: 142, rank: 5 },
-        { id: items[4]!.id, name: items[4]!.name, points: 88, rank: 11 },
-      ],
-    },
-  };
 }
 
 const rankColors: Record<RankTone, { avatarBg: string; bar: string; bg: string; border: string; buttonBg: string; buttonBorder: string; points: string; text: string }> = {

@@ -8,6 +8,8 @@
     "backend:logs": "cd nhost && docker compose logs -f --tail=100",
     "db:migrate": "cd nhost && nhost migrate apply",
     "db:seed": "cd nhost && docker compose exec -T postgres psql -U postgres -d secretrun -f /seeds/seeds.sql",
+    "db:seed:full": "cd nhost && docker compose exec -T postgres psql -U postgres -d secretrun -f /seeds/secret_run_full_seed.sql",
+    "db:seed:clear": "cd nhost && docker compose exec -T postgres psql -U postgres -d secretrun -f /seeds/secret_run_clear_seed.sql",
     "lint": "eslint nhost/functions --ext .ts"
   },
   "dependencies": {
