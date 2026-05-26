@@ -230,14 +230,17 @@ Le projet contient un seed complet pour tester l'application de bout en bout:
 - des leaderboards users et teams
 - des wallets et transactions
 
-Compte de test seed:
+### Compte de test
 
 ```txt
 Email: runner.demo@secretrun.local
+Mot de passe: a definir dans Nhost Auth
 User id: 10000000-0000-4000-8000-000000000001
 Profile: you_runner / You Runner
 Team: Night Owls
 ```
+
+Ce compte est celui a utiliser pour tester le profil, le feed, les events deja courus, les inscriptions et l'appartenance a une team.
 
 Ajouter ou remettre toutes les donnees de test:
 
@@ -266,7 +269,7 @@ Fichiers utiles:
 - `backend/nhost/seeds/secret_run_clear_seed.sql`: nettoyage du seed
 - `backend/nhost/seeds/README.md`: details du jeu de donnees
 
-Important pour l'auth: le seed ajoute les lignes necessaires en base, mais un vrai login Nhost avec mot de passe demande aussi que l'utilisateur existe cote Nhost Auth avec ses credentials. Pour te connecter avec `runner.demo@secretrun.local`, cree le meme compte dans le projet Nhost configure par l'app, ou configure un auth/JWT local qui emet le meme user id. Si une allowlist beta est active, ajoute aussi cette adresse.
+Important pour l'auth: le seed ajoute les lignes necessaires en base, mais un vrai login Nhost avec mot de passe demande aussi que l'utilisateur existe cote Nhost Auth avec ses credentials. Pour te connecter avec `runner.demo@secretrun.local`, cree le meme compte dans le projet Nhost configure par l'app avec le mot de passe de ton choix, ou configure un auth/JWT local qui emet le meme user id. Si une allowlist beta est active, ajoute aussi cette adresse.
 
 ## Tests et qualite
 

@@ -32,6 +32,7 @@ The local Docker stack seeds `auth.users` for database integrity, but it does no
 The fixture includes:
 
 - 9 runner profiles
+- deterministic generated avatar URLs for every runner profile
 - 5 teams with memberships
 - accepted/pending/rejected friendships
 - 1 active season

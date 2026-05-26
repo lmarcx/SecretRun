@@ -68,6 +68,7 @@ function mapToRunEvents(events: EventListItem[], userLoc: LatLng | null): RunEve
   return events.map((event) => ({
     id: event.id,
     title: event.title,
+    description: event.description,
     status: deriveStatus(event, nowMs),
     lat: event.startAreaCenter?.latitude ?? null,
     lng: event.startAreaCenter?.longitude ?? null,

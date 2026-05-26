@@ -29,15 +29,15 @@ SET email = EXCLUDED.email;
 
 INSERT INTO public.profiles (id, username, display_name, avatar_url, created_at, updated_at)
 VALUES
-  ('10000000-0000-4000-8000-000000000001', 'you_runner', 'You Runner', null, now() - interval '45 days', now() - interval '1 hour'),
-  ('10000000-0000-4000-8000-000000000002', 'alice_runner', 'Alice Runner', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&q=80', now() - interval '44 days', now() - interval '2 hours'),
-  ('10000000-0000-4000-8000-000000000003', 'bruno_stride', 'Bruno Stride', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=256&q=80', now() - interval '43 days', now() - interval '3 hours'),
-  ('10000000-0000-4000-8000-000000000004', 'chloe_dash', 'Chloe Dash', 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=256&q=80', now() - interval '42 days', now() - interval '4 hours'),
-  ('10000000-0000-4000-8000-000000000005', 'diego_pace', 'Diego Pace', null, now() - interval '41 days', now() - interval '5 hours'),
-  ('10000000-0000-4000-8000-000000000006', 'eva_night', 'Eva Night', null, now() - interval '40 days', now() - interval '6 hours'),
-  ('10000000-0000-4000-8000-000000000007', 'finn_bridge', 'Finn Bridge', null, now() - interval '39 days', now() - interval '7 hours'),
-  ('10000000-0000-4000-8000-000000000008', 'gia_canal', 'Gia Canal', null, now() - interval '38 days', now() - interval '8 hours'),
-  ('10000000-0000-4000-8000-000000000009', 'hugo_trail', 'Hugo Trail', null, now() - interval '37 days', now() - interval '9 hours')
+  ('10000000-0000-4000-8000-000000000001', 'you_runner', 'Lena Nightfall', 'https://api.dicebear.com/9.x/notionists/png?seed=lena-nightfall&backgroundColor=0f172a&radius=50', now() - interval '45 days', now() - interval '1 hour'),
+  ('10000000-0000-4000-8000-000000000002', 'alice_runner', 'Alice Riverline', 'https://api.dicebear.com/9.x/notionists/png?seed=alice-riverline&backgroundColor=b6e3f4&radius=50', now() - interval '44 days', now() - interval '2 hours'),
+  ('10000000-0000-4000-8000-000000000003', 'bruno_stride', 'Bruno Stride', 'https://api.dicebear.com/9.x/notionists/png?seed=bruno-stride&backgroundColor=c0aede&radius=50', now() - interval '43 days', now() - interval '3 hours'),
+  ('10000000-0000-4000-8000-000000000004', 'chloe_dash', 'Chloe Dashwell', 'https://api.dicebear.com/9.x/notionists/png?seed=chloe-dashwell&backgroundColor=ffd5dc&radius=50', now() - interval '42 days', now() - interval '4 hours'),
+  ('10000000-0000-4000-8000-000000000005', 'diego_pace', 'Diego Pacecraft', 'https://api.dicebear.com/9.x/notionists/png?seed=diego-pacecraft&backgroundColor=ffdfbf&radius=50', now() - interval '41 days', now() - interval '5 hours'),
+  ('10000000-0000-4000-8000-000000000006', 'eva_night', 'Eva Nightlane', 'https://api.dicebear.com/9.x/notionists/png?seed=eva-nightlane&backgroundColor=d1d4f9&radius=50', now() - interval '40 days', now() - interval '6 hours'),
+  ('10000000-0000-4000-8000-000000000007', 'finn_bridge', 'Finn Bridgeway', 'https://api.dicebear.com/9.x/notionists/png?seed=finn-bridgeway&backgroundColor=c0aede&radius=50', now() - interval '39 days', now() - interval '7 hours'),
+  ('10000000-0000-4000-8000-000000000008', 'gia_canal', 'Gia Canalrun', 'https://api.dicebear.com/9.x/notionists/png?seed=gia-canalrun&backgroundColor=b6e3f4&radius=50', now() - interval '38 days', now() - interval '8 hours'),
+  ('10000000-0000-4000-8000-000000000009', 'hugo_trail', 'Hugo Trailmark', 'https://api.dicebear.com/9.x/notionists/png?seed=hugo-trailmark&backgroundColor=ffdfbf&radius=50', now() - interval '37 days', now() - interval '9 hours')
 ON CONFLICT (id) DO UPDATE
 SET
   username = EXCLUDED.username,

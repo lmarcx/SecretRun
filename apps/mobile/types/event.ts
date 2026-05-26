@@ -3,6 +3,7 @@ export type EventStatus = 'hidden' | 'full' | 'open' | 'completed';
 export interface RunEvent {
   id: string;
   title: string;
+  description?: string | null;
   status: EventStatus;
   lat: number | null;
   lng: number | null;

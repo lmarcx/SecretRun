@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -104,9 +105,11 @@ export function InteractiveEventsMap({
   const [locationLabel, setLocationLabel] = useState('Dublin nearby');
   const [zoom, setZoom] = useState(1);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(events[0]?.id ?? null);
+  const dragStartCenter = useRef(DEFAULT_CENTER);
 
   const pins = useMemo(() => buildPins(events, center, zoom), [center, events, zoom]);
   const selectedEvent = pins.find((event) => event.id === selectedEventId) ?? pins[0] ?? null;
+  const selectedModalEvent = pins.find((event) => event.id === selectedEventId) ?? null;
   const sortedPins = useMemo(
     () =>
       [...pins].sort((a, b) => {
@@ -114,6 +117,26 @@ export function InteractiveEventsMap({
         return (a.distanceKm ?? 99) - (b.distanceKm ?? 99);
       }),
     [pins],
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4,
+        onPanResponderGrant: () => {
+          dragStartCenter.current = center;
+        },
+        onPanResponderMove: (_, gesture) => {
+          const scaleLng = 900 * zoom;
+          const scaleLat = 1200 * zoom;
+          setCenter({
+            latitude: clamp(dragStartCenter.current.latitude + gesture.dy / scaleLat, -85, 85),
+            longitude: clampLongitude(dragStartCenter.current.longitude - gesture.dx / scaleLng),
+          });
+          setLocationLabel('Custom area');
+        },
+      }),
+    [center, zoom],
   );
 
   const stats = useMemo(
@@ -200,6 +223,7 @@ export function InteractiveEventsMap({
       </View>
 
       <View style={styles.mapWrap}>
+        <View style={styles.dragLayer} {...panResponder.panHandlers} />
         <MapSketch zoom={zoom} />
         <View style={styles.userRadius} />
         <View style={styles.userRadiusOuter} />
@@ -215,6 +239,14 @@ export function InteractiveEventsMap({
             onPress={() => setSelectedEventId(event.id)}
           />
         ))}
+
+        {selectedModalEvent ? (
+          <EventMarkerModal
+            event={selectedModalEvent}
+            onClose={() => setSelectedEventId(null)}
+            onOpen={() => router.push(`/events/${selectedModalEvent.id}`)}
+          />
+        ) : null}
 
         <View style={styles.controls}>
           <Pressable onPress={() => setZoom((value) => Math.min(1.45, value + 0.12))} style={styles.controlButton}>
@@ -342,6 +374,59 @@ function EventMapPin({
         </Text>
       </View>
     </Pressable>
+  );
+}
+
+function EventMarkerModal({
+  event,
+  onClose,
+  onOpen,
+}: {
+  event: EventPin;
+  onClose: () => void;
+  onOpen: () => void;
+}) {
+  const meta = STATUS_META[event.status];
+  const countLabel = getCountLabel(event);
+
+  return (
+    <View
+      style={[
+        styles.markerModal,
+        {
+          left: `${clamp(event.x, 10, 78)}%`,
+          top: `${clamp(event.y + 6, 22, 70)}%`,
+        },
+      ]}
+    >
+      <View style={styles.modalHeader}>
+        <View style={[styles.chipBadge, { backgroundColor: meta.bg, borderColor: meta.border }]}>
+          <Ionicons name={meta.icon} size={10} color={meta.color} />
+          <Text style={[styles.chipBadgeText, { color: meta.color }]}>{meta.label}</Text>
+        </View>
+        <Pressable onPress={onClose} style={styles.modalClose}>
+          <Ionicons name="close" size={15} color="rgba(255,255,255,0.62)" />
+        </Pressable>
+      </View>
+
+      <Text numberOfLines={2} style={styles.modalTitle}>
+        {event.status === 'hidden' ? maskTitle(event.title) : event.title}
+      </Text>
+      <Text numberOfLines={2} style={styles.modalCopy}>
+        {event.description || getModalFallbackCopy(event)}
+      </Text>
+
+      <View style={styles.modalMetaRow}>
+        <MetaItem icon="calendar-outline" text={getTimeLabel(event)} />
+        <MetaItem icon="navigate-outline" text={formatDistance(event.distanceKm)} />
+        <MetaItem icon="people-outline" text={countLabel || 'No cap'} />
+      </View>
+
+      <Pressable onPress={onOpen} style={styles.modalOpenButton}>
+        <Text style={styles.modalOpenText}>Ouvrir l'event</Text>
+        <Ionicons name="arrow-forward" size={14} color="#0A0A0F" />
+      </Pressable>
+    </View>
   );
 }
 
@@ -524,6 +609,19 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function clampLongitude(value: number) {
+  if (value > 180) return value - 360;
+  if (value < -180) return value + 360;
+  return value;
+}
+
+function getModalFallbackCopy(event: RunEvent) {
+  if (event.status === 'open') return 'Start window is live. Open the briefing to join or launch your run.';
+  if (event.status === 'full') return 'Registration is validated and the event starts soon.';
+  if (event.status === 'completed') return 'Completed event with available result context.';
+  return 'Route details are locked until reveal. Open the event briefing for timing and join status.';
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -626,9 +724,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#141820',
     overflow: 'hidden',
   },
+  dragLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
   mapSketch: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#141820',
+    zIndex: 1,
   },
   roadWide: {
     position: 'absolute',
@@ -761,6 +864,68 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: fonts.dmSans600,
     fontWeight: '700',
+  },
+  markerModal: {
+    position: 'absolute',
+    zIndex: 24,
+    width: 260,
+    maxWidth: '76%',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(10,10,15,0.94)',
+    padding: 12,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  modalClose: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  modalTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: fonts.dmSans600,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  modalCopy: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: fonts.dmSans400,
+    color: 'rgba(255,255,255,0.52)',
+  },
+  modalMetaRow: {
+    gap: 5,
+  },
+  modalOpenButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: '#5DDDB8',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  modalOpenText: {
+    fontSize: 12,
+    fontFamily: fonts.dmSans600,
+    fontWeight: '800',
+    color: '#0A0A0F',
   },
   controls: {
     position: 'absolute',
