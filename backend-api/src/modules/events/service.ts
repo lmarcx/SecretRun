@@ -17,11 +17,6 @@ const EVENT_FIELDS = gql`
     team_id
     is_private
     created_by
-    participant_count: event_participants_aggregate {
-      aggregate {
-        count
-      }
-    }
   }
 `;
 
@@ -30,6 +25,9 @@ const PUBLIC_EVENTS_QUERY = gql`
   query PublicEvents {
     events(order_by: [{ starts_at: asc }, { reveal_at: asc }]) {
       ...EventReadFields
+    }
+    participants: event_participants {
+      event_id
     }
   }
 `;
@@ -44,6 +42,9 @@ const AUTHENTICATED_EVENTS_QUERY = gql`
       event_id
       status
       joined_at
+    }
+    participants: event_participants {
+      event_id
     }
     memberships: team_members(where: { user_id: { _eq: $userId } }) {
       team_id
@@ -167,11 +168,6 @@ interface EventRecord {
   team_id: string | null;
   is_private: boolean;
   created_by: string;
-  participant_count: {
-    aggregate: {
-      count: number;
-    } | null;
-  };
 }
 
 interface EventParticipation {
@@ -204,6 +200,9 @@ interface EventDetailReadModel extends EventReadModel {
 
 interface PublicEventsQuery {
   events: EventRecord[];
+  participants: Array<{
+    event_id: string;
+  }>;
 }
 
 interface AuthenticatedEventsQuery extends PublicEventsQuery {
@@ -279,7 +278,10 @@ interface JoinEventMutation {
 export async function listEvents(userId: string | null): Promise<EventReadModel[]> {
   if (!userId) {
     const response = await hasura.requestHasura<PublicEventsQuery>(PUBLIC_EVENTS_QUERY);
-    return response.events.filter((event) => isPublicEvent(event)).map((event) => mapEventReadModel(event, null, false));
+    const participantCounts = countParticipantsByEventId(response.participants ?? []);
+    return response.events
+      .filter((event) => isPublicEvent(event))
+      .map((event) => mapEventReadModel(event, null, false, participantCounts.get(event.id) ?? 0));
   }
 
   const response = await hasura.requestHasura<AuthenticatedEventsQuery>(AUTHENTICATED_EVENTS_QUERY, {
@@ -290,10 +292,13 @@ export async function listEvents(userId: string | null): Promise<EventReadModel[
     response.event_participants.map((entry) => [entry.event_id, { status: entry.status, joined_at: entry.joined_at }] as const),
   );
   const membershipTeamIds = new Set(response.memberships.map((entry) => entry.team_id));
+  const participantCounts = countParticipantsByEventId(response.participants ?? []);
 
   return response.events
     .filter((event) => canViewEvent(event, userId, membershipTeamIds, participationByEventId.get(event.id) ?? null))
-    .map((event) => mapEventReadModel(event, participationByEventId.get(event.id) ?? null, false));
+    .map((event) =>
+      mapEventReadModel(event, participationByEventId.get(event.id) ?? null, false, participantCounts.get(event.id) ?? 0),
+    );
 }
 
 export async function getEvent(userId: string | null, eventId: string): Promise<EventDetailReadModel | null> {
@@ -438,6 +443,7 @@ function mapEventReadModel(
   event: EventRecord,
   participation: EventParticipation | null = null,
   includeSensitiveLocation = false,
+  participantCount: number | null = null,
 ): EventReadModel {
   return {
     id: event.id,
@@ -448,7 +454,7 @@ function mapEventReadModel(
     endsAt: event.ends_at,
     startAreaRadiusKm: Number(event.start_area_radius_km),
     startAreaCenter: includeSensitiveLocation ? event.start_area_center : null,
-    participantCount: event.participant_count.aggregate?.count ?? null,
+    participantCount,
     maxParticipants: event.max_participants,
     viewerParticipationStatus: participation?.status ?? null,
     viewerJoinedAt: participation?.joined_at ?? null,
@@ -462,9 +468,19 @@ function mapEventDetailReadModel(
   includeSensitiveLocation: boolean,
 ): EventDetailReadModel {
   return {
-    ...mapEventReadModel(event, participation, includeSensitiveLocation),
+    ...mapEventReadModel(event, participation, includeSensitiveLocation, participantCount),
     participantCount,
   };
+}
+
+function countParticipantsByEventId(participants: Array<{ event_id: string }>): Map<string, number> {
+  const counts = new Map<string, number>();
+
+  for (const participant of participants) {
+    counts.set(participant.event_id, (counts.get(participant.event_id) ?? 0) + 1);
+  }
+
+  return counts;
 }
 
 function canViewSensitiveEventFields(

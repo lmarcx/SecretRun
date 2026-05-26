@@ -43,6 +43,12 @@ const privateTeamEvent = {
   is_private: true,
 };
 
+function buildParticipants(eventId: string, count: number) {
+  return Array.from({ length: count }, () => ({
+    event_id: eventId,
+  }));
+}
+
 afterEach(() => {
   mock.restoreAll();
 });
@@ -53,6 +59,7 @@ describe('events service guest visibility', () => {
 
     mock.method(hasura, 'requestHasura', async () => ({
       events: [publicEvent, privateTeamEvent],
+      participants: [...buildParticipants(publicEvent.id, 12), ...buildParticipants(privateTeamEvent.id, 4)],
     }));
 
     const result = await eventsService.listEvents(null);
