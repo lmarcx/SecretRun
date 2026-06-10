@@ -1436,21 +1436,6 @@ function formatEventDateTime(value: string): string {
   });
 }
 
-function formatRunPhase(value: RunPhase): string {
-  switch (value) {
-    case 'running':
-      return 'Tracking active';
-    case 'completed':
-      return 'Completed';
-    case 'abandoned':
-      return 'Abandoned';
-    case 'invalid':
-      return 'Invalid';
-    default:
-      return 'Ready';
-  }
-}
-
 function formatResultStatus(value: ResultStatus): string {
   switch (value) {
     case 'completed':

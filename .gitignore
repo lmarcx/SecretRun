@@ -2,3 +2,11 @@
 .secrets
 node_modules
 backend-api/dist
+
+# Expo web export output + bundler cache
+apps/mobile/dist
+apps/mobile/.expo
+.expo
+
+# Vercel
+.vercel

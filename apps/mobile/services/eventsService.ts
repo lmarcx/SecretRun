@@ -335,9 +335,7 @@ function shouldUseDevFallbackEvents(error: unknown): boolean {
 }
 
 async function fetchPublicEventsFallback(): Promise<EventListItem[]> {
-  let response: DevFallbackEventsQuery;
-
-  response = await requestPublicGraphql<DevFallbackEventsQuery>(DEV_FALLBACK_EVENTS_QUERY, {});
+  const response = await requestPublicGraphql<DevFallbackEventsQuery>(DEV_FALLBACK_EVENTS_QUERY, {});
 
   debugEvents('list.raw.public_graphql', {
     source: 'public_graphql',
@@ -360,9 +358,7 @@ async function fetchPublicEventDetailsFallback(
   eventId: string,
   devParticipation: { status: string; joinedAt: string } | null,
 ): Promise<EventDetail | null> {
-  let response: DevFallbackEventDetailQuery;
-
-  response = await requestPublicGraphql<DevFallbackEventDetailQuery>(DEV_FALLBACK_EVENT_DETAIL_QUERY, {
+  const response = await requestPublicGraphql<DevFallbackEventDetailQuery>(DEV_FALLBACK_EVENT_DETAIL_QUERY, {
     eventId,
   });
 

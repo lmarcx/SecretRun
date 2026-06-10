@@ -63,7 +63,7 @@ const emptyOverview: ProfileOverview = {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { betaAccessState, disabledMessage, isAvailable, loading: authLoading, signOut } = useAuth();
+  const { disabledMessage, isAvailable, loading: authLoading, signOut } = useAuth();
   const currentUser = nhost.auth.getUser();
   const userId = currentUser?.id ?? null;
   const bottomContentPadding = useBottomContentPadding();

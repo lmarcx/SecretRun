@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, fonts } from '@/theme/tokens';
+import { fonts } from '@/theme/tokens';
 import { LeaderboardAvatar } from './LeaderboardAvatar';
 import { StatusBadge } from './StatusBadge';
 

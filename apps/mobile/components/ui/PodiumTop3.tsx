@@ -1,6 +1,6 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, fonts, spacing } from '@/theme/tokens';
+import { colors, fonts } from '@/theme/tokens';
 
 export interface PodiumEntry {
   id: string;
@@ -79,7 +79,6 @@ export function PodiumTop3({ entries, highlightId }: PodiumTop3Props) {
                 <View style={styles.avatarWrap}>
                   <PodiumAvatar
                     entry={entry}
-                    isMe={entry.id === highlightId}
                     size={cfg.avatarSize}
                   />
                   <View
@@ -138,11 +137,9 @@ export function PodiumTop3({ entries, highlightId }: PodiumTop3Props) {
 
 function PodiumAvatar({
   entry,
-  isMe,
   size,
 }: {
   entry: PodiumEntry;
-  isMe: boolean;
   size: number;
 }) {
   const r = size / 2;

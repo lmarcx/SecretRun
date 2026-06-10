@@ -633,22 +633,6 @@ function getPrimaryAction({
   };
 }
 
-function getHeroSignal(state: BriefingState): string {
-  if (state.completed) {
-    return 'Run saved on this device. Open the run screen for the result summary.';
-  }
-
-  if (state.startWindowOpen) {
-    return 'Route live. Start window open.';
-  }
-
-  if (state.joined) {
-    return state.routeRevealed ? 'Reveal live. You are registered and waiting for the start window.' : 'Registered. Route stays locked until reveal.';
-  }
-
-  return state.routeRevealed ? 'Reveal live. Register now to unlock run access.' : 'Countdown running. Join now and wait for reveal.';
-}
-
 function buildBriefingStatusItems(state: BriefingState | null) {
   if (!state) {
     return [];
@@ -821,27 +805,6 @@ function getSpotsLeftLabel(event: EventDetail): string {
   return String(Math.max(0, event.maxParticipants - (event.participantCount ?? 0)));
 }
 
-function getBriefingSubtitle(event: EventDetail, state: BriefingState): string {
-  const description = event.description?.replace(/\s+/g, ' ').trim();
-  if (description) {
-    return description;
-  }
-
-  if (state.completed) {
-    return 'Run summary available on this device.';
-  }
-
-  if (state.startWindowOpen) {
-    return 'Route and start window are both live.';
-  }
-
-  if (state.joined) {
-    return state.routeRevealed ? 'You are registered and waiting for the start window.' : 'You are registered. Reveal countdown is still running.';
-  }
-
-  return state.routeRevealed ? 'Reveal is live. Join to unlock the route.' : 'Review the timing and join before reveal goes live.';
-}
-
 function getRevealCountdown(event: EventDetail | null, nowMs: number) {
   if (!event) {
     return {
@@ -867,18 +830,6 @@ function getRevealCountdown(event: EventDetail | null, nowMs: number) {
     subtitle: `Unlocks ${formatFullDateTime(event.revealAt)}`,
     value: formatCountdown(diffMs),
   };
-}
-
-function getZoneSignal(event: EventDetail, state: BriefingState): string {
-  if (event.startAreaCenter) {
-    return state.routeRevealed ? 'Start zone is pinned on the route preview map.' : 'Start zone is configured and will become visible when reveal goes live.';
-  }
-
-  if (state.routeRevealed) {
-    return 'Start radius is active, but exact zone coordinates are not exposed in this view.';
-  }
-
-  return 'Only the start radius is shown before reveal.';
 }
 
 function formatDateTime(value: string): string {

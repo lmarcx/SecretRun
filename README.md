@@ -1,6 +1,10 @@
 # Secret Run
 
+[![CI](https://github.com/lmarcx/SecretRun/actions/workflows/ci.yml/badge.svg)](https://github.com/lmarcx/SecretRun/actions/workflows/ci.yml)
+
 Secret Run est un monorepo pour une application mobile Expo / React Native connectee a un backend Nhost, Hasura, PostgreSQL/PostGIS et une API Node Fastify.
+
+> Demo web (portfolio): l'app est exportee en version web et hebergee gratuitement sur Vercel avec un mock backend serverless. Voir [Deploiement web (portfolio)](#deploiement-web-portfolio).
 
 ## Stack
 
@@ -337,6 +341,61 @@ pnpm format
 - Wallet: recompenses de participation, login quotidien et rating
 - Social: friendships, blocks, likes, comments
 - Notifications: enregistrement device, jobs et rappels d'events
+
+## Deploiement web (portfolio)
+
+L'application Expo est exportee en version web statique et hebergee gratuitement sur Vercel, avec un mock backend serverless pour la demo. Tout est gratuit et ne necessite ni Postgres, ni Hasura, ni Fastify en ligne.
+
+### Architecture de la demo
+
+- Frontend: export web Expo (`expo export --platform web`, mode SPA `output: single`) servi en statique par Vercel.
+- Backend de demo: une fonction serverless `api/graphql.js` qui mocke l'endpoint GraphQL Hasura avec des donnees seed figees (events, leaderboard, teams), derivees de `backend/nhost/seeds/secret_run_full_seed.sql`. Les donnees sont dans `api/_data.js`.
+- Auth desactivee: sans projet Nhost configure, l'app reste en mode "auth unavailable" et ne force jamais l'ecran de login. Les ecrans publics (events, leaderboard, teams) sont navigables; le feed et le profil affichent leur etat connecte (sign-in).
+
+La config de build est dans `vercel.json`; les variables du build web sont dans `apps/mobile/.env.production` (prioritaire sur `.env` en mode production):
+
+- `EXPO_PUBLIC_HASURA_GRAPHQL_URL=/api/graphql` pointe vers le mock serverless (meme domaine Vercel).
+- `EXPO_PUBLIC_NHOST_SUBDOMAIN` / `EXPO_PUBLIC_NHOST_REGION` vides desactivent l'auth.
+- `EXPO_PUBLIC_BACKEND_API_URL` vide force le fallback GraphQL public pour les events.
+
+### Deployer sur Vercel
+
+1. Cree un compte Vercel et importe le repo GitHub `lmarcx/SecretRun`.
+2. Vercel lit `vercel.json` automatiquement, rien d'autre a configurer:
+   - Install: `pnpm install --frozen-lockfile`
+   - Build: `expo export --platform web`
+   - Output: `apps/mobile/dist`
+   - Fonctions serverless: dossier `api/`
+3. Dans Settings > Git, mets la branche de production sur `restart`.
+4. Deploie. Chaque push sur `restart` redeploie la prod; chaque PR genere un preview deployment (pratique pour un portfolio).
+
+Aucune variable d'environnement Vercel n'est requise: `apps/mobile/.env.production` fixe deja les valeurs de demo.
+
+### Verifier l'export web en local
+
+```powershell
+pnpm --filter @secret-run/mobile exec expo export --platform web --clear
+```
+
+L'export est genere dans `apps/mobile/dist`. Le flag `--clear` vide le cache Metro (necessaire si tu changes des variables `EXPO_PUBLIC_*`).
+
+### CI (GitHub Actions)
+
+`.github/workflows/ci.yml` s'execute sur push (`restart`, `main`) et sur chaque pull request:
+
+- `pnpm lint` (ESLint)
+- typecheck mobile + backend-api (`tsc --noEmit`)
+- build de l'export web
+
+Le deploiement (CD) est gere par l'integration Git native de Vercel, separee de la CI.
+
+### Qualite de code
+
+```powershell
+pnpm lint          # ESLint (mobile, backend, backend-api, types)
+pnpm format        # Prettier --write
+pnpm format:check  # Prettier --check
+```
 
 ## Depannage
 

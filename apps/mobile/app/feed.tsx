@@ -51,7 +51,7 @@ export default function FeedScreen() {
   const isSignedIn = Boolean(userId);
   const bottomContentPadding = useBottomContentPadding();
   const [data, setData] = useState<FeedData | null>(null);
-  const [profile, setProfile] = useState<CurrentProfile | null>(null);
+  const [, setProfile] = useState<CurrentProfile | null>(null);
   const [profileStats, setProfileStats] = useState<CurrentProfileStats | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardData | null>(null);
   const [menuIdentity, setMenuIdentity] = useState<FeedIdentity>({
@@ -337,7 +337,6 @@ function FeedCard({
 }) {
   const tone = toneStyles[item.tone];
   const name = getDisplayName(item);
-  const eventTitle = item.event?.title ?? 'Secret Run';
   const meta = getCardMeta(item);
   const stats = getStats(item);
   const hasRunTrace = item.type !== 'joined_event' && stats.length > 0;

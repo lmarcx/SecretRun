@@ -12,7 +12,6 @@ import MapView, { Marker, type LatLng } from 'react-native-maps';
 import * as Location from 'expo-location';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { darkMapStyle } from '@/constants/darkMapStyle';
 import type { RunEvent, EventStatus } from '@/types/event';
 import { useAuth } from '@/hooks/useAuth';
@@ -99,7 +98,6 @@ const DEFAULT_REGION = {
 // ─── Map screen ──────────────────────────────────────────────────────────────
 
 function EventsMapView({
-  events,
   runEvents,
   loading,
   error,
@@ -299,6 +297,9 @@ interface EventPresentationModel {
   primaryTone: 'primary' | 'secondary';
 }
 
+// Legacy list-based events screen, superseded by EventsMapView. Kept for now
+// (along with its helpers below) pending a decision on removing the list view.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function EventsListView({
   events,
   loading,
@@ -431,7 +432,7 @@ export default function EventsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+  const [userLocation] = useState<LatLng | null>(null);
 
   useEffect(() => {
     let active = true;

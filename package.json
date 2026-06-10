@@ -14,11 +14,13 @@
     "db:seed": "pnpm --filter @secret-run/backend db:seed",
     "db:seed:full": "pnpm --filter @secret-run/backend db:seed:full",
     "db:seed:clear": "pnpm --filter @secret-run/backend db:seed:clear",
-    "lint": "pnpm -r lint",
-    "format": "prettier --write ."
+    "lint": "cross-env ESLINT_USE_FLAT_CONFIG=false pnpm -r lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
     "eslint": "^9.22.0",
     "prettier": "^3.5.3",
     "typescript": "^5.8.2"
